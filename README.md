@@ -12,7 +12,8 @@ Assets/
 │   │   ├── Utils/     # 工具类、扩展方法、单例基类、ReentrantGuard / Assert
 │   │   ├── Data/      # 数据结构定义（ScriptableObject 基类、通用类型、ISnapshot）
 │   │   └── Input/     # 输入相关组件/动作映射（拖拽、点击、快捷键），不做全局输入管理器
-│   ├── Data/          # Data.asmdef：纯数据零行为（架构数据层）
+│   ├── Data/          # Data.asmdef：纯数据零行为（架构数据层：模板 / 行动 / 请求 / 定义 / 枚举族 + ConfigTable）
+│   │   └── Enums/     # 枚举族（Side / PieceType / Facing / Footprint / Direction / BattlePhase / ...）
 │   │   ├── Templates/ # 模板族（MoveTemplate / AttackTemplate / SkipTemplate / TargetParam）
 │   │   ├── Actions/   # 行动族（MoveAction / AttackAction / DeployAction / PromoteAction / SkipAction）
 │   │   ├── Requests/  # 请求族（DeployRequest / PromoteRequest / ExecuteRequest）

@@ -22,7 +22,7 @@ Assets/
 │   ├── Gameplay/      # Gameplay.asmdef：规则层（依赖 Core + Data）
 │   │   ├── Battle/    # 战棋战斗：Grid / Units / AI / Effects / TurnSystem
 │   │   ├── Roguelike/ # 爬塔
-│   │   │   ├── Map/   # 节点地图生成
+│   │   │   ├── Map/   # 节点序列生成（单线：每层节点数量/类型排布）
 │   │   │   ├── Run/   # 单局状态（卡组、遗物、积分）
 │   │   │   └── Events/# 随机事件
 │   │   └── 核心类直接放本目录（GameState / BattleFlow / TowerFlow / BoardRules / IntentResolver / Resolver / EventNodeSystem / EditorSession / EnemyAI / FloorRules / TutorialSystem / ProgressSystem / PieceInstance）

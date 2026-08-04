@@ -62,6 +62,7 @@ Assets/
 
 ### git
 - 从 main 拉 `前缀/描述` 分支，PR 合入，禁止直推 main
+- 合并一律使用 **Merge commit**（保留分支历史，提交图上可见分叉），禁止 fast-forward / squash / rebase 合并
 - 纯文档/配置修改（README、docs/、.gitignore 等）可直接推 main
 - 分支前缀（描述用英文小写+连字符，例：`feature/battle-grid`）：
   - `feature/` 新功能

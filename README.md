@@ -8,32 +8,26 @@
 Assets/
 ├── _Project/          # 业务代码（所有 .cs 源码都在这，按 asmdef 划分）
 │   ├── Core/          # Core.asmdef：零依赖纯逻辑（不引用任何其他模块）
-│   │   ├── Managers/  # 全局管理器：EventCenter / AudioManager / SaveManager / RandomManager / SettingsSystem / UIManager
-│   │   ├── Utils/     # 工具类、扩展方法、单例基类、ReentrantGuard / Assert
-│   │   ├── Data/      # 数据结构定义（ScriptableObject 基类、通用类型、ISnapshot）
-│   │   └── Input/     # 输入相关组件/动作映射（拖拽、点击、快捷键），不做全局输入管理器
-│   ├── Data/          # Data.asmdef：纯数据零行为（架构数据层：模板 / 行动 / 请求 / 定义 / 枚举族 + ConfigTable）
-│   │   └── Enums/     # 枚举族（Side / PieceType / Facing / Footprint / Direction / BattlePhase / ...）
-│   │   ├── Templates/ # 模板族（MoveTemplate / AttackTemplate / SkipTemplate / TargetParam）
-│   │   ├── Actions/   # 行动族（MoveAction / AttackAction / DeployAction / PromoteAction / SkipAction）
-│   │   ├── Requests/  # 请求族（DeployRequest / PromoteRequest / ExecuteRequest）
-│   │   ├── Definitions/# 定义配置族（PieceDef / PromotionConfig / FloorConfig / MapConfig / AIParams / 事件池）
-│   │   ├── Enums/     # 枚举族（Side / PieceType / Facing / Footprint / Direction / BattlePhase / ...）
-│   │   └── ConfigTable.cs # 配置加载（读 Assets/Data JSON）
+│   │   ├── Managers/  # 全局管理器（常驻，启动创建全程存在）：EventCenter.cs / AudioManager.cs / SaveManager.cs / RandomManager.cs / SettingsSystem.cs / UIManager.cs
+│   │   ├── Utils/     # 工具类、扩展方法、单例基类、ReentrantGuard.cs（可重入锁）、Assert.cs（前置断言）
+│   │   ├── Data/      # 通用数据结构：ScriptableObject 基类、通用类型、ISnapshot.cs（存档快照接口）
+│   │   └── Input/     # 输入相关组件 / 动作映射（拖拽 / 点击 / 快捷键），不做全局输入管理器
+│   ├── Data/          # Data.asmdef：纯数据零行为（架构数据层：模板族 / 行动族 / 请求族 / 定义配置族 / 枚举族 / ConfigTable）
+│   │   └── Enums/     # 枚举族（Side、PieceType、Facing、Footprint、Direction、BattlePhase 等）
 │   ├── Gameplay/      # Gameplay.asmdef：规则层（依赖 Core + Data）
 │   │   ├── Battle/    # 战棋战斗
-│   │   │   ├── Grid/   # 网格系统、坐标变换
-│   │   │   ├── Units/  # 单位：移动 / 攻击 / 技能
-│   │   │   ├── AI/     # 敌方 AI
-│   │   │   ├── Effects/# 战斗特效、伤害数字逻辑
+│   │   │   ├── Grid/      # 网格系统、坐标变换（逻辑坐标 ↔ 屏幕坐标，8×8 方格）
+│   │   │   ├── Units/     # 单位：移动、攻击、技能
+│   │   │   ├── AI/        # 敌方 AI（DecideTurn 产出请求，走统一执行管线）
+│   │   │   ├── Effects/   # 战斗特效、伤害数字逻辑
 │   │   │   └── TurnSystem/# 回合流程 / 行动点（AP，玩家自由选择棋子行动）
 │   │   ├── Roguelike/ # 爬塔
-│   │   │   ├── Map/   # 节点序列生成（单线：每层节点数量/类型排布）
-│   │   │   ├── Run/   # 单局状态（卡组、遗物、积分）
-│   │   │   └── Events/# 随机事件
-│   │   └── 核心类直接放本目录（GameState / BattleFlow / TowerFlow / BoardRules / IntentResolver / Resolver / EventNodeSystem / EditorSession / EnemyAI / FloorRules / TutorialSystem / ProgressSystem / PieceInstance）
+│   │   │   ├── Map/       # 节点序列生成（单线：每层节点数量 / 类型排布）
+│   │   │   ├── Run/       # 单局状态（卡组 / 遗物 / 积分）
+│   │   │   └── Events/    # 随机事件（事件池加权抽取，EventNodeSystem 经 Resolver 落账）
+│   │   └── 核心类直接放本目录（GameState.cs / BattleFlow.cs / TowerFlow.cs / BoardRules.cs / IntentResolver.cs / Resolver.cs / EventNodeSystem.cs / EditorSession.cs / EnemyAI.cs / FloorRules.cs / TutorialSystem.cs / ProgressSystem.cs / PieceInstance.cs）
 │   ├── UI/            # UI.asmdef：UI 逻辑脚本（依赖 Core + Data + Gameplay）
-│   │   ├── Views/     # 页面脚本（xxxPanel.cs，继承 PanelBase）
+│   │   ├── Views/     # 页面脚本（xxxPanel.cs，继承 PanelBase，实现 IPanel 注册进 UIManager）
 │   │   ├── Widgets/   # 通用控件脚本（血条、按钮、弹窗）
 │   │   └── Animations/# UI 动效（DOTween 封装层）
 │   └── Editor/        # Editor.asmdef：编辑器工具（仅编辑器平台，不打包进游戏）
@@ -48,14 +42,14 @@ Assets/
 │   ├── BGM/           # 背景音乐
 │   └── SFX/           # 音效
 ├── Data/              # 数值 / 文案 JSON（可调，不重打包）
-├── Fonts/             # 字体（子集化 SDF + 动态字体）
+├── Fonts/             # 字体（子集化 SDF，动态字体兜底）
 ├── Scenes/            # 场景（单场景 + 面板切换，无场景切换需求）
-└── Settings/          # 全局配置（ScriptableObject 实例）
+└── Settings/          # 全局配置（ScriptableObject 实例，策划调数值用）
 ```
 
-> 测试代码统一放 `Assets/Tests/`（独立 Tests asmdef，引用 Core / Data / Gameplay，框架 Unity Test Framework / NUnit）。
+> 测试代码统一放 `Assets/Tests/`（独立 Tests asmdef，引用 Core、Data、Gameplay，框架 Unity Test Framework（NUnit））。
 
-> 项目根 `docs/` 目录：存放设计文档、接口使用说明（如 UIManager 的 Open/Close、EventCenter 事件注册），新增文档先看这里有没有同类。
+> 项目根 `docs/` 目录：存放设计文档、接口使用说明（如 UIManager 的 ShowPanel、HidePanel、PushPanel、PopPanel，EventCenter 事件注册），新增文档先看这里有没有同类。
 
 ### 技术栈
 

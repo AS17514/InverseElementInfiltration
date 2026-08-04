@@ -8,7 +8,7 @@
 Assets/
 ├── _Project/          # 业务代码（所有 .cs 源码都在这，按 asmdef 划分）
 │   ├── Core/          # Core.asmdef：零依赖纯逻辑（不引用任何其他模块）
-│   │   ├── Managers/  # 全局管理器：EventCenter / AudioManager / SaveManager / SceneLoader / UIManager
+│   │   ├── Managers/  # 全局管理器：EventCenter / AudioManager / SaveManager / UIManager
 │   │   ├── Utils/     # 工具类、扩展方法、单例基类、ReentrantGuard / Assert
 │   │   ├── Data/      # 数据结构定义（ScriptableObject 基类、通用类型、ISnapshot）
 │   │   └── Input/     # 输入抽象层（鼠标/键盘动作映射）
@@ -40,7 +40,7 @@ Assets/
 │   └── SFX/           # 音效
 ├── Data/              # 数值 / 文案 JSON（可调，不重打包）
 ├── Fonts/             # 字体（子集化 SDF + 动态字体）
-├── Scenes/            # 场景（Boot / MainMenu / Battle）
+├── Scenes/            # 场景（单场景 + 面板切换，无场景切换需求）
 └── Settings/          # 全局配置（ScriptableObject 实例）
 ```
 

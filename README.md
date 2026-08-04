@@ -8,7 +8,7 @@
 Assets/
 ├── _Project/          # 业务代码（所有 .cs 源码都在这，按 asmdef 划分）
 │   ├── Core/          # Core.asmdef：零依赖纯逻辑（不引用任何其他模块）
-│   │   ├── Managers/  # 全局管理器：EventCenter / AudioManager / SaveManager / UIManager
+│   │   ├── Managers/  # 全局管理器：EventCenter / AudioManager / SaveManager / RandomManager / SettingsSystem / UIManager
 │   │   ├── Utils/     # 工具类、扩展方法、单例基类、ReentrantGuard / Assert
 │   │   ├── Data/      # 数据结构定义（ScriptableObject 基类、通用类型、ISnapshot）
 │   │   └── Input/     # 输入相关组件/动作映射（拖拽、点击、快捷键），不做全局输入管理器

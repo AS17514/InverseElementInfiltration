@@ -21,7 +21,10 @@ Assets/
 │   │   └── ConfigTable.cs # 配置加载（读 Assets/Data JSON）
 │   ├── Gameplay/      # Gameplay.asmdef：规则层（依赖 Core + Data）
 │   │   ├── Battle/    # 战棋战斗：Grid / Units / AI / Effects / TurnSystem
-│   │   ├── Roguelike/ # 爬塔：Map / Run / Events
+│   │   ├── Roguelike/ # 爬塔
+│   │   │   ├── Map/   # 节点地图生成
+│   │   │   ├── Run/   # 单局状态（卡组、遗物、积分）
+│   │   │   └── Events/# 随机事件
 │   │   └── 核心类直接放本目录（GameState / BattleFlow / TowerFlow / BoardRules / IntentResolver / Resolver / EventNodeSystem / EditorSession / EnemyAI / FloorRules / TutorialSystem / ProgressSystem / PieceInstance）
 │   ├── UI/            # UI.asmdef：UI 逻辑脚本（依赖 Core + Data + Gameplay）
 │   │   ├── Views/     # 页面脚本（xxxPanel.cs，继承 PanelBase）

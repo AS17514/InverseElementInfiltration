@@ -1,22 +1,18 @@
-# 图片
-*.png filter=lfs diff=lfs merge=lfs -text
-*.jpg filter=lfs diff=lfs merge=lfs -text
-*.jpeg filter=lfs diff=lfs merge=lfs -text
-*.psd filter=lfs diff=lfs merge=lfs -text
-*.tga filter=lfs diff=lfs merge=lfs -text
-*.tif filter=lfs diff=lfs merge=lfs -text
-*.webp filter=lfs diff=lfs merge=lfs -text
-*.gif filter=lfs diff=lfs merge=lfs -text
+# 文本文件统一 LF：仓库存 LF，检出 LF，Windows 下不再做 CRLF 转换
+* text=auto eol=lf
 
-# 音频
-*.wav filter=lfs diff=lfs merge=lfs -text
-*.ogg filter=lfs diff=lfs merge=lfs -text
-*.mp3 filter=lfs diff=lfs merge=lfs -text
-*.flac filter=lfs diff=lfs merge=lfs -text
-
-# 模型
-*.fbx filter=lfs diff=lfs merge=lfs -text
-*.blend filter=lfs diff=lfs merge=lfs -text
-
-# 大体积 Unity 资产（图集等）
-*.spriteatlas filter=lfs diff=lfs merge=lfs -text
+# 二进制文件（禁止行尾转换）
+*.png binary
+*.jpg binary
+*.jpeg binary
+*.gif binary
+*.psd binary
+*.tga binary
+*.fbx binary
+*.mp3 binary
+*.wav binary
+*.ogg binary
+*.ttf binary
+*.pdf binary
+*.zip binary
+*.unitypackage binary

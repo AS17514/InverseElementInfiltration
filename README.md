@@ -65,6 +65,9 @@ Assets/
 - 合并一律使用 **Merge commit**（保留分支历史，提交图上可见分叉），禁止 fast-forward / squash / rebase 合并
 - 纯文档/配置修改（README、docs/、.gitignore 等）可直接推 main
 - 分支前缀（描述用英文小写+连字符，例：`feature/battle-grid`）：
+
+### 编辑器
+- 行尾统一 LF（`.gitattributes` 已强制仓库 LF；VS Code 设置 `files.eol` = `\n`，其他编辑器同理，AI 工具写入遵循编辑器设置）
   - `feature/` 新功能
   - `fix/` 修 bug
   - `docs/` 文档更新

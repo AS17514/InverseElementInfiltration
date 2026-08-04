@@ -21,8 +21,7 @@ Assets/
 │   ├── Roguelike/     # 肉鸽循环模块
 │   │   ├── Map/       # 节点地图生成
 │   │   ├── Run/       # 单局状态（货币、遗物、队伍）
-│   │   ├── Events/    # 随机事件
-│   │   └── Meta/      # 局外成长 / 解锁
+│   │   └── Events/    # 随机事件
 │   ├── UI/            # UI 逻辑脚本
 │   │   ├── Views/     # 页面脚本（xxxPanel.cs，继承 PanelBase）
 │   │   ├── Widgets/   # 通用控件脚本（血条、按钮、弹窗）

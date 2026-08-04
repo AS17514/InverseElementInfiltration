@@ -39,8 +39,10 @@ mono_crash.*
 # Blender
 *.blend1
 *.blend1.meta
-/test/
 
 # 本地测试目录（不推送）
 /test/
 /test/**/*.meta
+
+# 架构设计文档（私人笔记，不提交）
+架构设计.md

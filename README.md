@@ -47,6 +47,8 @@ Assets/
 └── Settings/          # 全局配置（ScriptableObject 实例）
 ```
 
+> 测试代码统一放 `Assets/Tests/`（独立 Tests asmdef，引用 Core / Data / Gameplay，框架 Unity Test Framework / NUnit）。
+
 > 项目根 `docs/` 目录：存放设计文档、接口使用说明（如 UIManager 的 Open/Close、EventCenter 事件注册），新增文档先看这里有没有同类。
 
 ### 技术栈

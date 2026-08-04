@@ -20,7 +20,12 @@ Assets/
 │   │   ├── Enums/     # 枚举族（Side / PieceType / Facing / Footprint / Direction / BattlePhase / ...）
 │   │   └── ConfigTable.cs # 配置加载（读 Assets/Data JSON）
 │   ├── Gameplay/      # Gameplay.asmdef：规则层（依赖 Core + Data）
-│   │   ├── Battle/    # 战棋战斗：Grid / Units / AI / Effects / TurnSystem
+│   │   ├── Battle/    # 战棋战斗
+│   │   │   ├── Grid/   # 网格系统、坐标变换
+│   │   │   ├── Units/  # 单位：移动 / 攻击 / 技能
+│   │   │   ├── AI/     # 敌方 AI
+│   │   │   ├── Effects/# 战斗特效、伤害数字逻辑
+│   │   │   └── TurnSystem/# 回合流程 / 行动点（AP，玩家自由选择棋子行动）
 │   │   ├── Roguelike/ # 爬塔
 │   │   │   ├── Map/   # 节点序列生成（单线：每层节点数量/类型排布）
 │   │   │   ├── Run/   # 单局状态（卡组、遗物、积分）

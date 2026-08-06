@@ -37,7 +37,7 @@ namespace TheLaw.Data
         GameOver,
     }
 
-    /// <summary>方向（位标志，| 组合）——MoveSegment/AttackTemplate.directions 用。</summary>
+    /// <summary>方向（位标志，| 组合）——MoveStep/AttackTemplate.directions 用。</summary>
     [Flags]
     public enum Direction
     {

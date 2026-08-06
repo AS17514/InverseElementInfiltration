@@ -26,8 +26,14 @@ namespace TheLaw.Gameplay
 
         public bool IsCellPassable(GameState state, Vector2Int cell)
         {
-            // 移动可通行 = 界内 + 无障碍物 + 无棋子占用
+            // 落点可通行 = 界内 + 无障碍物 + 无棋子占用（落点不可重叠）
             return IsInsideBoard(cell) && !state.Obstacles.Contains(cell) && !IsCellOccupied(state, cell);
+        }
+
+        /// <summary>路径格可通行 = 界内 + 无障碍物（棋子可穿过——路径经过棋子不阻挡）。</summary>
+        public bool IsPathCellPassable(GameState state, Vector2Int cell)
+        {
+            return IsInsideBoard(cell) && !state.Obstacles.Contains(cell);
         }
 
         public bool IsPathClear(GameState state, PieceInstance piece, Vector2Int to)
@@ -39,46 +45,67 @@ namespace TheLaw.Gameplay
         // ========== 移动 ==========
 
         /// <summary>
-        /// 计算移动模板的合法落点（多段路径：段 1 走完 → 从各到达点开始段 2，分支累加）。
-        /// 每段沿方向集每个方向走 steps 步（出界/障碍物/占用逐格检查）；
-        /// 解析时应用被动修正：步数 + MoveStep 修正（作用于每段）。
+        /// 计算移动模板的合法落点（路径选项模型）。
+        /// 每条路径独立计算（起点 = 棋子位置）：段序列顺序执行，段间从各终点继续；
+        /// 段内 moves（方向→可选步数）选一个执行——段内多选项产生多个终点（分支）。
+        /// 路径格检查：界内 + 非障碍（棋子可穿过）；落点 = 最后一段终点，额外检查非占用（不可重叠）。
+        /// 解析时应用被动修正：步数 + MoveStep 修正（作用于每段每个选项）。
         /// </summary>
         public List<Vector2Int> GetLegalMoves(GameState state, PieceInstance piece, MoveTemplate template)
         {
             var reachable = new HashSet<Vector2Int>();
-            var frontier = new List<Vector2Int> { piece.position }; // 当前段起点（初始 = 棋子位置）
-            foreach (var segment in template.segments)
+            foreach (var path in template.paths)
             {
-                int steps = segment.steps + GetPassiveModifier(state, piece, PassiveTarget.MoveStep);
-                var next = new List<Vector2Int>();
-                foreach (var start in frontier)
+                var frontier = new List<Vector2Int> { piece.position }; // 当前段起点（路径起点 = 棋子位置）
+                for (int segIdx = 0; segIdx < path.segments.Count; segIdx++)
                 {
-                    for (int dir = 1; dir <= (int)Direction.DownRight; dir <<= 1)
+                    var segment = path.segments[segIdx];
+                    bool isLastSegment = segIdx == path.segments.Count - 1;
+                    var next = new List<Vector2Int>();
+                    foreach (var start in frontier)
                     {
-                        if ((segment.directions & (Direction)dir) == 0)
+                        foreach (var move in segment.moves)
                         {
-                            continue;
-                        }
-                        var dirVec = DirectionToVector((Direction)dir);
-                        var cursor = start;
-                        for (int i = 0; i < steps; i++)
-                        {
-                            cursor += dirVec;
-                            if (!IsCellPassable(state, cursor))
+                            int stepModifier = GetPassiveModifier(state, piece, PassiveTarget.MoveStep); // 被动修正（作用于每段每选项）
+                            foreach (var k in move.steps)
                             {
-                                break; // 出界/障碍/占用——该方向停止
-                            }
-                            if (reachable.Add(cursor))
-                            {
-                                next.Add(cursor); // 新到达点（作为下一段起点）
+                                int steps = k + stepModifier;
+                                var dirVec = DirectionToVector(move.direction);
+                                var cursor = start;
+                                bool blocked = false;
+                                for (int i = 0; i < steps; i++)
+                                {
+                                    cursor += dirVec;
+                                    if (!IsPathCellPassable(state, cursor))
+                                    {
+                                        blocked = true; // 路径中障碍（含终点格障碍）→ 该步数不可达；更远步数也不可达
+                                        break;
+                                    }
+                                }
+                                if (blocked)
+                                {
+                                    continue;
+                                }
+                                if (isLastSegment)
+                                {
+                                    if (IsCellOccupied(state, cursor))
+                                    {
+                                        continue; // 落点不可重叠（棋子）
+                                    }
+                                    reachable.Add(cursor); // 落点
+                                }
+                                else
+                                {
+                                    next.Add(cursor); // 中转点（棋子可穿过——不检查占用）
+                                }
                             }
                         }
                     }
-                }
-                frontier = next;
-                if (frontier.Count == 0)
-                {
-                    break; // 无路可走——提前结束
+                    frontier = next;
+                    if (frontier.Count == 0)
+                    {
+                        break; // 该路径无路可走——提前结束
+                    }
                 }
             }
             return new List<Vector2Int>(reachable);

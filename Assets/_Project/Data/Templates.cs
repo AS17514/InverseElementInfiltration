@@ -5,19 +5,47 @@ namespace TheLaw.Data
 {
     // ========== 移动/目标参数 ==========
 
-    /// <summary>移动段（方向集位标志 + 步数）——MoveTemplate 的一段（多段顺序执行：段 1 走完 → 从到达点开始段 2）。</summary>
+    /// <summary>移动步（方向 → 可选步数集合；移动时选方向 + 该方向允许的步数）。</summary>
+    [Serializable]
+    public class MoveStep
+    {
+        public Direction direction;     // 单个方向（绝对棋盘方向，非位标志）
+        public List<int> steps = new List<int>(); // 可选步数集合：[1,2]=走1或2格；[2]=固定2格（不可走1格）
+
+        public MoveStep() { }
+
+        public MoveStep(Direction direction, List<int> steps)
+        {
+            this.direction = direction;
+            this.steps = steps;
+        }
+    }
+
+    /// <summary>移动段（一段 = 方向→步数选项列表；段内选一个方向+步数执行）。</summary>
     [Serializable]
     public class MoveSegment
     {
-        public Direction directions; // 位标志，| 组合
-        public int steps;            // 步数
+        public List<MoveStep> moves = new List<MoveStep>();
 
         public MoveSegment() { }
 
-        public MoveSegment(Direction directions, int steps)
+        public MoveSegment(List<MoveStep> moves)
         {
-            this.directions = directions;
-            this.steps = steps;
+            this.moves = moves;
+        }
+    }
+
+    /// <summary>移动路径（一条完整路径 = 段序列，顺序执行；落点 = 最后一段终点；段间从各终点继续）。</summary>
+    [Serializable]
+    public class MovePath
+    {
+        public List<MoveSegment> segments = new List<MoveSegment>();
+
+        public MovePath() { }
+
+        public MovePath(List<MoveSegment> segments)
+        {
+            this.segments = segments;
         }
     }
 
@@ -43,17 +71,17 @@ namespace TheLaw.Data
     {
     }
 
-    /// <summary>移动模板：多段路径（顺序执行——段 1 走完从到达点开始段 2；移动方式由模板决定，可编辑）。</summary>
+    /// <summary>移动模板：路径选项集合（多条路径独立计算；可达格 = 各路径落点合集；移动方式由模板决定，可编辑）。</summary>
     [Serializable]
     public class MoveTemplate : Template
     {
-        public List<MoveSegment> segments = new List<MoveSegment>();
+        public List<MovePath> paths = new List<MovePath>();
 
         public MoveTemplate() { }
 
-        public MoveTemplate(List<MoveSegment> segments)
+        public MoveTemplate(List<MovePath> paths)
         {
-            this.segments = segments;
+            this.paths = paths;
         }
     }
 

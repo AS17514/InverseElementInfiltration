@@ -99,7 +99,7 @@ namespace TheLaw.EditorTools
             }
 
             AssetDatabase.CreateAsset(piece, assetPath);
-            Debug.Log($"[导入器] 导入：{dto.pieceName}（模块 {piece.programSet.Count > 0 ? piece.programSet[0].slots.Count : 0} 个，能力 {abilities.Count} 个）");
+            Debug.Log($"[导入器] 导入：{dto.pieceName}（模块 {(piece.programSet.Count > 0 ? piece.programSet[0].slots.Count : 0)} 个，能力 {abilities.Count} 个）");
             return true;
         }
 

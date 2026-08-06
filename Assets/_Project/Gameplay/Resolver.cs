@@ -1,0 +1,394 @@
+using System.Collections.Generic;
+using TheLaw.Core;
+using TheLaw.Data;
+using UnityEngine;
+
+namespace TheLaw.Gameplay
+{
+    /// <summary>
+    /// 结算器（统一落账器）——GameState 唯一写入口 ★
+    /// 所有状态修改经此：落账 → 发事件（通知）→ LogAction（回放记录）。
+    /// 触发点动作走"待执行队列"（防重入：守卫退出后由 BattleFlow 统一取走执行）。
+    /// </summary>
+    public class Resolver
+    {
+        private readonly GameState _state;
+        private readonly BoardRules _boardRules;
+        private readonly Queue<ConcreteAction> _pendingActions = new Queue<ConcreteAction>();
+        private readonly List<int> _pendingExtraExecutes = new List<int>(); // 触发"额外行动一次"的棋子
+        private const int MaxFlushDepth = 32; // 防连杀无限循环（有限棋盘链条自然终止，上限兜底）
+
+        public Resolver(GameState state, BoardRules boardRules)
+        {
+            _state = state;
+            _boardRules = boardRules;
+        }
+
+        // ========== 落账入口 ==========
+
+        public void ResolveAll(List<ConcreteAction> actions)
+        {
+            foreach (var action in actions)
+            {
+                Resolve(action);
+            }
+        }
+
+        public void Resolve(ConcreteAction action)
+        {
+            LogAction(action);
+            switch (action)
+            {
+                case MoveAction move:
+                    ResolveMove(move);
+                    break;
+                case AttackAction attack:
+                    ResolveAttack(attack);
+                    break;
+                case DeployAction deploy:
+                    ResolveDeploy(deploy);
+                    break;
+                case PromoteAction promote:
+                    ResolvePromote(promote);
+                    break;
+                case SkipAction skip:
+                    ResolveSkip(skip);
+                    break;
+            }
+        }
+
+        // ========== 各类落账 ==========
+
+        private void ResolveMove(MoveAction action)
+        {
+            var piece = _state.GetPiece(action.pieceId);
+            if (piece == null)
+            {
+                return;
+            }
+            _state.Pieces.Remove(action.from);
+            piece.position = action.to;
+            _state.Pieces[action.to] = piece;
+            EventCenter.Instance.EventTrigger(GameEvent.PieceMoved, new MoveInfo { PieceId = piece.Id, From = action.from, To = action.to });
+        }
+
+        private void ResolveAttack(AttackAction action)
+        {
+            var piece = _state.GetPiece(action.pieceId);
+            if (piece == null)
+            {
+                return;
+            }
+            int damage = _boardRules.GetAttackDamage(_state, piece, action.template);
+
+            // 目标格结算（空格 = 空放：无伤害仍耗槽）
+            var target = _state.GetPieceAt(action.targetCell);
+            bool died = false;
+            if (target != null)
+            {
+                died = ModifyDurability(target, -damage, piece); // killer = 攻击者
+            }
+
+            // 附着结算（Attach/OnAttack：如十字额外伤害——范围额外结算）
+            ResolveAttachOnAttack(piece, action.targetCell, action.template, damage);
+
+            // 发事件（UI 表现依据：攻击者/目标/伤害/是否死亡）
+            EventCenter.Instance.EventTrigger(GameEvent.DamageDealt, new DamageInfo
+            {
+                AttackerId = piece.Id,
+                TargetCell = action.targetCell,
+                Damage = damage,
+                TargetDied = died,
+                FriendlyFire = action.template.friendlyFire,
+            });
+        }
+
+        private void ResolveAttachOnAttack(PieceInstance attacker, Vector2Int targetCell, AttackTemplate template, int mainDamage)
+        {
+            foreach (var ability in attacker.GetAllAbilities())
+            {
+                if (ability.type != SpecialAbilityType.Attach || ability.attachPoint != AttachPoint.OnAttack)
+                {
+                    continue;
+                }
+                // 范围额外结算：十字 = 目标格 + 上下左右
+                var cells = GetAttachCells(targetCell, ability.attachShape);
+                int attachDamage = ability.attachDamage > 0 ? ability.attachDamage : mainDamage;
+                foreach (var cell in cells)
+                {
+                    var victim = _state.GetPieceAt(cell);
+                    if (victim != null && (victim.side != attacker.side || template.friendlyFire))
+                    {
+                        ModifyDurability(victim, -attachDamage, attacker); // killer = 攻击者（附着结算）
+                    }
+                }
+            }
+        }
+
+        private List<Vector2Int> GetAttachCells(Vector2Int center, AttackShape shape)
+        {
+            var cells = new List<Vector2Int>();
+            if (shape == AttackShape.Cross)
+            {
+                cells.Add(center);
+                cells.Add(center + Vector2Int.up);
+                cells.Add(center + Vector2Int.down);
+                cells.Add(center + Vector2Int.left);
+                cells.Add(center + Vector2Int.right);
+            }
+            else
+            {
+                cells.Add(center);
+            }
+            return cells;
+        }
+
+        private void ResolveDeploy(DeployAction action)
+        {
+            var def = ConfigTable.Get<PieceDef>(action.pieceDefId);
+            var piece = new PieceInstance(def, action.side, action.cell)
+            {
+                Id = _state.AllocatePieceId(),
+                waveIndex = action.waveIndex, // 波次标（每波得分累计用）
+            };
+            if (action.side == Side.Player)
+            {
+                _state.Hand.Remove(action.pieceDefId); // 玩家部署：手牌打出
+            }
+            _state.Pieces[action.cell] = piece;
+            _state.PiecesById[piece.Id] = piece;
+            EventCenter.Instance.EventTrigger(GameEvent.PieceDeployed, new DeployInfo { PieceId = piece.Id, DefId = action.pieceDefId, Side = action.side, Cell = action.cell });
+        }
+
+        private void ResolvePromote(PromoteAction action)
+        {
+            var piece = _state.GetPiece(action.pieceId);
+            if (piece == null)
+            {
+                return;
+            }
+            var newDef = ConfigTable.Get<PieceDef>(action.newDefId);
+            piece.def = newDef;
+            piece.durability = newDef.durability;
+            if (piece.side == Side.Player)
+            {
+                _state.Hand.Remove(action.newDefId); // 升变牌打出（手牌减一）——仅玩家（敌方无手牌）
+            }
+            EventCenter.Instance.EventTrigger(GameEvent.PiecePromoted, new PromoteInfo { PieceId = piece.Id, NewDefId = action.newDefId });
+        }
+
+        private void ResolveSkip(SkipAction action)
+        {
+            // 无状态变化；Skip 无表现，不进入表现等待（BattleFlow 判定）
+        }
+
+        // ========== 承伤统一入口（伤害负、恢复正）==========
+
+        /// <summary>承伤±N：归 0 → 死亡流程（killer=击杀者，可为 null——非攻击击杀）。返回是否死亡。</summary>
+        public bool ModifyDurability(PieceInstance piece, int delta, PieceInstance killer = null)
+        {
+            piece.durability += delta;
+            if (piece.durability <= 0)
+            {
+                HandleDeath(piece, killer);
+                return true;
+            }
+            return false;
+        }
+
+        // ========== 死亡 ==========
+
+        private void HandleDeath(PieceInstance victim, PieceInstance killer)
+        {
+            _state.Pieces.Remove(victim.position);
+            _state.PiecesById.Remove(victim.Id);
+
+            // 击杀积分（价值分）+ 墓地（仅玩家棋子；敌方无手牌概念）+ 每波得分累计
+            if (victim.side == Side.Player)
+            {
+                _state.Graveyard.Add(victim.DefId);
+                _state.EnemyScore += victim.def.value;
+            }
+            else
+            {
+                _state.PlayerScore += victim.def.value;
+                if (victim.waveIndex >= 0 && victim.waveIndex < _state.WaveScores.Count)
+                {
+                    _state.WaveScores[victim.waveIndex] += victim.def.value; // 每波得分累计（第 3 关"每波达标"）
+                }
+            }
+
+            // OnKill 触发点（层差异 + 遗物 + 特殊能力——动作进待执行队列）
+            OnKillTriggers(victim, killer);
+
+            EventCenter.Instance.EventTrigger(GameEvent.PieceDied, new DeathInfo { PieceId = victim.Id, Side = victim.side, KillerId = killer != null ? killer.Id : -1 });
+        }
+
+        private void OnKillTriggers(PieceInstance victim, PieceInstance killer)
+        {
+            // 特殊能力（OnKill + ExtraAction）：【击杀者】额外行动一次——登记待执行
+            if (killer != null)
+            {
+                foreach (var ability in killer.GetAllAbilities())
+                {
+                    if (ability.type == SpecialAbilityType.Trigger && ability.triggerPoint == TriggerPoint.OnKill
+                        && ability.triggerEffect == TriggerEffect.ExtraAction)
+                    {
+                        RequestExtraExecute(killer.Id);
+                    }
+                }
+            }
+            // 触发型遗物（OnKill）：击杀者回血（经 Resolver 统一入口）
+            if (killer != null)
+            {
+                foreach (var relic in _state.Relics)
+                {
+                    foreach (var ability in relic.abilities)
+                    {
+                        if (ability.type == SpecialAbilityType.Trigger && ability.triggerPoint == TriggerPoint.OnKill
+                            && ability.triggerEffect == TriggerEffect.HealDurability)
+                        {
+                            ModifyDurability(killer, ability.amount);
+                        }
+                    }
+                }
+            }
+            // FloorRules.OnKill（层差异钩子——由 BattleFlow 在守卫内调用，此处注释占位）
+        }
+
+        // ========== 事件/编辑/加牌效果（经 Resolver 落账——唯一写入口）==========
+
+        /// <summary>编辑程序落账（实时编辑/事件 EditProgram——改种类级表）。</summary>
+        public void ApplyProgramEdit(int defId, List<Template> program)
+        {
+            _state.CurrentPrograms[defId] = program;
+            EventCenter.Instance.EventTrigger(GameEvent.ProgramEdited, defId);
+        }
+
+        /// <summary>玩家手牌加牌（事件 AddPiece 效果）。</summary>
+        public void AddToHand(int defId)
+        {
+            _state.Hand.Add(defId);
+            EventCenter.Instance.EventTrigger(GameEvent.HandChanged, _state.Hand);
+        }
+
+        /// <summary>敌方波次池增强（加牌落点：敌方无手牌——增强未来波次阵容）。</summary>
+        public void AddToEnemyWavePool(int defId)
+        {
+            _state.AddToEnemyWavePool(defId);
+            EventCenter.Instance.EventTrigger(GameEvent.HandChanged, null);
+        }
+
+        /// <summary>给予临时特殊能力（事件 GrantAbility——随战斗结束销毁）。</summary>
+        public void GrantTempAbility(int pieceId, int abilityId)
+        {
+            var piece = _state.GetPiece(pieceId);
+            var ability = ConfigTable.Find<SpecialAbilityDef>(abilityId);
+            if (piece != null && ability != null)
+            {
+                piece.tempAbilities.Add(ability);
+            }
+        }
+
+        /// <summary>按 defId 对首名匹配棋子修改承伤（事件 ModifyDurability 简化版——目标选择完善后替换）。</summary>
+        public void ModifyTargetDurability(int defId, int amount)
+        {
+            foreach (var piece in _state.Pieces.Values)
+            {
+                if (piece.DefId == defId)
+                {
+                    ModifyDurability(piece, amount);
+                    return;
+                }
+            }
+        }
+
+        // ========== 待执行队列（防重入）==========
+
+        /// <summary>登记"免费额外行动一次"（Trigger/OnKill → ExtraAction）。BattleFlow 守卫退出后取走执行。</summary>
+        public void RequestExtraExecute(int pieceId)
+        {
+            if (!_pendingExtraExecutes.Contains(pieceId))
+            {
+                _pendingExtraExecutes.Add(pieceId);
+            }
+        }
+
+        /// <summary>登记落账级待执行动作（如 HealDurability）。守卫退出后由 BattleFlow 取走。</summary>
+        public void EnqueuePending(ConcreteAction action)
+        {
+            _pendingActions.Enqueue(action);
+        }
+
+        /// <summary>取出挂起的落账级动作并全部落账（守卫退出后调用；防连杀循环上限兜底）。</summary>
+        public void FlushPendingActions()
+        {
+            int depth = 0;
+            while (_pendingActions.Count > 0 && depth < MaxFlushDepth)
+            {
+                depth++;
+                Resolve(_pendingActions.Dequeue());
+            }
+        }
+
+        /// <summary>取走挂起的"额外执行"棋子（流程级——由 BattleFlow 守卫退出后执行）。</summary>
+        public List<int> TakePendingExtraExecutes()
+        {
+            var result = new List<int>(_pendingExtraExecutes);
+            _pendingExtraExecutes.Clear();
+            return result;
+        }
+
+        // ========== 日志 / 回放 ==========
+
+        private void LogAction(ConcreteAction action)
+        {
+            _state.ReplayLog.Add(action); // 回放记录（数据）
+            Debug.Log($"[Resolver] 落账: {action.GetType().Name}"); // 落账日志（现场还原）
+        }
+    }
+
+    // ========== 事件数据（UI 表现依据）==========
+
+    public class MoveInfo
+    {
+        public int PieceId;
+        public Vector2Int From;
+        public Vector2Int To;
+    }
+
+    public class DamageInfo
+    {
+        public int AttackerId;
+        public Vector2Int TargetCell;
+        public int Damage;
+        public bool TargetDied;
+        public bool FriendlyFire;
+    }
+
+    public class DeployInfo
+    {
+        public int PieceId;
+        public int DefId;
+        public Side Side;
+        public Vector2Int Cell;
+    }
+
+    public class PromoteInfo
+    {
+        public int PieceId;
+        public int NewDefId;
+    }
+
+    public class DeathInfo
+    {
+        public int PieceId;
+        public Side Side;
+        public int KillerId = -1; // -1=无击杀者（非攻击击杀）
+    }
+
+    public class ExtraExecutePending
+    {
+        public List<int> PieceIds;
+    }
+}

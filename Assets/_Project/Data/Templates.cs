@@ -121,6 +121,8 @@ namespace TheLaw.Data
     [Serializable]
     public class ProgramDef
     {
+        // [SerializeReference]：Unity YAML 多态序列化必需——否则基类列表存子类会退化成 Template（丢数据）
+        [SerializeReference]
         public List<Template> slots = new List<Template>(4);
 
         public ProgramDef() { }

@@ -88,5 +88,6 @@
       "effect": "ExtraAction",
       "amount": 1
     }
-  ]
+  ],
+  "assetName": "Assassin"
 }

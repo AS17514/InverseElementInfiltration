@@ -53,5 +53,6 @@
       "effect": "ShieldBlock",
       "amount": 1
     }
-  ]
+  ],
+  "assetName": "ShieldGuard"
 }

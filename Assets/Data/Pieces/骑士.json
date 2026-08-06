@@ -69,5 +69,6 @@
       "damage": 1,
       "friendlyFire": true
     }
-  ]
+  ],
+  "assetName": "Knight"
 }

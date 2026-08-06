@@ -9,6 +9,7 @@ namespace TheLaw.Data
     /// </summary>
     public class PieceDef : GameConfigBase
     {
+        public string displayName;                     // 中文显示名（资产名用英文——UI 显示用这个）
         public PieceType pieceType;                    // 种类：初始/部署/升变
         public int value;                              // 价值（1~9，击杀得积分；构筑总价值限制依据）
         public int durability;                         // 承伤次数（无 HP——被攻击扣次数，归 0 死亡）

@@ -115,16 +115,32 @@ namespace TheLaw.Gameplay
 
         /// <summary>
         /// 计算攻击模板的可攻击格子（任意格子——含己方/空格：可空放/可打己方）。
-        /// 统一遍历可选方向集（directions 位标志）每个方向沿直线 range 格：
-        ///   近战群攻 → 范围内全部格子被攻击（玩家选一格仅作确认；无阻挡概念）
-        ///   直射     → 路径逐格检查障碍（被挡即止）
-        ///   抛射/法术 → 无视障碍（射程内直线格直接可达）
-        ///   近战     → 射程 1（相邻格，无阻挡概念）
+        /// 分派：
+        ///   抛射/法术（points 非空）→ 自由点选攻击点：锚点 + 偏移集合（无视障碍对点；出界过滤）
+        ///   其他 → 统一遍历可选方向集（directions 位标志）每个方向沿直线 range 格：
+        ///       直射     → 路径逐格：障碍物截断（不可达）；【第一个可攻击物（棋子）】截断（该格为目标）
+        ///       近战     → 射程 1（相邻格，无阻挡概念）
+        ///       近战群攻 → 范围内全部格子被攻击（玩家选一格仅作确认；无阻挡概念）
         /// 攻击时玩家从候选格集合中选一格（普通攻击打所选格；近战群攻打范围内全部）。
-        /// 解析时应用被动修正：射程 + AttackRange 修正。
+        /// 解析时应用被动修正：射程 + AttackRange 修正（对点模式不适用）。
         /// </summary>
         public List<Vector2Int> GetAttackableCells(GameState state, PieceInstance piece, AttackTemplate template)
         {
+            // 抛射/法术：自由点选攻击点（相对棋子锚点偏移，无视障碍对点攻击）
+            if ((template.mode == AttackMode.Arcing || template.mode == AttackMode.Spell) && template.points.Count > 0)
+            {
+                var pointCells = new List<Vector2Int>();
+                foreach (var offset in template.points)
+                {
+                    var cell = piece.position + offset;
+                    if (IsInsideBoard(cell))
+                    {
+                        pointCells.Add(cell);
+                    }
+                }
+                return pointCells;
+            }
+
             var result = new List<Vector2Int>();
             int range = template.range + GetPassiveModifier(state, piece, PassiveTarget.AttackRange);
             for (int dir = 1; dir <= (int)Direction.DownRight; dir <<= 1)
@@ -142,11 +158,21 @@ namespace TheLaw.Gameplay
                     {
                         break;
                     }
-                    // 直射：路径逐格检查障碍（目标格有障碍也算被挡）；近战/近战群攻/抛射/法术无视障碍
-                    if (template.mode == AttackMode.DirectFire && state.Obstacles.Contains(cursor))
+                    if (template.mode == AttackMode.DirectFire)
                     {
-                        break;
+                        // 直射：障碍物格截断（不可达）；棋子格 = 目标并截断（第一个可攻击物阻挡）
+                        if (state.Obstacles.Contains(cursor))
+                        {
+                            break;
+                        }
+                        result.Add(cursor);
+                        if (IsCellOccupied(state, cursor))
+                        {
+                            break;
+                        }
+                        continue;
                     }
+                    // 近战/近战群攻/抛射/法术（points 空回退）：无视障碍
                     result.Add(cursor);
                 }
             }

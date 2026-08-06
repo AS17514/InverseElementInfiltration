@@ -1,5 +1,6 @@
 using System;
 using System.Collections.Generic;
+using UnityEngine;
 
 namespace TheLaw.Data
 {
@@ -95,6 +96,7 @@ namespace TheLaw.Data
         public int damage = 1;                     // 伤害（扣承伤次数）
         public bool friendlyFire = true;           // 友伤开关（默认 true——"大部分有友伤"）
         public AttackShape shape = AttackShape.Single; // 范围形状（保留——攻击模板不再使用；特殊能力附着用 Cross）
+        public List<Vector2Int> points = new List<Vector2Int>(); // 抛射/法术：自由点选攻击点（相对棋子锚点的偏移集合，无射程概念、任意形状、对点攻击无视障碍）
 
         public AttackTemplate() { }
 

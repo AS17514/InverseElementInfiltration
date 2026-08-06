@@ -77,7 +77,7 @@
 ## D1. Enums/GameEnums.cs（枚举族全集，按语义分组）
 - 战斗：`Side { Player, Enemy }` / `PieceType { Initial, Deployable, Promoted }` / `Facing { Up, Down, Left, Right }` / `BattlePhase { PlayerTurn, EnemyTurn, GameOver, Placement }`（Placement=开局摆放阶段）/ `Direction [Flags] { None, Up, Down, Left, Right, UpLeft, UpRight, DownLeft, DownRight }`
 - 棋盘：`Footprint { Size1x1, Size1x2, Size1x3 }`
-- 规则：`TargetRule { Nearest, LowestHP, HighestValue }` / `TargetScope { PieceCollection, Board }` / `VictoryRule { WipeOut, ScoreTarget, Both, PerWaveScore }` / `AttackShape { Single, Cross }`（Sweep 未来加）
+- 规则：`TargetRule { Nearest, LowestHP, HighestValue }` / `TargetScope { PieceCollection, Board }` / `VictoryRule { WipeOut, ScoreTarget, Both, PerWaveScore }` / `AttackShape { Single, Cross, Surround }` / `AttackMode { Melee, MeleeAOE, DirectFire, Arcing, Spell }`（抛射/法术暂同，越障直接命中；直射受障碍阻挡）
 - 爬塔：`NodeType { Event, Battle }` / `NodeState { Locked, Available, Completed }`
 - 特殊能力：`SpecialAbilityType { Passive, Trigger, Attach }` / `TriggerPoint { OnBattleStart, OnTurnStart, OnTurnEnd, OnKill, OnPieceLanded }` / `PassiveTarget { MoveStep, AttackDamage, AttackRange, Durability }` / `AttachPoint { OnAttack, OnMove }`
 
@@ -86,7 +86,7 @@
 - `TargetParam`（struct）：`TargetRule rule` + `int amount`
 - `abstract class Template`（基类，可留空标识）
 - `MoveTemplate : Template`：`MovePattern pattern`——程序槽位：移动
-- `AttackTemplate : Template`：`Direction direction`（默认 Up）/ `int range` / `int damage` / `bool friendlyFire = true`——程序槽位：攻击
+- `AttackTemplate : Template`：`AttackMode mode` / `Direction direction`（默认 Up）/ `int range` / `int damage` / `bool friendlyFire = true` / `AttackShape shape`——程序槽位：攻击（mode 决定阻挡/穿透与形状分派）
 - `SkipTemplate : Template`——空操作槽
 - 注：无 TargetParam 字段需求则从模板移除（PlayerSelect 目标选择由棋盘规则/玩家手动决定）
 

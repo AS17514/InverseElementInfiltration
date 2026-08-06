@@ -88,7 +88,7 @@
 - `TargetParam`（struct）：`TargetRule rule` + `int amount`
 - `abstract class Template`（基类，可留空标识）
 - `MoveTemplate : Template`：`List<MovePath> paths`（路径选项集合，每条独立计算；可达格 = 各路径落点合集）——程序槽位：移动
-- `AttackTemplate : Template`：`AttackMode mode` / `Direction directions`（[Flags] 可选方向集，默认 {Up}=正前方；攻击时玩家从中选一格）/ `int range` / `int damage` / `bool friendlyFire = true` / `AttackShape shape`——程序槽位：攻击（mode 决定阻挡/穿透与形状分派）
+- `AttackTemplate : Template`：`AttackMode mode` / `Direction directions`（[Flags] 可选方向集，默认 {Up}=正前方；攻击时玩家从中选一格）/ `int range` / `int damage` / `bool friendlyFire = true` / `AttackShape shape`（保留，攻击模板不再使用）/ `List<Vector2Int> points`（抛射/法术自由点选：相对棋子锚点偏移集合，无射程概念、对点无视障碍）——程序槽位：攻击（mode 决定分派：直射首个可攻击物阻挡 / 近战群攻方向集×深度全部攻击 / 抛射法术对点）
 - `SkipTemplate : Template`——空操作槽
 - 注：无 TargetParam 字段需求则从模板移除（PlayerSelect 目标选择由棋盘规则/玩家手动决定）
 

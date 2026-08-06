@@ -82,10 +82,12 @@
 - 特殊能力：`SpecialAbilityType { Passive, Trigger, Attach }` / `TriggerPoint { OnBattleStart, OnTurnStart, OnTurnEnd, OnKill, OnPieceLanded }` / `PassiveTarget { MoveStep, AttackDamage, AttackRange, Durability }` / `AttachPoint { OnAttack, OnMove }`
 
 ## D2. Templates.cs（模板族——程序槽位内容，参数化可编辑）
-- `MoveSegment`（class）：`Direction directions`（位标志方向集）+ `int steps`（多段移动的一段）
+- `MoveStep`（class）：`Direction direction`（单方向）+ `List<int> steps`（可选步数集合）——最底层移动单元
+- `MoveSegment`（class）：`List<MoveStep> moves`（段内选一个方向+步数执行）
+- `MovePath`（class）：`List<MoveSegment> segments`（段序列顺序执行，段间从各终点继续）
 - `TargetParam`（struct）：`TargetRule rule` + `int amount`
 - `abstract class Template`（基类，可留空标识）
-- `MoveTemplate : Template`：`List<MoveSegment> segments`（多段顺序执行：段 1 走完 → 从到达点开始段 2）——程序槽位：移动
+- `MoveTemplate : Template`：`List<MovePath> paths`（路径选项集合，每条独立计算；可达格 = 各路径落点合集）——程序槽位：移动
 - `AttackTemplate : Template`：`AttackMode mode` / `Direction directions`（[Flags] 可选方向集，默认 {Up}=正前方；攻击时玩家从中选一格）/ `int range` / `int damage` / `bool friendlyFire = true` / `AttackShape shape`——程序槽位：攻击（mode 决定阻挡/穿透与形状分派）
 - `SkipTemplate : Template`——空操作槽
 - 注：无 TargetParam 字段需求则从模板移除（PlayerSelect 目标选择由棋盘规则/玩家手动决定）

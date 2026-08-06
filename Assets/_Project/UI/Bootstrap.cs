@@ -159,8 +159,10 @@ namespace TheLaw.UI
 
         private void EnterMainMenu()
         {
-            // TODO: UI 层——UIManager.ShowPanel("MainMenu")
-            // 面板实现 IPanel 主动注册进 _uiManager
+            // UI 层：注册面板 + 显示主菜单
+            _uiManager.RegisterPanel(PanelBase.Create<MainMenuPanel>("MainMenuPanel"));
+            _uiManager.ShowPanel("MainMenu");
+            Debug.Log("[Bootstrap] 主菜单已显示");
         }
 
         // ========== 生命周期（存档时机）==========

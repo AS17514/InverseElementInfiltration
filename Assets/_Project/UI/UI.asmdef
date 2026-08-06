@@ -4,7 +4,9 @@
     "references": [
         "Core",
         "Data",
-        "Gameplay"
+        "Gameplay",
+        "UnityEngine.UI",
+        "Unity.TextMeshPro"
     ],
     "includePlatforms": [],
     "excludePlatforms": [],

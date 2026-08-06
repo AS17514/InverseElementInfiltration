@@ -5,7 +5,9 @@
         "Core",
         "Data",
         "Gameplay",
-        "UI"
+        "UI",
+        "UnityEngine.UI",
+        "Unity.TextMeshPro"
     ],
     "includePlatforms": [
         "Editor"

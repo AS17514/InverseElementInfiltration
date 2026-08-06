@@ -17,6 +17,7 @@ namespace TheLaw.Gameplay
         public BattlePhase Phase { get; internal set; }
         public int TurnCount { get; internal set; }
         public Dictionary<Vector2Int, PieceInstance> Pieces { get; internal set; } = new Dictionary<Vector2Int, PieceInstance>();
+        public HashSet<Vector2Int> Obstacles { get; internal set; } = new HashSet<Vector2Int>(); // 障碍物格标记（直射阻挡/移动阻挡）
         private int _nextPieceId = 1;
         public Dictionary<int, PieceInstance> PiecesById { get; internal set; } = new Dictionary<int, PieceInstance>();
 
@@ -88,6 +89,7 @@ namespace TheLaw.Gameplay
             Phase = default;
             TurnCount = 0;
             Pieces.Clear();
+            Obstacles.Clear();
             PiecesById.Clear();
             Hand.Clear();
             Graveyard.Clear();
@@ -143,6 +145,7 @@ namespace TheLaw.Gameplay
                 CurrentNodeIndex = CurrentNodeIndex,
                 NodeStates = new List<NodeState>(NodeStates),
                 ReplayLog = ReplayLog,
+                Obstacles = new List<Vector2Int>(Obstacles),
             };
             foreach (var piece in PiecesById.Values)
             {
@@ -202,6 +205,7 @@ namespace TheLaw.Gameplay
             CurrentNodeIndex = dto.CurrentNodeIndex;
             NodeStates = dto.NodeStates ?? new List<NodeState>();
             ReplayLog = dto.ReplayLog ?? new List<ConcreteAction>();
+            Obstacles = dto.Obstacles != null ? new HashSet<Vector2Int>(dto.Obstacles) : new HashSet<Vector2Int>();
             Pieces.Clear();
             PiecesById.Clear();
             if (dto.Pieces != null)
@@ -268,6 +272,7 @@ namespace TheLaw.Gameplay
         public int CurrentNodeIndex;
         public List<NodeState> NodeStates;
         public List<ConcreteAction> ReplayLog;
+        public List<Vector2Int> Obstacles;
         public List<PieceDto> Pieces = new List<PieceDto>();
     }
 

@@ -89,8 +89,19 @@ namespace TheLaw.Data
     /// <summary>攻击形状（攻击模板参数，Sweep 未来加）。</summary>
     public enum AttackShape
     {
-        Single, // 单体：只结算目标格
-        Cross,  // 十字：目标格 + 上下左右共 5 格
+        Single,   // 单体：只结算目标格
+        Cross,    // 十字：目标格 + 上下左右共 5 格
+        Surround, // 周围：以攻击者为中心周围 8 格（近战群攻）
+    }
+
+    /// <summary>攻击方式（模块类型——棋子程序槽位里的攻击模块）。</summary>
+    public enum AttackMode
+    {
+        Melee,      // 近战：相邻格直接攻击（无阻挡概念）
+        MeleeAOE,   // 近战群攻：以自身为中心的范围攻击（形状由 AttackShape 决定）
+        DirectFire, // 直射：直线射程，路径受障碍物阻挡
+        Arcing,     // 抛射：越过障碍物直接攻击（射程内任意直线格）
+        Spell,      // 法术：越过障碍物直接攻击（与抛射暂时无差别——为未来差异留位）
     }
 
     // ========== 爬塔 ==========

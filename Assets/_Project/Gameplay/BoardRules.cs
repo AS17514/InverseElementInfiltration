@@ -26,8 +26,8 @@ namespace TheLaw.Gameplay
 
         public bool IsCellPassable(GameState state, Vector2Int cell)
         {
-            // 地形未设计（第 1 关无）——暂无障碍；预留扩展点
-            return IsInsideBoard(cell) && !IsCellOccupied(state, cell);
+            // 移动可通行 = 界内 + 无障碍物 + 无棋子占用
+            return IsInsideBoard(cell) && !state.Obstacles.Contains(cell) && !IsCellOccupied(state, cell);
         }
 
         public bool IsPathClear(GameState state, PieceInstance piece, Vector2Int to)
@@ -72,10 +72,20 @@ namespace TheLaw.Gameplay
 
         /// <summary>
         /// 计算攻击模板的可攻击格子（任意格子——含己方/空格：可空放/可打己方）。
-        /// 范围 = 沿攻击方向 range 格（解析时应用被动修正：射程 + AttackRange 修正）。
+        /// 按攻击方式分派：
+        ///   近战群攻 → 以自身为中心的范围形状（Cross 十字 / Surround 周围 8 格）
+        ///   直射     → 沿方向 range 格，路径逐格检查障碍（被挡即止）
+        ///   抛射/法术 → 沿方向 range 格，无视障碍（射程内直线格直接可达）
+        ///   近战     → 相邻格（range=1 无阻挡概念）
+        /// 解析时应用被动修正：射程 + AttackRange 修正。
         /// </summary>
         public List<Vector2Int> GetAttackableCells(GameState state, PieceInstance piece, AttackTemplate template)
         {
+            if (template.mode == AttackMode.MeleeAOE)
+            {
+                return GetShapeCells(state, piece, template.shape);
+            }
+
             var result = new List<Vector2Int>();
             int range = template.range + GetPassiveModifier(state, piece, PassiveTarget.AttackRange);
             var dirVec = DirectionToVector(template.direction);
@@ -87,8 +97,42 @@ namespace TheLaw.Gameplay
                 {
                     break;
                 }
+                // 直射：路径逐格检查障碍（目标格有障碍也算被挡）；抛射/法术/近战无视障碍
+                if (template.mode == AttackMode.DirectFire && state.Obstacles.Contains(cursor))
+                {
+                    break;
+                }
                 result.Add(cursor);
             }
+            return result;
+        }
+
+        /// <summary>以攻击者为中心的范围形状（近战群攻）。</summary>
+        private List<Vector2Int> GetShapeCells(GameState state, PieceInstance piece, AttackShape shape)
+        {
+            var result = new List<Vector2Int>();
+            if (shape == AttackShape.Cross)
+            {
+                result.Add(piece.position + Vector2Int.up);
+                result.Add(piece.position + Vector2Int.down);
+                result.Add(piece.position + Vector2Int.left);
+                result.Add(piece.position + Vector2Int.right);
+            }
+            else if (shape == AttackShape.Surround)
+            {
+                for (int dx = -1; dx <= 1; dx++)
+                {
+                    for (int dy = -1; dy <= 1; dy++)
+                    {
+                        result.Add(piece.position + new Vector2Int(dx, dy));
+                    }
+                }
+            }
+            else
+            {
+                result.Add(piece.position + Vector2Int.up); // Single 默认前 1 格（近战单体）
+            }
+            result.RemoveAll(c => !IsInsideBoard(c));
             return result;
         }
 

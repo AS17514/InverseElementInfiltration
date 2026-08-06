@@ -3,6 +3,7 @@ using TheLaw.Core;
 using TheLaw.Data;
 using TheLaw.Gameplay;
 using UnityEngine;
+using UnityEngine.AddressableAssets;
 
 namespace TheLaw.UI
 {
@@ -159,8 +160,17 @@ namespace TheLaw.UI
 
         private void EnterMainMenu()
         {
-            // UI 层：注册面板 + 显示主菜单
-            _uiManager.RegisterPanel(PanelBase.Create<MainMenuPanel>("MainMenuPanel"));
+            StartCoroutine(LoadMainMenu());
+        }
+
+        private System.Collections.IEnumerator LoadMainMenu()
+        {
+            yield return Addressables.InitializeAsync();
+            bool done = false;
+            MainMenuPanel panel = null;
+            PanelBase.CreateAsync<MainMenuPanel>(p => { panel = p; done = true; });
+            yield return new WaitUntil(() => done);
+            _uiManager.RegisterPanel(panel);
             _uiManager.ShowPanel("MainMenu");
             Debug.Log("[Bootstrap] 主菜单已显示");
         }

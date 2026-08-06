@@ -1,5 +1,7 @@
 using TheLaw.Core;
 using UnityEngine;
+using UnityEngine.AddressableAssets;
+using UnityEngine.ResourceManagement.AsyncOperations;
 using UnityEngine.UI;
 
 namespace TheLaw.UI
@@ -75,6 +77,34 @@ namespace TheLaw.UI
             var go = new GameObject(name ?? typeof(T).Name);
             go.transform.SetParent(canvas.transform, false);
             return go.AddComponent<T>();
+        }
+
+        /// <summary>
+        /// Addressables 异步创建面板：加载 Assets/_Project/UI/Prefabs/ 下同名 prefab 实例化；
+        /// 加载失败回退纯代码创建。
+        /// </summary>
+        public static void CreateAsync<T>(System.Action<T> onReady) where T : PanelBase
+        {
+            var address = typeof(T).Name;
+            var handle = Addressables.LoadAssetAsync<GameObject>(address);
+            handle.Completed += op =>
+            {
+                T panel;
+                if (op.Status == AsyncOperationStatus.Succeeded && op.Result != null)
+                {
+                    var go = Object.Instantiate(op.Result);
+                    go.name = address;
+                    panel = go.GetComponent<T>();
+                    if (panel == null) panel = go.AddComponent<T>();
+                    var canvas = EnsureCanvas();
+                    go.transform.SetParent(canvas.transform, false);
+                }
+                else
+                {
+                    panel = Create<T>();
+                }
+                onReady?.Invoke(panel);
+            };
         }
     }
 }

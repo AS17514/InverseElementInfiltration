@@ -43,6 +43,14 @@ mono_crash.*
 # 本地测试目录（不推送）
 /test/
 /test/**/*.meta
+Assets/test.meta
 
 # 内部文档（私人笔记，不提交）——统一放 内部文档/ 目录，新增直接放进去即可，无需改本文件
 内部文档/
+/Assets/test/
+
+# pi的子代理扩展文件夹
+.pi-subagents/
+
+/Assets/Screenshots/
+/Assets/Screenshots.meta

@@ -94,7 +94,7 @@ namespace TheLaw.Data
         public int range = 1;                      // 射程（修正型遗物"范围+1"作用于此；近战固定 1=相邻格）
         public int damage = 1;                     // 伤害（扣承伤次数）
         public bool friendlyFire = true;           // 友伤开关（默认 true——"大部分有友伤"）
-        public AttackShape shape = AttackShape.Single; // 范围形状（近战群攻用：Cross/Surround）
+        public AttackShape shape = AttackShape.Single; // 范围形状（保留——攻击模板不再使用；特殊能力附着用 Cross）
 
         public AttackTemplate() { }
 

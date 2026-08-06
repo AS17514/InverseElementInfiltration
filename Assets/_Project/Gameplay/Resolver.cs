@@ -81,6 +81,13 @@ namespace TheLaw.Gameplay
             }
             int damage = _boardRules.GetAttackDamage(_state, piece, action.template);
 
+            if (action.template.mode == AttackMode.MeleeAOE)
+            {
+                // 近战群攻：范围内全部格子被攻击（玩家选一格仅作确认）
+                ResolveMeleeAOE(piece, action, damage);
+                return;
+            }
+
             // 目标格结算（空格 = 空放：无伤害仍耗槽）
             var target = _state.GetPieceAt(action.targetCell);
             bool died = false;
@@ -99,6 +106,32 @@ namespace TheLaw.Gameplay
                 TargetCell = action.targetCell,
                 Damage = damage,
                 TargetDied = died,
+                FriendlyFire = action.template.friendlyFire,
+            });
+        }
+
+        /// <summary>近战群攻结算：范围内全部格子（有棋子的都扣承伤，友伤按模板）。</summary>
+        private void ResolveMeleeAOE(PieceInstance attacker, AttackAction action, int damage)
+        {
+            var cells = _boardRules.GetAttackableCells(_state, attacker, action.template);
+            bool anyDied = false;
+            foreach (var cell in cells)
+            {
+                var victim = _state.GetPieceAt(cell);
+                if (victim != null && (victim.side != attacker.side || action.template.friendlyFire))
+                {
+                    if (ModifyDurability(victim, -damage, attacker))
+                    {
+                        anyDied = true;
+                    }
+                }
+            }
+            EventCenter.Instance.EventTrigger(GameEvent.DamageDealt, new DamageInfo
+            {
+                AttackerId = attacker.Id,
+                TargetCell = action.targetCell,
+                Damage = damage,
+                TargetDied = anyDied,
                 FriendlyFire = action.template.friendlyFire,
             });
         }

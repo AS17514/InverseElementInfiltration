@@ -1,0 +1,101 @@
+{
+  "pieceName": "术士",
+  "pieceType": "Promoted",
+  "value": 8,
+  "durability": 1,
+  "footprint": "Size1x1",
+  "modules": [
+    {
+      "moduleType": "Spell",
+      "points": [
+        {
+          "dx": 0,
+          "dy": -1
+        },
+        {
+          "dx": 0,
+          "dy": -2
+        },
+        {
+          "dx": -1,
+          "dy": -1
+        },
+        {
+          "dx": 1,
+          "dy": -1
+        },
+        {
+          "dx": 1,
+          "dy": 0
+        },
+        {
+          "dx": 2,
+          "dy": 0
+        },
+        {
+          "dx": 0,
+          "dy": 1
+        },
+        {
+          "dx": -1,
+          "dy": 0
+        },
+        {
+          "dx": -2,
+          "dy": 0
+        },
+        {
+          "dx": 0,
+          "dy": 2
+        },
+        {
+          "dx": -1,
+          "dy": 1
+        },
+        {
+          "dx": 1,
+          "dy": 1
+        }
+      ],
+      "damage": 1,
+      "friendlyFire": true
+    },
+    {
+      "moduleType": "Move",
+      "paths": [
+        {
+          "segments": [
+            {
+              "moves": [
+                {
+                  "direction": "UpLeft",
+                  "steps": [
+                    1
+                  ]
+                },
+                {
+                  "direction": "DownLeft",
+                  "steps": [
+                    1
+                  ]
+                },
+                {
+                  "direction": "UpRight",
+                  "steps": [
+                    1
+                  ]
+                },
+                {
+                  "direction": "DownRight",
+                  "steps": [
+                    1
+                  ]
+                }
+              ]
+            }
+          ]
+        }
+      ]
+    }
+  ]
+}

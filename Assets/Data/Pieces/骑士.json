@@ -1,0 +1,73 @@
+{
+  "pieceName": "骑士",
+  "pieceType": "Deployable",
+  "value": 4,
+  "durability": 1,
+  "footprint": "Size1x1",
+  "modules": [
+    {
+      "moduleType": "Move",
+      "paths": [
+        {
+          "segments": [
+            {
+              "moves": [
+                {
+                  "direction": "Up",
+                  "steps": [
+                    2
+                  ]
+                }
+              ]
+            },
+            {
+              "moves": [
+                {
+                  "direction": "Left",
+                  "steps": [
+                    1
+                  ]
+                },
+                {
+                  "direction": "Up",
+                  "steps": [
+                    1
+                  ]
+                },
+                {
+                  "direction": "Right",
+                  "steps": [
+                    1
+                  ]
+                }
+              ]
+            }
+          ]
+        },
+        {
+          "segments": [
+            {
+              "moves": [
+                {
+                  "direction": "Down",
+                  "steps": [
+                    1
+                  ]
+                }
+              ]
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "moduleType": "Melee",
+      "directions": [
+        "Up"
+      ],
+      "range": 1,
+      "damage": 1,
+      "friendlyFire": true
+    }
+  ]
+}

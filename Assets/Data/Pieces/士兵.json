@@ -1,0 +1,37 @@
+{
+  "pieceName": "士兵",
+  "pieceType": "Initial",
+  "value": 1,
+  "durability": 1,
+  "footprint": "Size1x1",
+  "modules": [
+    {
+      "moduleType": "Move",
+      "paths": [
+        {
+          "segments": [
+            {
+              "moves": [
+                {
+                  "direction": "Up",
+                  "steps": [
+                    1
+                  ]
+                }
+              ]
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "moduleType": "Melee",
+      "directions": [
+        "Up"
+      ],
+      "range": 1,
+      "damage": 1,
+      "friendlyFire": true
+    }
+  ]
+}

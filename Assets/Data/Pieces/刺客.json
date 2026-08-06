@@ -1,0 +1,92 @@
+{
+  "pieceName": "刺客",
+  "pieceType": "Promoted",
+  "value": 8,
+  "durability": 1,
+  "footprint": "Size1x1",
+  "modules": [
+    {
+      "moduleType": "Move",
+      "paths": [
+        {
+          "segments": [
+            {
+              "moves": [
+                {
+                  "direction": "UpLeft",
+                  "steps": [
+                    1
+                  ]
+                },
+                {
+                  "direction": "Left",
+                  "steps": [
+                    1
+                  ]
+                },
+                {
+                  "direction": "DownLeft",
+                  "steps": [
+                    1
+                  ]
+                },
+                {
+                  "direction": "Down",
+                  "steps": [
+                    1
+                  ]
+                },
+                {
+                  "direction": "DownRight",
+                  "steps": [
+                    1
+                  ]
+                },
+                {
+                  "direction": "Right",
+                  "steps": [
+                    1
+                  ]
+                },
+                {
+                  "direction": "UpRight",
+                  "steps": [
+                    1
+                  ]
+                },
+                {
+                  "direction": "Up",
+                  "steps": [
+                    1
+                  ]
+                }
+              ]
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "moduleType": "Melee",
+      "directions": [
+        "Up",
+        "Down",
+        "Left",
+        "UpLeft",
+        "UpRight",
+        "Right"
+      ],
+      "range": 1,
+      "damage": 1,
+      "friendlyFire": true
+    }
+  ],
+  "abilities": [
+    {
+      "type": "Trigger",
+      "triggerPoint": "OnKill",
+      "effect": "ExtraAction",
+      "amount": 1
+    }
+  ]
+}

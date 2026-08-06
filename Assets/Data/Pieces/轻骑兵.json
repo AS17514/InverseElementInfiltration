@@ -1,0 +1,85 @@
+{
+  "pieceName": "轻骑兵",
+  "pieceType": "Deployable",
+  "value": 5,
+  "durability": 1,
+  "footprint": "Size1x1",
+  "modules": [
+    {
+      "moduleType": "Move",
+      "paths": [
+        {
+          "segments": [
+            {
+              "moves": [
+                {
+                  "direction": "Up",
+                  "steps": [
+                    1,
+                    2
+                  ]
+                },
+                {
+                  "direction": "UpLeft",
+                  "steps": [
+                    1
+                  ]
+                },
+                {
+                  "direction": "UpRight",
+                  "steps": [
+                    1
+                  ]
+                },
+                {
+                  "direction": "Right",
+                  "steps": [
+                    1,
+                    2
+                  ]
+                },
+                {
+                  "direction": "DownRight",
+                  "steps": [
+                    1
+                  ]
+                },
+                {
+                  "direction": "Down",
+                  "steps": [
+                    1,
+                    2
+                  ]
+                },
+                {
+                  "direction": "DownLeft",
+                  "steps": [
+                    1
+                  ]
+                },
+                {
+                  "direction": "Left",
+                  "steps": [
+                    1,
+                    2
+                  ]
+                }
+              ]
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "moduleType": "Melee",
+      "directions": [
+        "Up",
+        "UpLeft",
+        "UpRight"
+      ],
+      "range": 1,
+      "damage": 1,
+      "friendlyFire": true
+    }
+  ]
+}

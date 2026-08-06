@@ -222,9 +222,22 @@ namespace TheLaw.Gameplay
 
         // ========== 承伤统一入口（伤害负、恢复正）==========
 
-        /// <summary>承伤±N：归 0 → 死亡流程（killer=击杀者，可为 null——非攻击击杀）。返回是否死亡。</summary>
+        /// <summary>
+        /// 承伤±N：归 0 → 死亡流程（killer=击杀者，可为 null——非攻击击杀）。返回是否死亡。
+        /// 伤害（delta&lt;0）先经护盾拦截：吸收 min(剩余护盾, 伤害值)，剩余伤害继续扣承伤。
+        /// </summary>
         public bool ModifyDurability(PieceInstance piece, int delta, PieceInstance killer = null)
         {
+            if (delta < 0 && piece.shieldCount > 0)
+            {
+                int absorbed = Mathf.Min(piece.shieldCount, -delta); // 护盾抵挡（一次性，不恢复）
+                piece.shieldCount -= absorbed;
+                delta += absorbed;
+                if (delta >= 0)
+                {
+                    return false; // 伤害被完全抵挡——承伤不变
+                }
+            }
             piece.durability += delta;
             if (piece.durability <= 0)
             {
@@ -317,7 +330,7 @@ namespace TheLaw.Gameplay
             EventCenter.Instance.EventTrigger(GameEvent.HandChanged, null);
         }
 
-        /// <summary>给予临时特殊能力（事件 GrantAbility——随战斗结束销毁）。</summary>
+        /// <summary>给予临时特殊能力（事件 GrantAbility——随战斗结束销毁）。护盾能力同步增加剩余次数。</summary>
         public void GrantTempAbility(int pieceId, int abilityId)
         {
             var piece = _state.GetPiece(pieceId);
@@ -325,6 +338,11 @@ namespace TheLaw.Gameplay
             if (piece != null && ability != null)
             {
                 piece.tempAbilities.Add(ability);
+                if (ability.type == SpecialAbilityType.Trigger && ability.triggerPoint == TriggerPoint.OnDamaged
+                    && ability.triggerEffect == TriggerEffect.ShieldBlock)
+                {
+                    piece.shieldCount += ability.amount; // 获得护盾能力 = 获得对应抵挡次数
+                }
             }
         }
 

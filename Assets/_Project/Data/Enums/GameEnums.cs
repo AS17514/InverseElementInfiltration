@@ -139,6 +139,7 @@ namespace TheLaw.Data
         OnTurnEnd,
         OnKill,
         OnPieceLanded,
+        OnDamaged, // 受击（结算前拦截——护盾抵挡用；未来"受击回血"类能力挂这里）
     }
 
     /// <summary>被动修正目标。</summary>
@@ -162,5 +163,6 @@ namespace TheLaw.Data
     {
         ExtraAction,    // 免费额外行动一次（完整执行，不耗 AP）
         HealDurability, // 恢复承伤（+amount）
+        ShieldBlock,    // 护盾：抵挡 amount 点伤害（一次性消耗，不恢复；结算前拦截）
     }
 }

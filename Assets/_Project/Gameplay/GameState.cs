@@ -161,6 +161,7 @@ namespace TheLaw.Gameplay
                     ProgramOverride = piece.programOverride,
                     TempAbilities = piece.tempAbilities.ConvertAll(a => a.Id),
                     IsDeployed = piece.isDeployed,
+                    ShieldCount = piece.shieldCount,
                 });
             }
             // TypeNameHandling.Auto：多态基类（Template/ConcreteAction）序列化需写类型名，否则反序列化丢失子类
@@ -220,6 +221,7 @@ namespace TheLaw.Gameplay
                         facing = pdto.Facing,
                         programOverride = pdto.ProgramOverride,
                         isDeployed = pdto.IsDeployed,
+                        shieldCount = pdto.ShieldCount,
                     };
                     foreach (var abilityId in pdto.TempAbilities)
                     {
@@ -289,5 +291,6 @@ namespace TheLaw.Gameplay
         public List<Template> ProgramOverride;
         public List<int> TempAbilities;
         public bool IsDeployed;
+        public int ShieldCount;
     }
 }

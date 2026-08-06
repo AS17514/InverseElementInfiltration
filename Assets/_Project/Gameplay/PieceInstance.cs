@@ -23,6 +23,7 @@ namespace TheLaw.Gameplay
         public List<SpecialAbilityDef> tempAbilities = new List<SpecialAbilityDef>(); // 临时获得能力（随战斗销毁）
         public bool isDeployed;                 // 是否已部署上场
         public int waveIndex = -1;              // 所属波次（-1=非波次棋子；每波得分按此累计）
+        public int shieldCount;                 // 剩余护盾（抵挡伤害用，一次性不恢复；入快照）
 
         public PieceInstance(PieceDef def, Side side, Vector2Int position)
         {
@@ -33,6 +34,22 @@ namespace TheLaw.Gameplay
             durability = def.durability;
             facing = def.defaultFacing;
             isDeployed = true;
+            shieldCount = GetShieldAmount(); // 初始护盾 = 固有 ShieldBlock 能力 amount 之和
+        }
+
+        /// <summary>护盾量 = 该棋子全部 ShieldBlock 能力（固有 + 临时）amount 之和。</summary>
+        public int GetShieldAmount()
+        {
+            int total = 0;
+            foreach (var ability in GetAllAbilities())
+            {
+                if (ability.type == SpecialAbilityType.Trigger && ability.triggerPoint == TriggerPoint.OnDamaged
+                    && ability.triggerEffect == TriggerEffect.ShieldBlock)
+                {
+                    total += ability.amount;
+                }
+            }
+            return total;
         }
 
         /// <summary>

@@ -12,6 +12,16 @@ namespace TheLaw.UI
     /// </summary>
     public class Bootstrap : MonoBehaviour
     {
+        // ========== 配置资产引用（方案 A：编辑器拖拽——Awake 时注册进 ConfigTable）==========
+        [Header("配置资产（编辑器拖拽）")]
+        [SerializeField] private List<PieceDef> _pieceConfigs = new List<PieceDef>();
+        [SerializeField] private List<SpecialAbilityDef> _abilityConfigs = new List<SpecialAbilityDef>();
+        [SerializeField] private List<FloorConfig> _floorConfigs = new List<FloorConfig>();
+        [SerializeField] private List<MapConfig> _mapConfigs = new List<MapConfig>();
+        [SerializeField] private List<AIParams> _aiParamConfigs = new List<AIParams>();
+        [SerializeField] private List<EventPool> _eventPoolConfigs = new List<EventPool>();
+        [SerializeField] private List<RelicDef> _relicConfigs = new List<RelicDef>();
+
         // 普通类实例（去单例化后由 Bootstrap 创建并持有；规则层行为类显式传递避免网状耦合）
         private UIManager _uiManager;
         private TutorialSystem _tutorialSystem;
@@ -55,13 +65,30 @@ namespace TheLaw.UI
             _progressSystem = new ProgressSystem();
         }
 
-        // ========== ② 加载配置 ==========
+        // ========== ② 加载配置（方案 A：Inspector 拖拽引用 → 注册进 ConfigTable）==========
 
         private void LoadConfigs()
         {
-            // TODO: Addressables 加载 SO 资产（PieceDef / FloorConfig / MapConfig / AIParams /
-            //       EventPool / RelicDef / SpecialAbilityDef / PromotionConfig）并 ConfigTable.Register 注册
-            // 配置齐全前，运行以默认值兜底（GameState.ResetForNewRun 可正常调用）
+            RegisterAll(_pieceConfigs);
+            RegisterAll(_abilityConfigs);
+            RegisterAll(_floorConfigs);
+            RegisterAll(_mapConfigs);
+            RegisterAll(_aiParamConfigs);
+            RegisterAll(_eventPoolConfigs);
+            RegisterAll(_relicConfigs);
+            Debug.Log($"[Bootstrap] 配置注册完成：棋子 {_pieceConfigs.Count} / 能力 {_abilityConfigs.Count} / 层 {_floorConfigs.Count} / 地图 {_mapConfigs.Count} / AI {_aiParamConfigs.Count} / 事件池 {_eventPoolConfigs.Count} / 遗物 {_relicConfigs.Count}");
+        }
+
+        /// <summary>批量注册配置（重复 Id 由 ConfigTable.Register 断言拦截）。</summary>
+        private static void RegisterAll<T>(List<T> configs) where T : GameConfigBase
+        {
+            foreach (var config in configs)
+            {
+                if (config != null)
+                {
+                    ConfigTable.Register(config);
+                }
+            }
         }
 
         // ========== ③ 创建规则层（依赖注入顺序）==========

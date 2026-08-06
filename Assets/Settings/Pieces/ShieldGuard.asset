@@ -1,0 +1,53 @@
+%YAML 1.1
+%TAG !u! tag:unity3d.com,2011:
+--- !u!114 &11400000
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 0}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: 9ae31add19c94dc4597351af1c437675, type: 3}
+  m_Name: ShieldGuard
+  m_EditorClassIdentifier: 
+  _id: 642605141
+  displayName: "\u76FE\u5175"
+  pieceType: 0
+  value: 3
+  durability: 1
+  footprint: 0
+  defaultFacing: 0
+  specialAbilities:
+  - {fileID: 11400000, guid: ef89ead9d7aa079469803dc3920f382e, type: 2}
+  programSet:
+  - slots:
+    - rid: 7823913780353171495
+    - rid: 7823913780353171496
+  promotionConfigId: 0
+  references:
+    version: 2
+    RefIds:
+    - rid: 7823913780353171495
+      type: {class: MoveTemplate, ns: TheLaw.Data, asm: Data}
+      data:
+        paths:
+        - segments:
+          - moves:
+            - direction: 16
+              steps: 01000000
+            - direction: 1
+              steps: 01000000
+            - direction: 32
+              steps: 01000000
+    - rid: 7823913780353171496
+      type: {class: AttackTemplate, ns: TheLaw.Data, asm: Data}
+      data:
+        mode: 0
+        directions: 1
+        range: 1
+        damage: 1
+        friendlyFire: 1
+        shape: 0
+        points: []

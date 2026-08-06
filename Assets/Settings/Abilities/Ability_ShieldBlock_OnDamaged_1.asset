@@ -12,7 +12,7 @@ MonoBehaviour:
   m_Script: {fileID: 11500000, guid: ec603e6762d2d68449b0d05dc7cee1fd, type: 3}
   m_Name: Ability_ShieldBlock_OnDamaged_1
   m_EditorClassIdentifier: 
-  _id: 0
+  _id: 2127001715
   type: 1
   passiveTarget: 0
   passiveValue: 0

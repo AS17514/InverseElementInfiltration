@@ -39,33 +39,49 @@ namespace TheLaw.Gameplay
         // ========== 移动 ==========
 
         /// <summary>
-        /// 计算移动模板的合法落点（解析时应用被动修正：步数 + MoveStep 修正）。
-        /// 沿方向集每个方向走 maxSteps 步（出界/障碍/占用逐格检查）。
+        /// 计算移动模板的合法落点（多段路径：段 1 走完 → 从各到达点开始段 2，分支累加）。
+        /// 每段沿方向集每个方向走 steps 步（出界/障碍物/占用逐格检查）；
+        /// 解析时应用被动修正：步数 + MoveStep 修正（作用于每段）。
         /// </summary>
         public List<Vector2Int> GetLegalMoves(GameState state, PieceInstance piece, MoveTemplate template)
         {
-            var result = new List<Vector2Int>();
-            var pattern = template.pattern;
-            int steps = pattern.maxSteps + GetPassiveModifier(state, piece, PassiveTarget.MoveStep);
-            for (int dir = 1; dir <= (int)Direction.DownRight; dir <<= 1)
+            var reachable = new HashSet<Vector2Int>();
+            var frontier = new List<Vector2Int> { piece.position }; // 当前段起点（初始 = 棋子位置）
+            foreach (var segment in template.segments)
             {
-                if ((pattern.directions & (Direction)dir) == 0)
+                int steps = segment.steps + GetPassiveModifier(state, piece, PassiveTarget.MoveStep);
+                var next = new List<Vector2Int>();
+                foreach (var start in frontier)
                 {
-                    continue;
-                }
-                var dirVec = DirectionToVector((Direction)dir);
-                var cursor = piece.position;
-                for (int i = 0; i < steps; i++)
-                {
-                    cursor += dirVec;
-                    if (!IsCellPassable(state, cursor))
+                    for (int dir = 1; dir <= (int)Direction.DownRight; dir <<= 1)
                     {
-                        break; // 出界/障碍/占用——该方向停止
+                        if ((segment.directions & (Direction)dir) == 0)
+                        {
+                            continue;
+                        }
+                        var dirVec = DirectionToVector((Direction)dir);
+                        var cursor = start;
+                        for (int i = 0; i < steps; i++)
+                        {
+                            cursor += dirVec;
+                            if (!IsCellPassable(state, cursor))
+                            {
+                                break; // 出界/障碍/占用——该方向停止
+                            }
+                            if (reachable.Add(cursor))
+                            {
+                                next.Add(cursor); // 新到达点（作为下一段起点）
+                            }
+                        }
                     }
-                    result.Add(cursor);
+                }
+                frontier = next;
+                if (frontier.Count == 0)
+                {
+                    break; // 无路可走——提前结束
                 }
             }
-            return result;
+            return new List<Vector2Int>(reachable);
         }
 
         // ========== 攻击 ==========
@@ -73,10 +89,12 @@ namespace TheLaw.Gameplay
         /// <summary>
         /// 计算攻击模板的可攻击格子（任意格子——含己方/空格：可空放/可打己方）。
         /// 按攻击方式分派：
-        ///   近战群攻 → 以自身为中心的范围形状（Cross 十字 / Surround 周围 8 格）
-        ///   直射     → 沿方向 range 格，路径逐格检查障碍（被挡即止）
-        ///   抛射/法术 → 沿方向 range 格，无视障碍（射程内直线格直接可达）
-        ///   近战     → 相邻格（range=1 无阻挡概念）
+        ///   近战群攻 → 以自身为中心的范围形状（Cross 十字 / Surround 周围 8 格），无方向
+        ///   其他     → 遍历可选方向集（directions 位标志）每个方向沿直线 range 格：
+        ///       直射     → 路径逐格检查障碍（被挡即止）
+        ///       抛射/法术 → 无视障碍（射程内直线格直接可达）
+        ///       近战     → 射程 1（相邻格，无阻挡概念）
+        /// 攻击时玩家从候选格集合中选一格（射程内任意格均为候选）。
         /// 解析时应用被动修正：射程 + AttackRange 修正。
         /// </summary>
         public List<Vector2Int> GetAttackableCells(GameState state, PieceInstance piece, AttackTemplate template)
@@ -88,21 +106,28 @@ namespace TheLaw.Gameplay
 
             var result = new List<Vector2Int>();
             int range = template.range + GetPassiveModifier(state, piece, PassiveTarget.AttackRange);
-            var dirVec = DirectionToVector(template.direction);
-            var cursor = piece.position;
-            for (int i = 0; i < range; i++)
+            for (int dir = 1; dir <= (int)Direction.DownRight; dir <<= 1)
             {
-                cursor += dirVec;
-                if (!IsInsideBoard(cursor))
+                if ((template.directions & (Direction)dir) == 0)
                 {
-                    break;
+                    continue;
                 }
-                // 直射：路径逐格检查障碍（目标格有障碍也算被挡）；抛射/法术/近战无视障碍
-                if (template.mode == AttackMode.DirectFire && state.Obstacles.Contains(cursor))
+                var dirVec = DirectionToVector((Direction)dir);
+                var cursor = piece.position;
+                for (int i = 0; i < range; i++)
                 {
-                    break;
+                    cursor += dirVec;
+                    if (!IsInsideBoard(cursor))
+                    {
+                        break;
+                    }
+                    // 直射：路径逐格检查障碍（目标格有障碍也算被挡）；抛射/法术/近战无视障碍
+                    if (template.mode == AttackMode.DirectFire && state.Obstacles.Contains(cursor))
+                    {
+                        break;
+                    }
+                    result.Add(cursor);
                 }
-                result.Add(cursor);
             }
             return result;
         }

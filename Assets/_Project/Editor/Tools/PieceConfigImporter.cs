@@ -196,7 +196,19 @@ namespace TheLaw.EditorTools
             var existing = AssetDatabase.LoadAssetAtPath<SpecialAbilityDef>(path);
             if (existing != null)
             {
-                return existing; // 复用（多棋子引用同一能力；Id 已分配）
+                // 复用（多棋子引用同一能力）——早期导入产物可能没有 Id → 补设
+                var so = new SerializedObject(existing);
+                if (so.FindProperty("_id").intValue == 0)
+                {
+                    so.Dispose();
+                    SetId(existing, StableHash(name));
+                    Debug.Log($"[导入器] 能力补设 Id：{name} → {StableHash(name)}");
+                }
+                else
+                {
+                    so.Dispose();
+                }
+                return existing;
             }
 
             var ability = ScriptableObject.CreateInstance<SpecialAbilityDef>();

@@ -144,11 +144,16 @@ namespace TheLaw.Gameplay
                 {
                     continue;
                 }
-                // 范围额外结算：十字 = 目标格 + 上下左右
+                // 范围额外结算：十字 = 目标格 + 上下左右共 5 格
+                // ⚠️ 排除中心格（targetCell 自身）——它已在主攻击中结算（避免双重伤害）
                 var cells = GetAttachCells(targetCell, ability.attachShape);
                 int attachDamage = ability.attachDamage > 0 ? ability.attachDamage : mainDamage;
                 foreach (var cell in cells)
                 {
+                    if (cell == targetCell)
+                    {
+                        continue; // 中心格 = 主目标，只吃主伤害
+                    }
                     var victim = _state.GetPieceAt(cell);
                     if (victim != null && (victim.side != attacker.side || template.friendlyFire))
                     {

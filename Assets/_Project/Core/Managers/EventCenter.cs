@@ -20,7 +20,10 @@ namespace TheLaw.Core
                 map = new Dictionary<int, Action<object>>();
                 _listeners[type] = map;
             }
-            map[Convert.ToInt32(eventType)] += handler;
+            int key = Convert.ToInt32(eventType);
+            // 首次添加：key 不存在——TryGetValue 取 null，null + handler = handler（避免 map[key] += 读不存在的 key 崩溃）
+            map.TryGetValue(key, out var existing);
+            map[key] = existing + handler;
         }
 
         /// <summary>移除监听。</summary>

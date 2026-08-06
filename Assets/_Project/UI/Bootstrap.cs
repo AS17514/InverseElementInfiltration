@@ -113,7 +113,7 @@ namespace TheLaw.UI
             {
                 return ai;
             }
-            return new AIParams(); // 无配置时默认值兜底
+            return ScriptableObject.CreateInstance<AIParams>(); // 无配置时默认值兜底（SO 不能用 new——CreateInstance）
         }
 
         private MapConfig GetMapConfig()

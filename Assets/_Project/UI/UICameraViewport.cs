@@ -6,13 +6,14 @@ namespace TheLaw.UI
     /// UI 摄像机动态 viewport：窗口比例 ≠ 16:9 时，视口居中 16:9，其余区域透出主相机（黑边）。
     /// 挂在 UI 摄像机上。
     /// </summary>
+    [ExecuteInEditMode]
     public class UICameraViewport : MonoBehaviour
     {
         const float TargetAspect = 16f / 9f;
         Camera _cam;
         int _lastW = -1, _lastH = -1;
 
-        void Awake()
+        void OnEnable()
         {
             _cam = GetComponent<Camera>();
             Apply();

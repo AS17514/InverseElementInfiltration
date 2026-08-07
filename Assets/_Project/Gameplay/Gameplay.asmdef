@@ -3,7 +3,8 @@
     "rootNamespace": "",
     "references": [
         "Core",
-        "Data"
+        "Data",
+        "Unity.Nuget.NewtonsoftJson"
     ],
     "includePlatforms": [],
     "excludePlatforms": [],

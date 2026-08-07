@@ -1,0 +1,101 @@
+{
+  "pieceName": "游侠",
+  "pieceType": "Deployable",
+  "value": 6,
+  "durability": 1,
+  "footprint": "Size1x1",
+  "modules": [
+    {
+      "moduleType": "Move",
+      "paths": [
+        {
+          "segments": [
+            {
+              "moves": [
+                {
+                  "direction": "Up",
+                  "steps": [
+                    1
+                  ]
+                },
+                {
+                  "direction": "UpLeft",
+                  "steps": [
+                    1
+                  ]
+                },
+                {
+                  "direction": "UpRight",
+                  "steps": [
+                    1
+                  ]
+                },
+                {
+                  "direction": "Left",
+                  "steps": [
+                    1,
+                    2
+                  ]
+                },
+                {
+                  "direction": "Right",
+                  "steps": [
+                    1,
+                    2
+                  ]
+                }
+              ]
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "moduleType": "DirectFire",
+      "directions": [
+        "Up"
+      ],
+      "range": 2,
+      "damage": 1,
+      "friendlyFire": true
+    },
+    {
+      "moduleType": "Move",
+      "paths": [
+        {
+          "segments": [
+            {
+              "moves": [
+                {
+                  "direction": "Up",
+                  "steps": [
+                    1
+                  ]
+                },
+                {
+                  "direction": "Left",
+                  "steps": [
+                    1
+                  ]
+                },
+                {
+                  "direction": "Right",
+                  "steps": [
+                    1
+                  ]
+                },
+                {
+                  "direction": "Down",
+                  "steps": [
+                    1
+                  ]
+                }
+              ]
+            }
+          ]
+        }
+      ]
+    }
+  ],
+  "assetName": "Ranger"
+}

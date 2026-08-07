@@ -1,0 +1,57 @@
+{
+  "pieceName": "狂战士",
+  "pieceType": "Deployable",
+  "value": 5,
+  "durability": 1,
+  "footprint": "Size1x1",
+  "modules": [
+    {
+      "moduleType": "Move",
+      "paths": [
+        {
+          "segments": [
+            {
+              "moves": [
+                {
+                  "direction": "Up",
+                  "steps": [
+                    1
+                  ]
+                },
+                {
+                  "direction": "UpLeft",
+                  "steps": [
+                    1
+                  ]
+                },
+                {
+                  "direction": "UpRight",
+                  "steps": [
+                    1
+                  ]
+                }
+              ]
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "moduleType": "MeleeAOE",
+      "directions": [
+        "Up",
+        "UpLeft",
+        "Left",
+        "DownLeft",
+        "Down",
+        "DownRight",
+        "Right",
+        "UpRight"
+      ],
+      "range": 1,
+      "damage": 1,
+      "friendlyFire": true
+    }
+  ],
+  "assetName": "Berserker"
+}

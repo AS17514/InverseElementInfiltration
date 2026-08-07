@@ -1,0 +1,56 @@
+{
+  "pieceName": "短弓手",
+  "pieceType": "Initial",
+  "value": 2,
+  "durability": 1,
+  "footprint": "Size1x1",
+  "modules": [
+    {
+      "moduleType": "DirectFire",
+      "directions": [
+        "Up"
+      ],
+      "range": 3,
+      "damage": 1,
+      "friendlyFire": true
+    },
+    {
+      "moduleType": "Move",
+      "paths": [
+        {
+          "segments": [
+            {
+              "moves": [
+                {
+                  "direction": "UpLeft",
+                  "steps": [
+                    1
+                  ]
+                },
+                {
+                  "direction": "UpRight",
+                  "steps": [
+                    1
+                  ]
+                },
+                {
+                  "direction": "DownRight",
+                  "steps": [
+                    1
+                  ]
+                },
+                {
+                  "direction": "DownLeft",
+                  "steps": [
+                    1
+                  ]
+                }
+              ]
+            }
+          ]
+        }
+      ]
+    }
+  ],
+  "assetName": "ShortArcher"
+}

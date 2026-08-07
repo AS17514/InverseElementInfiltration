@@ -1,0 +1,59 @@
+{
+  "pieceName": "剑士",
+  "pieceType": "Initial",
+  "value": 2,
+  "durability": 1,
+  "footprint": "Size1x1",
+  "modules": [
+    {
+      "moduleType": "Move",
+      "paths": [
+        {
+          "segments": [
+            {
+              "moves": [
+                {
+                  "direction": "Left",
+                  "steps": [
+                    1
+                  ]
+                },
+                {
+                  "direction": "Up",
+                  "steps": [
+                    1
+                  ]
+                },
+                {
+                  "direction": "Right",
+                  "steps": [
+                    1
+                  ]
+                },
+                {
+                  "direction": "Down",
+                  "steps": [
+                    1
+                  ]
+                }
+              ]
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "moduleType": "Melee",
+      "directions": [
+        "Up",
+        "Left",
+        "Right",
+        "Down"
+      ],
+      "range": 1,
+      "damage": 1,
+      "friendlyFire": true
+    }
+  ],
+  "assetName": "Swordsman"
+}

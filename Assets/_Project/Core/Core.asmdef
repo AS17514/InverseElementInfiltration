@@ -1,7 +1,9 @@
 {
     "name": "Core",
     "rootNamespace": "",
-    "references": [],
+    "references": [
+        "Unity.Nuget.NewtonsoftJson"
+    ],
     "includePlatforms": [],
     "excludePlatforms": [],
     "allowUnsafeCode": false,

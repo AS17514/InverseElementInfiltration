@@ -1,0 +1,58 @@
+{
+  "pieceName": "盾兵",
+  "pieceType": "Initial",
+  "value": 3,
+  "durability": 1,
+  "footprint": "Size1x1",
+  "modules": [
+    {
+      "moduleType": "Move",
+      "paths": [
+        {
+          "segments": [
+            {
+              "moves": [
+                {
+                  "direction": "UpLeft",
+                  "steps": [
+                    1
+                  ]
+                },
+                {
+                  "direction": "Up",
+                  "steps": [
+                    1
+                  ]
+                },
+                {
+                  "direction": "UpRight",
+                  "steps": [
+                    1
+                  ]
+                }
+              ]
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "moduleType": "Melee",
+      "directions": [
+        "Up"
+      ],
+      "range": 1,
+      "damage": 1,
+      "friendlyFire": true
+    }
+  ],
+  "abilities": [
+    {
+      "type": "Trigger",
+      "triggerPoint": "OnDamaged",
+      "effect": "ShieldBlock",
+      "amount": 1
+    }
+  ],
+  "assetName": "ShieldGuard"
+}

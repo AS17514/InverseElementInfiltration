@@ -49,6 +49,7 @@ namespace TheLaw.UI
         Vector2Int _previewCell = new Vector2Int(-1, -1);
         bool _draggingCard;
         int _dragDefId = -1;
+        GameObject _dragCard; // 拖拽中的卡片（失败时恢复，避免整体重建闪烁）
 
         // 信息面板（Main 1 场景 UI 根下的 3D TMP 文本，用户已拼）
         TMPro.TextMeshPro _infoName, _infoType, _infoValue, _infoDurability, _infoAbilities;
@@ -70,6 +71,7 @@ namespace TheLaw.UI
             EventCenter.Instance.RemoveEventListener(GameEvent.PieceDeployed, OnPieceDeployed);
             EventCenter.Instance.RemoveEventListener(GameEvent.PieceDied, OnPieceDied);
             if (_tooltip != null) _tooltip.gameObject.SetActive(false);
+            if (_handPosTween != null) _handPosTween.Kill();
         }
 
         public void Init(BattleFlow flow, GameState state)
@@ -106,6 +108,7 @@ namespace TheLaw.UI
                     _panel.PhaseButton.onClick.AddListener(OnPhaseButtonClicked);
                 }
                 RefreshAll();
+                UpdateHandPositionByPhase(); // 初始阶段即应用手牌区状态（准备阶段高度 250）
                 ClearPieceInfo(); // 初始：信息面板隐藏（无选中/无临时状态）
             });
         }
@@ -568,14 +571,23 @@ namespace TheLaw.UI
             UpdateHandPositionByPhase();
         }
 
-        /// <summary>非准备阶段手牌区下移（表示当前不能放置）。</summary>
+        /// <summary>阶段驱动手牌区状态：准备阶段升高（高 250 展示更多内容），其他阶段收起（高 170 + 下移表示不可部署）。</summary>
         void UpdateHandPositionByPhase()
         {
             if (_panel == null || _panel.HandRoot == null) return;
             var rt = _panel.HandRoot;
-            float targetY = _state.Phase == BattlePhase.Placement ? 0f : -60f;
-            DOTween.To(() => rt.anchoredPosition, v => rt.anchoredPosition = v,
+            bool placement = _state.Phase == BattlePhase.Placement;
+            float targetH = placement ? 210f : 170f;
+            float targetY = placement ? 50f : -60f; // 准备阶段上移 50px
+            // 显式通知布局控制器收起/展开状态（上浮修正依赖）
+            var layout = rt.GetComponent<HandLayoutController>();
+            if (layout != null) layout.SetCollapsed(!placement);
+            if (_handPosTween != null) _handPosTween.Kill();
+            var sd = rt.sizeDelta;
+            _handPosTween = DOTween.To(() => rt.anchoredPosition, v => rt.anchoredPosition = v,
                 new Vector2(rt.anchoredPosition.x, targetY), 0.2f);
+            DOTween.To(() => rt.sizeDelta, v => rt.sizeDelta = v,
+                new Vector2(sd.x, targetH), 0.2f);
         }
 
         void OnAPChanged(object data)
@@ -585,6 +597,7 @@ namespace TheLaw.UI
 
         void OnHandChanged(object data)
         {
+            if (data == null) return; // AddToEnemyWavePool 也发 HandChanged(null)——敌方侧变化不重建玩家手牌
             RebuildHand();
         }
 
@@ -869,15 +882,37 @@ namespace TheLaw.UI
         }
 
         // ========== 手牌 ==========
+        // 手牌区下移 tween（防面板销毁后访问失效 target）
+        DG.Tweening.Tween _handPosTween;
         int _handBuildSeq; // 手牌重建版本号（防异步协程竞态）
+        string _lastHandKey = ""; // 上次重建的手牌指纹（无变化跳过重建——防闪烁）
 
         void RebuildHand()
         {
             if (_panel == null || _panel.HandRoot == null) return;
-            // 清空现有卡片（立即销毁——延迟销毁会被布局控制器收集到失效引用）
-            foreach (Transform child in _panel.HandRoot)
+
+            // 无变化保护：手牌内容没变就不重建（消除外部 HandChanged/阶段切换的无意义闪烁）
+            string key = string.Join(",", _state.Hand);
+            if (key == _lastHandKey && _panel.HandRoot.childCount > 0)
             {
-                DestroyImmediate(child.gameObject);
+                return;
+            }
+            _lastHandKey = key;
+
+            // 拖拽中重建：先清理拖拽状态（防 _draggingCard 卡死/预览泄漏）
+            if (_draggingCard)
+            {
+                _draggingCard = false;
+                _dragCard = null;
+                if (_previewPiece != null) Destroy(_previewPiece);
+                _previewPiece = null;
+                _previewCell = new Vector2Int(-1, -1);
+            }
+
+            // 清空现有卡片（while 循环——foreach 中 DestroyImmediate 会破坏枚举器导致残留）
+            while (_panel.HandRoot.childCount > 0)
+            {
+                DestroyImmediate(_panel.HandRoot.GetChild(0).gameObject);
             }
             // 手牌卡为独立 prefab（Piece_Handcard）——Addressables 按需加载
             _handBuildSeq++;
@@ -918,13 +953,28 @@ namespace TheLaw.UI
             if (valueText != null) valueText.text = def.value.ToString();
             var typeText = FindCardNode(card.transform, "Img_InfoType")?.GetComponentInChildren<TMP_Text>();
             if (typeText != null) typeText.text = def.pieceType == PieceType.Initial ? "始" : def.pieceType == PieceType.Deployable ? "部" : "升";
-            // 程序描述
+            // 程序描述 + 槽位显隐（未配置的块/解释隐藏；每个槽填各自的单槽描述）
+            int slotCount = 0;
+            List<Template> slots = null;
+            if (def.programSet != null && def.programSet.Count > 0 && def.programSet[0].slots != null)
+            {
+                slots = def.programSet[0].slots;
+                slotCount = Mathf.Min(slots.Count, 4);
+            }
             for (int s = 0; s < 4; s++)
             {
-                var desc = FindCardNode(card.transform, $"Txt_InfoProgram{s + 1}Desc")?.GetComponent<TMP_Text>();
+                bool show = s < slotCount;
+                var block = FindCardNode(card.transform, $"Img_InfoProgram{s + 1}");
+                if (block != null) block.gameObject.SetActive(show);
+                var desc = FindCardNode(card.transform, $"Txt_InfoProgram{s + 1}Desc");
                 if (desc != null)
                 {
-                    desc.text = s < def.programSet.Count ? ProgramDesc(def.programSet[s]) : "";
+                    desc.gameObject.SetActive(show);
+                    if (show)
+                    {
+                        var tmp = desc.GetComponent<TMP_Text>();
+                        if (tmp != null) tmp.text = SlotDetailDesc(slots[s]); // 单槽自然语言描述
+                    }
                 }
             }
         }
@@ -950,30 +1000,6 @@ namespace TheLaw.UI
             return null;
         }
 
-        static string ProgramDesc(ProgramDef program)
-        {
-            if (program == null || program.slots == null || program.slots.Count == 0) return "无程序";
-            var parts = new List<string>();
-            foreach (var slot in program.slots)
-            {
-                if (slot is MoveTemplate m) parts.Add("移" + MoveDesc(m));
-                else if (slot is AttackTemplate a) parts.Add("攻" + AttackDesc(a));
-                else parts.Add("跳");
-            }
-            return string.Join(" / ", parts);
-        }
-
-        static string MoveDesc(MoveTemplate m)
-        {
-            int paths = m.paths?.Count ?? 0;
-            return paths > 1 ? $"{paths}段" : "1段";
-        }
-
-        static string AttackDesc(AttackTemplate a)
-        {
-            return $"范围{a.range}伤{a.damage}";
-        }
-
         void AddCardDrag(GameObject card, int defId, int index)
         {
             var drag = card.AddComponent<HandCardDrag>();
@@ -986,11 +1012,13 @@ namespace TheLaw.UI
         }
 
         // ========== 拖拽部署 ==========
-        public void OnCardDragStart(int defId)
+        public void OnCardDragStart(int defId, GameObject card)
         {
             if (_state.Phase != BattlePhase.Placement) return; // 仅准备阶段可部署
+            if (_previewPiece != null) Destroy(_previewPiece); // 防旧预览泄漏
             _draggingCard = true;
             _dragDefId = defId;
+            _dragCard = card;
             PieceViewFactory.EnsureSprites();
             _previewPiece = PieceViewFactory.CreatePieceView(-1, Side.Player, new Vector2Int(-9, -9),
                 PieceViewFactory.TintFor(defId));
@@ -1044,21 +1072,36 @@ namespace TheLaw.UI
             }
             else
             {
-                RebuildHand(); // 非法格：直接恢复
+                RestoreDragCard(); // 非法格：只恢复拖出的卡片（不整体重建）
             }
             if (_previewPiece != null) Destroy(_previewPiece);
             _previewPiece = null;
             _previewCell = new Vector2Int(-1, -1);
             _dragDefId = -1;
+            _dragCard = null; // 统一清理（防野引用）
         }
 
         IEnumerator RecoverCardIfFailed(int defId)
         {
             yield return new WaitForSeconds(0.5f);
-            if (_state.Hand.Contains(defId) && !_draggingCard)
+            if (_state.Hand.Contains(defId))
             {
-                RebuildHand(); // 规则层未移除 → 部署失败 → 卡牌恢复
+                RestoreDragCard(); // 规则层未移除 → 部署失败 → 恢复卡片（幂等）
             }
+        }
+
+        /// <summary>恢复拖出的卡片（淡出动画倒放），不重建手牌——避免无变化闪烁。</summary>
+        void RestoreDragCard()
+        {
+            if (_dragCard == null) return;
+            var cg = _dragCard.GetComponent<CanvasGroup>();
+            if (cg != null)
+            {
+                DG.Tweening.DOTween.To(() => cg.alpha, a => cg.alpha = a, 1f, 0.15f)
+                    .SetTarget(cg); // 绑定 target：卡片销毁时可被 Kill
+            }
+            _dragCard.transform.DOScale(0.35f, 0.15f);
+            _dragCard = null;
         }
 
         bool IsDeployableCell(Vector2Int cell)
@@ -1083,68 +1126,42 @@ namespace TheLaw.UI
     }
 
     /// <summary>
-    /// 手牌卡：hover 放大上浮（杀戮尖塔式，渲染顺序过程中切换）+ 拖拽部署（仅准备阶段）。
-    /// 卡面为一张卡左右两半（左=堆叠图标，右=展开内容）——放大后右侧内容可见。
+    /// 手牌卡拖拽（hover 表现已由 HandLayoutController 槽位判定统一管理）。
+    /// 拖拽部署仅准备阶段；拖出时淡出，部署失败由 RebuildHand 恢复。
     /// </summary>
-    public class HandCardDrag : MonoBehaviour, IBeginDragHandler, IDragHandler, IEndDragHandler, IPointerEnterHandler, IPointerExitHandler
+    public class HandCardDrag : MonoBehaviour, IBeginDragHandler, IDragHandler, IEndDragHandler
     {
-        const float BaseScale = 0.35f;  // 叠放基准缩放
-        const float HoverScale = 0.7f;  // hover 放大（基准 2 倍）
-
         BattleController _controller;
-        HandLayoutController _layout;
         int _defId;
-        int _cardIndex; // 布局稳定索引（创建时分配，不受 SetAsLastSibling 影响）
         CanvasGroup _cg;
-        int _siblingIndex = -1;
-        bool _hovering;
+        DG.Tweening.Tween _fadeTween; // 拖出淡出 tween（显式管理，防销毁后访问）
 
         public void Init(BattleController controller, int defId, int cardIndex)
         {
             _controller = controller;
             _defId = defId;
-            _cardIndex = cardIndex;
-            _layout = GetComponentInParent<HandLayoutController>();
             _cg = GetComponent<CanvasGroup>();
             if (_cg == null) _cg = gameObject.AddComponent<CanvasGroup>();
         }
 
         void OnDestroy()
         {
-            DG.Tweening.DOTween.Kill(transform); // 卡片销毁时终止动画（防访问已销毁对象）
-        }
-
-        public void OnPointerEnter(PointerEventData eventData)
-        {
-            if (_hovering) return;
-            _hovering = true;
-            _siblingIndex = transform.GetSiblingIndex();
-            // 渲染顺序过程中切换（上浮动画开始时提层，流程影响最小）
-            transform.SetAsLastSibling();
-            _layout?.SetHoverIndex(_cardIndex); // 让位中心 + 上浮（稳定索引，非 sibling）
-            // 放大（上浮归布局管，退出自然回落）
-            transform.DOScale(HoverScale, 0.15f).SetEase(Ease.OutQuad);
-        }
-
-        public void OnPointerExit(PointerEventData eventData)
-        {
-            if (!_hovering) return;
-            _hovering = false;
-            _layout?.SetHoverIndex(-1); // 取消让位/上浮（布局插值回落）
-            transform.DOScale(BaseScale, 0.15f).SetEase(Ease.InQuad)
-                .OnComplete(() =>
-                {
-                    if (_siblingIndex >= 0) transform.SetSiblingIndex(_siblingIndex); // 恢复原顺序
-                });
+            if (_fadeTween != null)
+            {
+                _fadeTween.Kill();
+                _fadeTween = null;
+            }
+            DG.Tweening.DOTween.Kill(transform); // 拖出缩小 tween（有 target，也要杀）
         }
 
         public void OnBeginDrag(PointerEventData eventData)
         {
             if (!_controller.CanDragCard()) return;
-            _controller.OnCardDragStart(_defId);
-            // 拖出动画：淡出 + 缩小（部署失败时 RebuildHand 恢复）
-            DOTween.To(() => _cg.alpha, a => _cg.alpha = a, 0f, 0.15f);
-            transform.DOScale(BaseScale * 0.85f, 0.15f);
+            _controller.OnCardDragStart(_defId, gameObject);
+            // 拖出动画：淡出 + 缩小（失败时 RestoreDragCard 恢复）
+            _fadeTween = DOTween.To(() => _cg.alpha, a => _cg.alpha = a, 0f, 0.15f);
+            DOTween.Kill(transform);
+            transform.DOScale(0.3f, 0.15f);
         }
 
         public void OnDrag(PointerEventData eventData)

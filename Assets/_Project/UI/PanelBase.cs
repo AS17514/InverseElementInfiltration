@@ -29,22 +29,43 @@ namespace TheLaw.UI
         protected virtual void OnShow() { }
         protected virtual void OnHide() { }
 
-        /// <summary>确保根 Canvas 存在（ScreenSpaceCamera + 16:9 UI 摄像机）。</summary>
+        /// <summary>确保根 Canvas 存在（ScreenSpaceCamera + 16:9 UI 摄像机；复用现有 Canvas 时自动升级）。</summary>
         protected static Canvas EnsureCanvas()
         {
             var canvas = Object.FindObjectOfType<Canvas>();
-            if (canvas != null) return canvas;
+            if (canvas == null)
+            {
+                var uiCam = FindOrCreateUICamera();
+                var root = new GameObject("UIRoot");
+                canvas = root.AddComponent<Canvas>();
+                canvas.renderMode = RenderMode.ScreenSpaceCamera;
+                canvas.worldCamera = uiCam;
+                canvas.planeDistance = 10f;
+                var scaler = root.AddComponent<CanvasScaler>();
+                scaler.uiScaleMode = CanvasScaler.ScaleMode.ScaleWithScreenSize;
+                scaler.referenceResolution = new Vector2(1920, 1080);
+                root.AddComponent<GraphicRaycaster>();
+                return canvas;
+            }
 
-            var uiCam = FindOrCreateUICamera();
-            var root = new GameObject("UIRoot");
-            canvas = root.AddComponent<Canvas>();
-            canvas.renderMode = RenderMode.ScreenSpaceCamera;
-            canvas.worldCamera = uiCam;
-            canvas.planeDistance = 10f;
-            var scaler = root.AddComponent<CanvasScaler>();
-            scaler.uiScaleMode = CanvasScaler.ScaleMode.ScaleWithScreenSize;
-            scaler.referenceResolution = new Vector2(1920, 1080);
-            root.AddComponent<GraphicRaycaster>();
+            // 复用现有 Canvas：若未挂 UI 相机（如拼面板时留下的 Overlay Canvas），升级为 ScreenSpaceCamera
+            if (canvas.worldCamera == null)
+            {
+                var uiCam = FindOrCreateUICamera();
+                canvas.renderMode = RenderMode.ScreenSpaceCamera;
+                canvas.worldCamera = uiCam;
+                canvas.planeDistance = 10f;
+                if (canvas.GetComponent<CanvasScaler>() == null)
+                {
+                    var scaler = canvas.gameObject.AddComponent<CanvasScaler>();
+                    scaler.uiScaleMode = CanvasScaler.ScaleMode.ScaleWithScreenSize;
+                    scaler.referenceResolution = new Vector2(1920, 1080);
+                }
+                if (canvas.GetComponent<GraphicRaycaster>() == null)
+                {
+                    canvas.gameObject.AddComponent<GraphicRaycaster>();
+                }
+            }
             return canvas;
         }
 

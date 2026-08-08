@@ -1,0 +1,1160 @@
+using System.Collections;
+using System.Collections.Generic;
+using DG.Tweening;
+using TheLaw.Core;
+using TheLaw.Data;
+using TheLaw.Gameplay;
+using TMPro;
+using UnityEngine;
+using UnityEngine.EventSystems;
+using UnityEngine.UI;
+
+namespace TheLaw.UI
+{
+    /// <summary>
+    /// 战斗操作总控（测试期外挂，跑通后整理给后端正式化）：
+    /// - 阶段状态机：按钮三形态 / 模式重置
+    /// - 执行镜像：发 ExecuteRequest 后 UI 侧镜像逐槽（可选格查询为只读自建实例）
+    /// - 选格：移动=高亮可选格；攻击=全盘可点
+    /// - 表现协议：表现事件帧缓冲合并 → 播动画 → 发 PresentationFinished
+    /// - 手牌：HandChanged 重建 + 拖拽部署（预览立绘跟随 + 吸附 + 合法格高亮）
+    /// </summary>
+    public class BattleController : MonoBehaviour
+    {
+        // ========== 注入 ==========
+        BattleFlow _flow;
+        GameState _state;
+        BoardRules _boardRules;
+        IntentResolver _intentResolver;
+        BattlePanel _panel;
+
+        // ========== 状态 ==========
+        bool _executing;             // 执行镜像进行中
+        int _execPieceId = -1;
+        List<Template> _execProgram;
+        int _execIndex;
+        bool _awaitingCell;          // 等玩家选格
+        bool _isMoveSelect;          // true=移动选格 false=攻击选格
+        List<Vector2Int> _cellOptions = new List<Vector2Int>();
+        GameObject _highlightRoot;   // 移动可选格高亮容器
+        int _selectedPieceId = -1;
+
+        // 表现队列（帧缓冲合并同槽事件）
+        readonly List<System.Func<IEnumerator>> _presentations = new List<System.Func<IEnumerator>>();
+        bool _presentationPlaying;
+        bool _selectResultDirty;     // 选格后帧内是否有表现事件（判落账成败）
+
+        // 部署预览
+        GameObject _previewPiece;
+        Vector2Int _previewCell = new Vector2Int(-1, -1);
+        bool _draggingCard;
+        int _dragDefId = -1;
+
+        // 信息面板（Main 1 场景 UI 根下的 3D TMP 文本，用户已拼）
+        TMPro.TextMeshPro _infoName, _infoType, _infoValue, _infoDurability, _infoAbilities;
+        TMPro.TextMeshPro _infoOtherLabel1, _infoOtherLabel2, _infoOtherLabel3;
+        TMPro.TextMeshPro[] _infoOthers = new TMPro.TextMeshPro[3];
+        SpriteRenderer[] _infoProgramBlocks = new SpriteRenderer[4]; // 行为逻辑块（SpriteRenderer）
+        List<Template> _infoProgram; // 当前信息面板显示的程序（浮窗内容源）
+        RectTransform _tooltip; // 行为逻辑浮窗（UGUI）
+        TMPro.TextMeshProUGUI _tooltipText;
+
+        // ========== 生命周期 ==========
+        void OnDestroy()
+        {
+            EventCenter.Instance.RemoveEventListener(GameEvent.PhaseChanged, OnPhaseChanged);
+            EventCenter.Instance.RemoveEventListener(GameEvent.ActionPointChanged, OnAPChanged);
+            EventCenter.Instance.RemoveEventListener(GameEvent.HandChanged, OnHandChanged);
+            EventCenter.Instance.RemoveEventListener(GameEvent.PieceMoved, OnPieceMoved);
+            EventCenter.Instance.RemoveEventListener(GameEvent.DamageDealt, OnDamageDealt);
+            EventCenter.Instance.RemoveEventListener(GameEvent.PieceDeployed, OnPieceDeployed);
+            EventCenter.Instance.RemoveEventListener(GameEvent.PieceDied, OnPieceDied);
+            if (_tooltip != null) _tooltip.gameObject.SetActive(false);
+        }
+
+        public void Init(BattleFlow flow, GameState state)
+        {
+            _flow = flow;
+            _state = state;
+            _boardRules = new BoardRules();
+            _intentResolver = new IntentResolver(_boardRules);
+
+            // 隐藏场景 Canvas 里的面板预览实例（运行时面板全部由 Addressables 加载，场景里的都是拼面板残留）
+            var sceneCanvas = FindObjectOfType<Canvas>();
+            if (sceneCanvas != null)
+            {
+                foreach (Transform child in sceneCanvas.transform)
+                {
+                    if (child.GetComponent<PanelBase>() != null) child.gameObject.SetActive(false);
+                }
+            }
+
+            EventCenter.Instance.AddEventListener(GameEvent.PhaseChanged, OnPhaseChanged);
+            EventCenter.Instance.AddEventListener(GameEvent.ActionPointChanged, OnAPChanged);
+            EventCenter.Instance.AddEventListener(GameEvent.HandChanged, OnHandChanged);
+            EventCenter.Instance.AddEventListener(GameEvent.PieceMoved, OnPieceMoved);
+            EventCenter.Instance.AddEventListener(GameEvent.DamageDealt, OnDamageDealt);
+            EventCenter.Instance.AddEventListener(GameEvent.PieceDeployed, OnPieceDeployed);
+            EventCenter.Instance.AddEventListener(GameEvent.PieceDied, OnPieceDied);
+
+            PanelBase.CreateAsync<BattlePanel>(p =>
+            {
+                _panel = p;
+                _panel.Show();
+                if (_panel.PhaseButton != null)
+                {
+                    _panel.PhaseButton.onClick.AddListener(OnPhaseButtonClicked);
+                }
+                RefreshAll();
+                ClearPieceInfo(); // 初始：信息面板隐藏（无选中/无临时状态）
+            });
+        }
+
+        void Update()
+        {
+            if (!Input.GetMouseButtonDown(0)) return;
+            if (EventSystem.current != null && EventSystem.current.IsPointerOverGameObject()) return;
+
+            // 射线打 Tile（棋子无碰撞，Tile 有 BoxCollider）
+            var ray = Camera.main != null ? Camera.main.ScreenPointToRay(Input.mousePosition) : default;
+            if (ray.origin == default || !Physics.Raycast(ray, out var hit, 200f)) return;
+            var cell = PieceViewFactory.CellFromWorld(hit.point);
+            HandleBoardClick(cell);
+        }
+
+        // ========== 棋盘点击 ==========
+        void HandleBoardClick(Vector2Int cell)
+        {
+            if (_awaitingCell)
+            {
+                OnCellPicked(cell); // 执行中：当前槽选格
+                return;
+            }
+            if (_state.Phase == BattlePhase.PlayerTurn && !_executing)
+            {
+                var piece = _state.GetPieceAt(cell);
+                if (piece != null && piece.side == Side.Player)
+                {
+                    // 单位自身格：切换选中（再点取消）
+                    if (_selectedPieceId == piece.Id)
+                    {
+                        ClearSelection();
+                    }
+                    else
+                    {
+                        _selectedPieceId = piece.Id;
+                        ShowPieceInfo(piece.Id);
+                        PreviewFirstSlot(piece.Id); // 预览首槽可选格
+                    }
+                    return;
+                }
+                // 点击目标格 = 开始执行（槽0 选格）；非法格不取消选中
+                if (_selectedPieceId >= 0)
+                {
+                    TryExecuteSelected(cell);
+                    return;
+                }
+            }
+            ClearSelection();
+        }
+
+        /// <summary>选中后预览首槽：移动=高亮可选格；攻击=全盘可点（无高亮）。</summary>
+        void PreviewFirstSlot(int pieceId)
+        {
+            var piece = _state.GetPiece(pieceId);
+            if (piece == null) return;
+            var program = piece.GetProgram(_state);
+            if (program == null || program.Count == 0) return;
+            if (program[0] is MoveTemplate move)
+            {
+                var opts = _intentResolver.GetMoveOptions(_state, piece, move);
+                _cellOptions = opts;
+                _isMoveSelect = true;
+                ShowHighlights(); // 内部先清旧再建新
+            }
+            else if (program[0] is AttackTemplate atk)
+            {
+                _cellOptions = _boardRules.GetAttackableCells(_state, piece, atk);
+                _isMoveSelect = false;
+                ShowHighlights(); // 攻击范围红框
+            }
+            else
+            {
+                ClearHighlights();
+            }
+        }
+
+        /// <summary>点击目标格触发执行：格在槽0可选范围内 → 发 ExecuteRequest + 选格。</summary>
+        bool TryExecuteSelected(Vector2Int cell)
+        {
+            var piece = _state.GetPiece(_selectedPieceId);
+            if (piece == null) return false;
+            var program = piece.GetProgram(_state);
+            if (program == null || program.Count == 0) return false;
+
+            var slot0 = program[0];
+            if (slot0 is MoveTemplate move)
+            {
+                var opts = _intentResolver.GetMoveOptions(_state, piece, move);
+                if (!opts.Contains(cell)) return false; // 非可选格：不执行
+            }
+            // 槽0 为攻击：任意格可点（全盘）
+
+            _executing = true;
+            _execPieceId = _selectedPieceId;
+            _execProgram = program;
+            _execIndex = 0;
+            _flow.OnPlayerRequestExecute(new ExecuteRequest(_selectedPieceId));
+            _flow.OnPlayerCellSelected(cell); // 槽0 选格（规则层已等待）
+            StartCoroutine(WaitSelectResult());
+            return true;
+        }
+
+        // ========== 执行镜像 ==========
+
+        /// <summary>镜像逐槽推进：与规则层同步（Skip/无选项自动跳过；Move/Attack 槽等选格）。</summary>
+        void AdvanceExec()
+        {
+            while (_executing)
+            {
+                var piece = _state.GetPiece(_execPieceId);
+                if (piece == null || _execIndex >= _execProgram.Count)
+                {
+                    FinishExec();
+                    return;
+                }
+                var slot = _execProgram[_execIndex];
+                switch (slot)
+                {
+                    case MoveTemplate move:
+                        var opts = _intentResolver.GetMoveOptions(_state, piece, move);
+                        if (opts.Count == 0)
+                        {
+                            _execIndex++;
+                            continue; // 规则层同判定：自动跳过
+                        }
+                        EnterCellSelect(opts, isMove: true);
+                        return;
+                    case AttackTemplate:
+                        EnterCellSelect(null, isMove: false); // 攻击全盘可点
+                        return;
+                    default: // SkipTemplate 等
+                        _execIndex++;
+                        continue;
+                }
+            }
+        }
+
+        void EnterCellSelect(List<Vector2Int> options, bool isMove)
+        {
+            _awaitingCell = true;
+            _isMoveSelect = isMove;
+            if (isMove)
+            {
+                _cellOptions = options ?? new List<Vector2Int>();
+                ShowHighlights(); // 绿块
+            }
+            else
+            {
+                // 攻击：任意格可点，但显示攻击范围（红框）
+                var piece = _state.GetPiece(_execPieceId);
+                if (piece != null && _execProgram != null && _execIndex < _execProgram.Count
+                    && _execProgram[_execIndex] is AttackTemplate atk)
+                {
+                    _cellOptions = _boardRules.GetAttackableCells(_state, piece, atk);
+                    ShowHighlights(); // 红块
+                }
+                else
+                {
+                    _cellOptions = new List<Vector2Int>();
+                    ClearHighlights();
+                }
+            }
+        }
+
+        void OnCellPicked(Vector2Int cell)
+        {
+            if (_isMoveSelect && !_cellOptions.Contains(cell)) return; // 移动只允许可选格
+            _flow.OnPlayerCellSelected(cell);
+            StartCoroutine(WaitSelectResult());
+        }
+
+        /// <summary>选格后帧缓冲：规则层同步落账并发表现事件 → 成功则表现队列接管；失败则继续等选格。</summary>
+        IEnumerator WaitSelectResult()
+        {
+            yield return null;
+            if (_selectResultDirty)
+            {
+                _selectResultDirty = false;
+                _awaitingCell = false;
+                ClearHighlights();
+                // 表现播完（PresentationLoop 末尾）会触发 AdvanceAfterPresentation
+            }
+            // 失败（非法格）：规则层重新等待，镜像不动，高亮保留
+        }
+
+        void FinishExec()
+        {
+            _executing = false;
+            _execPieceId = -1;
+            _execProgram = null;
+            ClearHighlights();
+            RefreshAP();
+        }
+
+        /// <summary>表现组播完后：镜像推进下一槽（规则层已 AdvanceSlot 到等待/结束）。</summary>
+        void AdvanceAfterPresentation()
+        {
+            if (!_executing) return;
+            _execIndex++;
+            AdvanceExec();
+        }
+
+        // ========== 表现协议 ==========
+        void EnqueuePresentation(System.Func<IEnumerator> play)
+        {
+            _presentations.Add(play);
+            if (!_presentationPlaying) StartCoroutine(PresentationLoop());
+        }
+
+        IEnumerator PresentationLoop()
+        {
+            _presentationPlaying = true;
+            yield return null; // 帧缓冲：合并同槽伴随事件（DamageDealt+PieceDied）
+            while (_presentations.Count > 0)
+            {
+                var play = _presentations[0];
+                _presentations.RemoveAt(0);
+                yield return play();
+            }
+            _presentationPlaying = false;
+            EventCenter.Instance.EventTrigger(GameEvent.PresentationFinished);
+            if (_executing) AdvanceAfterPresentation();
+        }
+
+        void OnPieceMoved(object data)
+        {
+            var info = (MoveInfo)data;
+            _selectResultDirty = true;
+            EnqueuePresentation(() => PlayMove(info));
+        }
+
+        void OnDamageDealt(object data)
+        {
+            var info = (DamageInfo)data;
+            _selectResultDirty = true;
+            EnqueuePresentation(() => PlayDamage(info));
+        }
+
+        void OnPieceDeployed(object data)
+        {
+            var info = (DeployInfo)data;
+            EnqueuePresentation(() => PlayDeploy(info));
+            if (info.Side == Side.Player) RebuildHand(); // 规则层已 Hand.Remove——本地重建移除该卡
+        }
+
+        void OnPieceDied(object data)
+        {
+            var info = (DeathInfo)data;
+            EnqueuePresentation(() => PlayDeath(info));
+        }
+
+        // ========== 表现动画（DOTween 优先，测试最小可用）==========
+        IEnumerator PlayMove(MoveInfo info)
+        {
+            var go = GameObject.Find($"Piece_{info.PieceId}");
+            if (go != null)
+            {
+                var to = PieceViewFactory.CellToWorld(info.To);
+                go.transform.DOMove(to, 0.25f).SetEase(Ease.OutQuad);
+                yield return new WaitForSeconds(0.3f);
+            }
+            yield return null;
+        }
+
+        IEnumerator PlayDamage(DamageInfo info)
+        {
+            // 测试：目标闪烁一下（飘字后续加）
+            var go = GameObject.Find($"Piece_{info.AttackerId}");
+            if (go != null)
+            {
+                var sr = go.transform.Find("Portrait")?.GetComponent<SpriteRenderer>();
+                if (sr != null)
+                {
+                    sr.color = Color.white;
+                    yield return new WaitForSeconds(0.08f);
+                    sr.color = PieceViewFactory.TintFor(_state.GetPiece(info.AttackerId)?.DefId ?? 0);
+                }
+            }
+            yield return new WaitForSeconds(0.15f);
+        }
+
+        IEnumerator PlayDeploy(DeployInfo info)
+        {
+            // 复用场景已有视觉（敌方 BoardBuilder 摆的）或新建
+            if (GameObject.Find($"Piece_{info.PieceId}") == null)
+            {
+                var existing = FindEnemyVisualAt(info.Cell);
+                if (existing != null)
+                {
+                    existing.name = $"Piece_{info.PieceId}";
+                }
+                else
+                {
+                    PieceViewFactory.CreatePieceView(info.PieceId, info.Side, info.Cell,
+                        info.Side == Side.Player ? PieceViewFactory.TintFor(info.DefId) : PieceViewFactory.TintFor(info.DefId + 1));
+                }
+            }
+            yield return new WaitForSeconds(0.1f);
+        }
+
+        IEnumerator PlayDeath(DeathInfo info)
+        {
+            var go = GameObject.Find($"Piece_{info.PieceId}");
+            if (go != null)
+            {
+                var sr = go.transform.Find("Portrait")?.GetComponent<SpriteRenderer>();
+                if (sr != null) sr.material.DOFade(0f, 0.2f); // material 版扩展（DOTween.dll 内）
+                go.transform.DOScale(0f, 0.2f);
+                yield return new WaitForSeconds(0.25f);
+                Destroy(go);
+            }
+            yield return null;
+        }
+
+        GameObject FindEnemyVisualAt(Vector2Int cell)
+        {
+            foreach (var obj in FindObjectsOfType<GameObject>())
+            {
+                if (obj.name.StartsWith("EnemyPiece_"))
+                {
+                    var pos = obj.transform.position;
+                    if (PieceViewFactory.CellFromWorld(pos) == cell) return obj;
+                }
+            }
+            return null;
+        }
+
+        // ========== 行为逻辑浮窗（UI 浮窗，sprite 左上角对齐浮窗右上角）==========
+        public void ShowBehaviorTooltip(int slotIndex, Vector3 leftTopWorld)
+        {
+            if (_infoProgram == null || slotIndex < 0 || slotIndex >= _infoProgram.Count) return;
+            StartCoroutine(LoadTooltipAndShow(slotIndex, leftTopWorld));
+        }
+
+        IEnumerator LoadTooltipAndShow(int slotIndex, Vector3 leftTopWorld)
+        {
+            if (_tooltip == null)
+            {
+                var handle = UnityEngine.AddressableAssets.Addressables.LoadAssetAsync<GameObject>("BehaviorTooltip");
+                yield return handle;
+                if (handle.Status != UnityEngine.ResourceManagement.AsyncOperations.AsyncOperationStatus.Succeeded || handle.Result == null)
+                {
+                    Debug.LogWarning("[Battle] BehaviorTooltip 加载失败");
+                    yield break;
+                }
+                var canvas = UnityEngine.Object.FindObjectOfType<Canvas>();
+                var go = Instantiate(handle.Result, canvas != null ? canvas.transform : null);
+                _tooltip = go.GetComponent<RectTransform>();
+                _tooltipText = go.transform.Find("Txt_Desc")?.GetComponent<TMPro.TextMeshProUGUI>();
+                _tooltip.pivot = new Vector2(1f, 1f); // 右上角为锚点
+            }
+            if (_tooltipText != null) _tooltipText.text = SlotDetailDesc(_infoProgram[slotIndex]);
+            if (Camera.main != null)
+            {
+                _tooltip.position = Camera.main.WorldToScreenPoint(leftTopWorld); // 右上角 = sprite 左上角
+            }
+            _tooltip.gameObject.SetActive(true);
+        }
+
+        public void HideBehaviorTooltip()
+        {
+            if (_tooltip != null) _tooltip.gameObject.SetActive(false);
+        }
+
+        // ========== 选格高亮（移动=实心绿块 0.8，攻击=空心红框 边框厚 0.2）==========
+        void ShowHighlights()
+        {
+            ClearHighlights();
+            if (_cellOptions.Count == 0) return;
+            _highlightRoot = new GameObject(_isMoveSelect ? "MoveHighlights" : "AttackHighlights");
+            foreach (var cell in _cellOptions)
+            {
+                if (_isMoveSelect)
+                {
+                    CreateHighlightBlock(cell, HighlightMaterial(0.2f, 0.8f, 0.3f));
+                }
+                else
+                {
+                    CreateHighlightFrame(cell, HighlightMaterial(0.8f, 0.2f, 0.2f));
+                }
+            }
+        }
+
+        /// <summary>实心块（0.8×0.8，移动格用）。</summary>
+        void CreateHighlightBlock(Vector2Int cell, Material mat)
+        {
+            var go = GameObject.CreatePrimitive(PrimitiveType.Quad);
+            go.name = "Highlight";
+            go.transform.SetParent(_highlightRoot.transform, true);
+            go.transform.position = new Vector3(cell.x - 3.5f, 0.01f, cell.y - 3.5f);
+            go.transform.rotation = Quaternion.Euler(90f, 0f, 0f);
+            go.transform.localScale = new Vector3(0.8f, 0.8f, 1f);
+            SetupHighlightMesh(go, mat);
+        }
+
+        /// <summary>空心框（边框厚 0.2，攻击格用）。</summary>
+        void CreateHighlightFrame(Vector2Int cell, Material mat)
+        {
+            float cx = cell.x - 3.5f, cz = cell.y - 3.5f;
+            const float half = 0.4f;   // 框内边半宽（0.8 空心区）
+            const float thick = 0.2f;  // 边框厚度
+            AddFrameBar(new Vector3(cx, 0.01f, cz + half), new Vector3(1f, thick, 1f), mat); // 上
+            AddFrameBar(new Vector3(cx, 0.01f, cz - half), new Vector3(1f, thick, 1f), mat); // 下
+            AddFrameBar(new Vector3(cx - half, 0.01f, cz), new Vector3(thick, 1f, 1f), mat); // 左
+            AddFrameBar(new Vector3(cx + half, 0.01f, cz), new Vector3(thick, 1f, 1f), mat); // 右
+        }
+
+        void AddFrameBar(Vector3 pos, Vector3 scale, Material mat)
+        {
+            var go = GameObject.CreatePrimitive(PrimitiveType.Quad);
+            go.name = "FrameBar";
+            go.transform.SetParent(_highlightRoot.transform, true);
+            go.transform.position = pos;
+            go.transform.rotation = Quaternion.Euler(90f, 0f, 0f);
+            go.transform.localScale = scale;
+            SetupHighlightMesh(go, mat);
+        }
+
+        void SetupHighlightMesh(GameObject go, Material mat)
+        {
+            var mr = go.GetComponent<MeshRenderer>();
+            mr.sharedMaterial = mat;
+            mr.shadowCastingMode = UnityEngine.Rendering.ShadowCastingMode.Off;
+        }
+
+        static Material _highlightMatGreen;
+        static Material _highlightMatRed;
+        static Material HighlightMaterial(float r, float g, float b)
+        {
+            if (r > 0.5f && _highlightMatRed == null)
+            {
+                _highlightMatRed = new Material(Shader.Find("Unlit/Color"));
+                _highlightMatRed.color = new Color(r, g, b, 0.4f);
+            }
+            else if (_highlightMatGreen == null)
+            {
+                _highlightMatGreen = new Material(Shader.Find("Unlit/Color"));
+                _highlightMatGreen.color = new Color(r, g, b, 0.4f);
+            }
+            return r > 0.5f ? _highlightMatRed : _highlightMatGreen;
+        }
+
+        void ClearHighlights()
+        {
+            if (_highlightRoot != null)
+            {
+                DestroyImmediate(_highlightRoot); // 同帧 Clear+Show 不叠加
+                _highlightRoot = null;
+            }
+        }
+
+        // ========== 事件监听 ==========
+        void OnPhaseChanged(object data)
+        {
+            RefreshAll();
+            ClearSelection();
+            ClearHighlights(); // 阶段切换必清高亮
+            UpdateHandPositionByPhase();
+        }
+
+        /// <summary>非准备阶段手牌区下移（表示当前不能放置）。</summary>
+        void UpdateHandPositionByPhase()
+        {
+            if (_panel == null || _panel.HandRoot == null) return;
+            var rt = _panel.HandRoot;
+            float targetY = _state.Phase == BattlePhase.Placement ? 0f : -60f;
+            DOTween.To(() => rt.anchoredPosition, v => rt.anchoredPosition = v,
+                new Vector2(rt.anchoredPosition.x, targetY), 0.2f);
+        }
+
+        void OnAPChanged(object data)
+        {
+            RefreshAP();
+        }
+
+        void OnHandChanged(object data)
+        {
+            RebuildHand();
+        }
+
+        // ========== UI 刷新 ==========
+        void RefreshAll()
+        {
+            RefreshPhaseButton();
+            RefreshAP();
+            RebuildHand();
+        }
+
+        void RefreshPhaseButton()
+        {
+            if (_panel == null || _panel.PhaseButton == null) return;
+            var btn = _panel.PhaseButton;
+            var txt = _panel.PhaseButtonText;
+            switch (_state.Phase)
+            {
+                case BattlePhase.Placement:
+                    btn.interactable = true;
+                    if (txt != null) txt.text = "结束准备";
+                    if (_panel != null) _panel.SetEventName("我方准备");
+                    break;
+                case BattlePhase.PlayerTurn:
+                    btn.interactable = true;
+                    if (txt != null) txt.text = "结束回合";
+                    if (_panel != null) _panel.SetEventName("我方回合");
+                    break;
+                case BattlePhase.EnemyTurn:
+                    btn.interactable = false;
+                    if (txt != null) txt.text = "敌方回合中";
+                    if (_panel != null) _panel.SetEventName("敌方回合");
+                    break;
+                default:
+                    btn.gameObject.SetActive(false);
+                    break;
+            }
+        }
+
+        void RefreshAP()
+        {
+            if (_panel != null) _panel.SetAP(_state.PlayerAP, _state.PlayerAPMax);
+        }
+
+        void OnPhaseButtonClicked()
+        {
+            switch (_state.Phase)
+            {
+                case BattlePhase.Placement:
+                    EventCenter.Instance.EventTrigger(GameEvent.PlacementFinished);
+                    break;
+                case BattlePhase.PlayerTurn:
+                    _flow.OnPlayerEndTurn();
+                    break;
+            }
+        }
+
+        void ClearSelection()
+        {
+            _selectedPieceId = -1;
+            ClearPieceInfo();
+        }
+
+        // ========== 场上信息面板（Main 1 场景 UI 根下的 3D 文本）==========
+        GameObject _infoRoot;
+
+        void EnsureInfoRefs()
+        {
+            if (_infoName != null) return;
+            var ui = GameObject.Find("UI");
+            if (ui == null) return;
+            _infoRoot = ui;
+            _infoName = GetTmp(ui, "Txt_Name");
+            _infoType = GetTmp(ui, "Txt_Type");
+            _infoValue = GetTmp(ui, "Txt_Value");
+            _infoDurability = GetTmp(ui, "Txt_Durability");
+            _infoAbilities = GetTmp(ui, "Txt_SpecialAbilities");
+            _infoOtherLabel1 = GetTmp(ui, "Txt_Other1_K");
+            _infoOtherLabel2 = GetTmp(ui, "Txt_Other2_K");
+            _infoOtherLabel3 = GetTmp(ui, "Txt_Other3_K");
+            for (int i = 0; i < 4; i++)
+            {
+                var t = ui.transform.Find($"Txt_BehaviorLogic{i + 1}");
+                _infoProgramBlocks[i] = t != null ? t.GetComponent<SpriteRenderer>() : null;
+                if (_infoProgramBlocks[i] != null && t.GetComponent<Collider>() == null)
+                {
+                    t.gameObject.AddComponent<BoxCollider>(); // hover 检测需要碰撞
+                }
+            }
+            for (int i = 0; i < 3; i++) _infoOthers[i] = GetTmp(ui, $"Txt_Other{i + 1}");
+            // 标签占位文本替换（“其他”→ 实际字段名）
+            if (_infoOtherLabel1 != null) _infoOtherLabel1.text = "护盾";
+            if (_infoOtherLabel2 != null) _infoOtherLabel2.text = "阵营";
+            if (_infoOtherLabel3 != null) _infoOtherLabel3.text = "升变";
+        }
+
+        static TMPro.TextMeshPro GetTmp(GameObject root, string name)
+        {
+            var t = root.transform.Find(name);
+            return t != null ? t.GetComponent<TMPro.TextMeshPro>() : null;
+        }
+
+        public void ShowPieceInfo(int pieceId)
+        {
+            EnsureInfoRefs();
+            var piece = _state.GetPiece(pieceId);
+            if (piece == null) return;
+            var def = piece.def;
+            if (def == null) return;
+
+            FillInfo(def, piece);
+            if (_infoRoot != null) _infoRoot.SetActive(true);
+        }
+
+        void FillInfo(PieceDef def, PieceInstance piece)
+        {
+            Set(_infoName, def.displayName);
+            Set(_infoType, def.pieceType == PieceType.Initial ? "初始" : def.pieceType == PieceType.Deployable ? "部署" : "升变");
+            Set(_infoValue, def.value.ToString());
+            Set(_infoDurability, piece != null ? $"{piece.durability}/{def.durability}" : def.durability.ToString());
+            var abilities = new List<string>();
+            foreach (var a in def.specialAbilities) abilities.Add(a.type.ToString());
+            if (piece != null)
+            {
+                foreach (var a in piece.GetAllAbilities())
+                {
+                    if (!abilities.Contains(a.type.ToString())) abilities.Add(a.type.ToString());
+                }
+            }
+            Set(_infoAbilities, abilities.Count > 0 ? string.Join(", ", abilities) : "无");
+
+            var program = piece != null ? piece.GetProgram(_state) : (def.programSet != null && def.programSet.Count > 0 ? def.programSet[0].slots : null);
+            _infoProgram = program;
+            int slotCount = program != null ? Mathf.Min(program.Count, 4) : 0;
+            for (int i = 0; i < 4; i++)
+            {
+                // 行为逻辑块：只显示已配置的槽（未配置隐藏）；挂 hover 检测
+                if (_infoProgramBlocks[i] != null)
+                {
+                    _infoProgramBlocks[i].gameObject.SetActive(i < slotCount);
+                    if (i < slotCount)
+                    {
+                        var hover = _infoProgramBlocks[i].GetComponent<BehaviorSlotHover>();
+                        if (hover == null) hover = _infoProgramBlocks[i].gameObject.AddComponent<BehaviorSlotHover>();
+                        hover.Init(this, i);
+                    }
+                }
+            }
+            Set(_infoOthers[0], piece != null ? $"护盾:{piece.shieldCount}" : "");
+            Set(_infoOthers[1], piece != null ? (piece.side == Side.Player ? "我方" : "敌方") : "");
+            Set(_infoOthers[2], def.promotionConfigId != 0 ? $"可升变:{def.promotionConfigId}" : "");
+        }
+
+        public void ClearPieceInfo()
+        {
+            EnsureInfoRefs();
+            if (_infoRoot != null) _infoRoot.SetActive(false);
+            Set(_infoName, "");
+            Set(_infoType, "");
+            Set(_infoValue, "");
+            Set(_infoDurability, "");
+            Set(_infoAbilities, "");
+            for (int i = 0; i < 4; i++)
+            {
+                if (_infoProgramBlocks[i] != null) _infoProgramBlocks[i].gameObject.SetActive(false);
+            }
+            for (int i = 0; i < 3; i++) Set(_infoOthers[i], "");
+        }
+
+        static void Set(TMPro.TextMeshPro tmp, string text)
+        {
+            if (tmp != null) tmp.text = text;
+        }
+
+        /// <summary>程序槽详细描述（信息面板/浮窗用，自然语言）。</summary>
+        static string SlotDetailDesc(Template slot)
+        {
+            switch (slot)
+            {
+                case MoveTemplate m:
+                    return MoveDescNatural(m);
+                case AttackTemplate a:
+                    return AttackDescNatural(a);
+                default:
+                    return "跳：跳过本回合行动";
+            }
+        }
+
+        /// <summary>移动描述："移：在上下左右中选择一个进行移动"（可达格已在棋盘显示，不赘述）。</summary>
+        static string MoveDescNatural(MoveTemplate m)
+        {
+            var parts = new List<string>();
+            if (m.paths != null)
+            {
+                foreach (var path in m.paths)
+                {
+                    foreach (var seg in path.segments)
+                    {
+                        foreach (var step in seg.moves)
+                        {
+                            string dirs = DirsNatural(step.direction);
+                            parts.Add(MoveStepNatural(dirs, step.steps));
+                        }
+                    }
+                }
+            }
+            if (parts.Count == 0) return "移：原地不动";
+            if (parts.Count == 1) return parts[0];
+            return string.Join("，再", parts);
+        }
+
+        static string MoveStepNatural(string dirs, List<int> steps)
+        {
+            string stepDesc = StepsNatural(steps);
+            if (stepDesc.Length == 0) return $"移：在{dirs}中选择一个进行移动";
+            return $"移：在{dirs}方向移动{stepDesc}格";
+        }
+
+        static string AttackDescNatural(AttackTemplate a)
+        {
+            string prefix = a.mode switch
+            {
+                AttackMode.Melee => "近战",
+                AttackMode.MeleeAOE => "近战群攻",
+                AttackMode.DirectFire => "直射",
+                AttackMode.Arcing => "抛射",
+                AttackMode.Spell => "法术",
+                _ => a.mode.ToString(),
+            };
+            string dirs = DirsNatural(a.directions);
+            string target = a.mode == AttackMode.Melee || a.mode == AttackMode.MeleeAOE
+                ? $"{dirs}相邻"
+                : a.mode == AttackMode.DirectFire
+                    ? $"{dirs}直线{GetRange(a)}格"
+                    : "目标点";
+            return $"攻：{prefix}，对{target}造成{a.damage}伤害";
+        }
+
+        static int GetRange(AttackTemplate a)
+        {
+            return a.range;
+        }
+
+        /// <summary>方向组合（位标志 → 中文，如 Up|Left → "左上"）。</summary>
+        static string DirsNatural(Direction dirs)
+        {
+            var parts = new List<string>();
+            foreach (Direction d in System.Enum.GetValues(typeof(Direction)))
+            {
+                if (d != 0 && (dirs & d) != 0) parts.Add(DirName(d));
+            }
+            if (parts.Count == 0) return "前方";
+            // 上下左右 → 四方向合并描述
+            string joined = string.Join("", parts);
+            if (joined == "上下左右") return "上下左右";
+            if (joined == "左上右上") return "左前右前";
+            return joined;
+        }
+
+        /// <summary>步数描述：[1]=“1”，[1,2]=“1或2”。</summary>
+        static string StepsNatural(List<int> steps)
+        {
+            if (steps == null || steps.Count == 0) return "";
+            if (steps.Count == 1) return steps[0].ToString();
+            return string.Join("或", steps);
+        }
+
+        static string DirName(Direction d)
+        {
+            switch (d)
+            {
+                case Direction.Up: return "上";
+                case Direction.Down: return "下";
+                case Direction.Left: return "左";
+                case Direction.Right: return "右";
+                case Direction.UpLeft: return "左上";
+                case Direction.UpRight: return "右上";
+                case Direction.DownLeft: return "左下";
+                case Direction.DownRight: return "右下";
+                default: return d.ToString();
+            }
+        }
+
+        // ========== 手牌 ==========
+        int _handBuildSeq; // 手牌重建版本号（防异步协程竞态）
+
+        void RebuildHand()
+        {
+            if (_panel == null || _panel.HandRoot == null) return;
+            // 清空现有卡片（立即销毁——延迟销毁会被布局控制器收集到失效引用）
+            foreach (Transform child in _panel.HandRoot)
+            {
+                DestroyImmediate(child.gameObject);
+            }
+            // 手牌卡为独立 prefab（Piece_Handcard）——Addressables 按需加载
+            _handBuildSeq++;
+            StartCoroutine(LoadAndBuildHand(_handBuildSeq));
+        }
+
+        IEnumerator LoadAndBuildHand(int seq)
+        {
+            var handle = UnityEngine.AddressableAssets.Addressables.LoadAssetAsync<GameObject>("Piece_Handcard");
+            yield return handle;
+            if (seq != _handBuildSeq) yield break; // 过期重建请求：放弃（防双份卡片）
+            if (handle.Status != UnityEngine.ResourceManagement.AsyncOperations.AsyncOperationStatus.Succeeded || handle.Result == null)
+            {
+                Debug.LogWarning("[Battle] 手牌卡 prefab 加载失败（address=Piece_Handcard）");
+                yield break;
+            }
+            var template = handle.Result;
+            var layout = _panel.HandRoot.GetComponent<HandLayoutController>();
+            if (layout == null) layout = _panel.HandRoot.gameObject.AddComponent<HandLayoutController>();
+            var hand = _state.Hand;
+            for (int i = 0; i < hand.Count; i++)
+            {
+                var def = ConfigTable.Get<PieceDef>(hand[i]);
+                var card = Instantiate(template, _panel.HandRoot);
+                card.name = $"Card_{i}_{def.displayName}";
+                card.SetActive(true);
+                FillCard(card, def, i);
+                AddCardDrag(card, def.Id, i);
+            }
+            layout.RefreshCards();
+        }
+
+        void FillCard(GameObject card, PieceDef def, int index)
+        {
+            var nameText = FindCardNode(card.transform, "Txt_InfoName")?.GetComponent<TMP_Text>();
+            if (nameText != null) nameText.text = VerticalName(def.displayName); // 竖排（一字一行）
+            var valueText = FindCardNode(card.transform, "Img_InfoValue")?.GetComponentInChildren<TMP_Text>();
+            if (valueText != null) valueText.text = def.value.ToString();
+            var typeText = FindCardNode(card.transform, "Img_InfoType")?.GetComponentInChildren<TMP_Text>();
+            if (typeText != null) typeText.text = def.pieceType == PieceType.Initial ? "始" : def.pieceType == PieceType.Deployable ? "部" : "升";
+            // 程序描述
+            for (int s = 0; s < 4; s++)
+            {
+                var desc = FindCardNode(card.transform, $"Txt_InfoProgram{s + 1}Desc")?.GetComponent<TMP_Text>();
+                if (desc != null)
+                {
+                    desc.text = s < def.programSet.Count ? ProgramDesc(def.programSet[s]) : "";
+                }
+            }
+        }
+
+        /// <summary>竖排名称：每个字符一行（卡片名称竖向显示）。</summary>
+        static string VerticalName(string name)
+        {
+            if (string.IsNullOrEmpty(name)) return name;
+            return string.Join("\n", name.ToCharArray());
+        }
+
+        /// <summary>卡片节点容错查找：精确匹配失败则递归前缀匹配（节点名可能有 "(1)" 复制后缀）。</summary>
+        static Transform FindCardNode(Transform root, string name)
+        {
+            var exact = root.Find(name);
+            if (exact != null) return exact;
+            foreach (Transform child in root)
+            {
+                if (child.name.StartsWith(name)) return child;
+                var deeper = FindCardNode(child, name);
+                if (deeper != null) return deeper;
+            }
+            return null;
+        }
+
+        static string ProgramDesc(ProgramDef program)
+        {
+            if (program == null || program.slots == null || program.slots.Count == 0) return "无程序";
+            var parts = new List<string>();
+            foreach (var slot in program.slots)
+            {
+                if (slot is MoveTemplate m) parts.Add("移" + MoveDesc(m));
+                else if (slot is AttackTemplate a) parts.Add("攻" + AttackDesc(a));
+                else parts.Add("跳");
+            }
+            return string.Join(" / ", parts);
+        }
+
+        static string MoveDesc(MoveTemplate m)
+        {
+            int paths = m.paths?.Count ?? 0;
+            return paths > 1 ? $"{paths}段" : "1段";
+        }
+
+        static string AttackDesc(AttackTemplate a)
+        {
+            return $"范围{a.range}伤{a.damage}";
+        }
+
+        void AddCardDrag(GameObject card, int defId, int index)
+        {
+            var drag = card.AddComponent<HandCardDrag>();
+            drag.Init(this, defId, index);
+        }
+
+        public bool CanDragCard()
+        {
+            return _state.Phase == BattlePhase.Placement;
+        }
+
+        // ========== 拖拽部署 ==========
+        public void OnCardDragStart(int defId)
+        {
+            if (_state.Phase != BattlePhase.Placement) return; // 仅准备阶段可部署
+            _draggingCard = true;
+            _dragDefId = defId;
+            PieceViewFactory.EnsureSprites();
+            _previewPiece = PieceViewFactory.CreatePieceView(-1, Side.Player, new Vector2Int(-9, -9),
+                PieceViewFactory.TintFor(defId));
+            SetPreviewAlpha(0.6f);
+            // 预览无阴影：单位尚未真正在场
+            var shadow = _previewPiece.transform.Find("Shadow");
+            if (shadow != null) shadow.gameObject.SetActive(false);
+            if (_previewPiece != null) _previewPiece.transform.position = new Vector3(0f, -50f, 0f); // 隐藏待命
+        }
+        public void OnCardDrag(Vector2 screenPos)
+        {
+            if (!_draggingCard || _previewPiece == null) return;
+            var ray = Camera.main != null ? Camera.main.ScreenPointToRay(screenPos) : default;
+            if (ray.origin == default || !Physics.Raycast(ray, out var hit, 200f))
+            {
+                _previewPiece.transform.position = new Vector3(0f, -50f, 0f);
+                _previewCell = new Vector2Int(-1, -1);
+                return;
+            }
+            var cell = PieceViewFactory.CellFromWorld(hit.point);
+            if (!IsDeployableCell(cell))
+            {
+                _previewPiece.transform.position = new Vector3(0f, -50f, 0f);
+                _previewCell = new Vector2Int(-1, -1);
+                return;
+            }
+            // 吸附定位点 + 重新匹配相机朝向（创建时位置在隐藏处，角度是错的）
+            _previewPiece.transform.position = PieceViewFactory.CellToWorld(cell);
+            var portraitT = _previewPiece.transform.Find("Portrait");
+            if (portraitT != null && Camera.main != null)
+            {
+                Vector3 toCam = Camera.main.transform.position - portraitT.position;
+                float horiz = new Vector2(toCam.x, toCam.z).magnitude;
+                float angle = Mathf.Atan2(toCam.y, horiz) * Mathf.Rad2Deg;
+                portraitT.rotation = Quaternion.Euler(angle, 0f, 0f);
+            }
+            _previewCell = cell;
+        }
+
+        public void OnCardDragEnd()
+        {
+            if (!_draggingCard) return;
+            _draggingCard = false;
+            if (_previewCell.x >= 0)
+            {
+                bool free = _state.Phase == BattlePhase.Placement;
+                _flow.OnPlayerRequestDeploy(new DeployRequest(_dragDefId, _previewCell) { free = free });
+                // 成功：PieceDeployed → 规则层 Hand.Remove → OnPieceDeployed 重建手牌
+                // 失败兜底：0.5s 后 Hand 仍含该 defId → 恢复卡片
+                StartCoroutine(RecoverCardIfFailed(_dragDefId));
+            }
+            else
+            {
+                RebuildHand(); // 非法格：直接恢复
+            }
+            if (_previewPiece != null) Destroy(_previewPiece);
+            _previewPiece = null;
+            _previewCell = new Vector2Int(-1, -1);
+            _dragDefId = -1;
+        }
+
+        IEnumerator RecoverCardIfFailed(int defId)
+        {
+            yield return new WaitForSeconds(0.5f);
+            if (_state.Hand.Contains(defId) && !_draggingCard)
+            {
+                RebuildHand(); // 规则层未移除 → 部署失败 → 卡牌恢复
+            }
+        }
+
+        bool IsDeployableCell(Vector2Int cell)
+        {
+            // 玩家部署区：y=0~1 + 空格（与规则层 IsValidDeployCell 一致）
+            if (cell.x < 0 || cell.x >= 8 || cell.y < 0 || cell.y > 1) return false;
+            if (_state.Pieces.ContainsKey(cell)) return false;
+            return true;
+        }
+
+        void SetPreviewAlpha(float a)
+        {
+            if (_previewPiece == null) return;
+            var sr = _previewPiece.transform.Find("Portrait")?.GetComponent<SpriteRenderer>();
+            if (sr != null)
+            {
+                var c = sr.color;
+                c.a = a;
+                sr.color = c;
+            }
+        }
+    }
+
+    /// <summary>
+    /// 手牌卡：hover 放大上浮（杀戮尖塔式，渲染顺序过程中切换）+ 拖拽部署（仅准备阶段）。
+    /// 卡面为一张卡左右两半（左=堆叠图标，右=展开内容）——放大后右侧内容可见。
+    /// </summary>
+    public class HandCardDrag : MonoBehaviour, IBeginDragHandler, IDragHandler, IEndDragHandler, IPointerEnterHandler, IPointerExitHandler
+    {
+        const float BaseScale = 0.35f;  // 叠放基准缩放
+        const float HoverScale = 0.7f;  // hover 放大（基准 2 倍）
+
+        BattleController _controller;
+        HandLayoutController _layout;
+        int _defId;
+        int _cardIndex; // 布局稳定索引（创建时分配，不受 SetAsLastSibling 影响）
+        CanvasGroup _cg;
+        int _siblingIndex = -1;
+        bool _hovering;
+
+        public void Init(BattleController controller, int defId, int cardIndex)
+        {
+            _controller = controller;
+            _defId = defId;
+            _cardIndex = cardIndex;
+            _layout = GetComponentInParent<HandLayoutController>();
+            _cg = GetComponent<CanvasGroup>();
+            if (_cg == null) _cg = gameObject.AddComponent<CanvasGroup>();
+        }
+
+        void OnDestroy()
+        {
+            DG.Tweening.DOTween.Kill(transform); // 卡片销毁时终止动画（防访问已销毁对象）
+        }
+
+        public void OnPointerEnter(PointerEventData eventData)
+        {
+            if (_hovering) return;
+            _hovering = true;
+            _siblingIndex = transform.GetSiblingIndex();
+            // 渲染顺序过程中切换（上浮动画开始时提层，流程影响最小）
+            transform.SetAsLastSibling();
+            _layout?.SetHoverIndex(_cardIndex); // 让位中心 + 上浮（稳定索引，非 sibling）
+            // 放大（上浮归布局管，退出自然回落）
+            transform.DOScale(HoverScale, 0.15f).SetEase(Ease.OutQuad);
+        }
+
+        public void OnPointerExit(PointerEventData eventData)
+        {
+            if (!_hovering) return;
+            _hovering = false;
+            _layout?.SetHoverIndex(-1); // 取消让位/上浮（布局插值回落）
+            transform.DOScale(BaseScale, 0.15f).SetEase(Ease.InQuad)
+                .OnComplete(() =>
+                {
+                    if (_siblingIndex >= 0) transform.SetSiblingIndex(_siblingIndex); // 恢复原顺序
+                });
+        }
+
+        public void OnBeginDrag(PointerEventData eventData)
+        {
+            if (!_controller.CanDragCard()) return;
+            _controller.OnCardDragStart(_defId);
+            // 拖出动画：淡出 + 缩小（部署失败时 RebuildHand 恢复）
+            DOTween.To(() => _cg.alpha, a => _cg.alpha = a, 0f, 0.15f);
+            transform.DOScale(BaseScale * 0.85f, 0.15f);
+        }
+
+        public void OnDrag(PointerEventData eventData)
+        {
+            _controller.OnCardDrag(eventData.position);
+        }
+
+        public void OnEndDrag(PointerEventData eventData)
+        {
+            _controller.OnCardDragEnd();
+        }
+    }
+}

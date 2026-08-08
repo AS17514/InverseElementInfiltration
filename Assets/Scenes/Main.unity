@@ -434,9 +434,9 @@ Camera:
   m_NormalizedViewPortRect:
     serializedVersion: 2
     x: 0
-    y: 0
+    y: 0.4097564
     width: 1
-    height: 1
+    height: 0.1804872
   near clip plane: 0.1
   far clip plane: 100
   field of view: 60
@@ -523,6 +523,7 @@ MonoBehaviour:
   _aiParamConfigs: []
   _eventPoolConfigs: []
   _relicConfigs: []
+  _directToBattle: 1
 --- !u!4 &1987632871
 Transform:
   m_ObjectHideFlags: 0

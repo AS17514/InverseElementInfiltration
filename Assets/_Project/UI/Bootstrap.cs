@@ -24,6 +24,10 @@ namespace TheLaw.UI
         [SerializeField] private List<EventPool> _eventPoolConfigs = new List<EventPool>();
         [SerializeField] private List<RelicDef> _relicConfigs = new List<RelicDef>();
 
+        [Header("测试开关")]
+        [Tooltip("true=启动直进战斗（跳过主菜单），false=正常主菜单流程")]
+        [SerializeField] private bool _directToBattle = true;
+
         // 普通类实例（去单例化后由 Bootstrap 创建并持有；规则层行为类显式传递避免网状耦合）
         private UIManager _uiManager;
         private TutorialSystem _tutorialSystem;
@@ -41,6 +45,15 @@ namespace TheLaw.UI
 
         private void Awake()
         {
+            // DOTween 容量：默认 200/50 快速操作会扩容警告，起步调大
+            DG.Tweening.DOTween.SetTweensCapacity(500, 125);
+            // 防重：场景残留 Bootstrap（Main 1 里那份）自动销毁，只保留主场景驱动
+            if (FindObjectsOfType<Bootstrap>().Length > 1)
+            {
+                Destroy(gameObject);
+                return;
+            }
+            DontDestroyOnLoad(gameObject); // 测试模式要跨场景加载 Main 1，Bootstrap 必须保活
             // ① 按依赖顺序创建常驻管理器
             CreateManagers();
             // ② 加载配置（TODO: Addressables）
@@ -156,11 +169,72 @@ namespace TheLaw.UI
             // TODO: UIManager 切主菜单 + 重建 TowerFlow（新局从 EnterFloor(0) 开始）
         }
 
-        // ========== ⑥ 主菜单 ==========
+        // ========== ⑥ 主菜单 / 测试直进战斗 ==========
 
         private void EnterMainMenu()
         {
-            StartCoroutine(LoadMainMenu());
+            if (_directToBattle)
+            {
+                // 测试模式：启动 main1 场景（战斗测试场景），加载完直进战斗
+                UnityEngine.SceneManagement.SceneManager.sceneLoaded += OnTestSceneLoaded;
+                UnityEngine.SceneManagement.SceneManager.LoadScene("Main 1");
+            }
+            else
+            {
+                StartCoroutine(LoadMainMenu());
+            }
+        }
+
+        private void OnTestSceneLoaded(UnityEngine.SceneManagement.Scene scene, UnityEngine.SceneManagement.LoadSceneMode mode)
+        {
+            if (scene.name != "Main 1") return;
+            UnityEngine.SceneManagement.SceneManager.sceneLoaded -= OnTestSceneLoaded;
+            StartCoroutine(EnterBattleTest());
+        }
+
+        /// <summary>测试模式：直进战斗（初始棋子填手牌 + 临时关卡配置 + 敌方注册 + 战斗控制器）。</summary>
+        private System.Collections.IEnumerator EnterBattleTest()
+        {
+            yield return Addressables.InitializeAsync();
+
+            // 填初始手牌（Initial 类型棋子）
+            int added = 0;
+            foreach (var def in ConfigTable.All<PieceDef>())
+            {
+                if (def.pieceType == PieceType.Initial)
+                {
+                    _resolver.AddToHand(def.Id);
+                    added++;
+                }
+            }
+
+            // 临时关卡配置（无 FloorConfig 资产时的兜底：3 AP、无波次）
+            var floor = ScriptableObject.CreateInstance<FloorConfig>();
+            floor.enemyMaxAP = 3;
+            _battleFlow.StartBattle(floor, GetDefaultAIParams());
+
+            // 创建战斗控制器（先监听，再注册敌方——否则敌方部署事件丢失）
+            var battleGo = new GameObject("BattleController");
+            var controller = battleGo.AddComponent<BattleController>();
+            controller.Init(_battleFlow, _gameState);
+
+            // 注册敌方棋子（与场景 BoardBuilder 视觉位置一致——规则层需要真实棋子才能测伤害/击杀）
+            var enemyDefs = new List<PieceDef>();
+            foreach (var def in ConfigTable.All<PieceDef>())
+            {
+                if (def.pieceType == PieceType.Deployable) enemyDefs.Add(def);
+            }
+            var enemyCells = new[]
+            {
+                new Vector2Int(2, 3), new Vector2Int(3, 6),
+                new Vector2Int(5, 2), new Vector2Int(6, 5),
+            };
+            for (int i = 0; i < enemyCells.Length && i < enemyDefs.Count; i++)
+            {
+                _resolver.Resolve(new DeployAction(enemyDefs[i].Id, Side.Enemy, enemyCells[i]));
+            }
+
+            Debug.Log($"[Bootstrap] 测试直进战斗：手牌 {added} 个初始棋子 + 敌方 {enemyCells.Length} 个，阶段={_gameState.Phase}");
         }
 
         private System.Collections.IEnumerator LoadMainMenu()

@@ -8,7 +8,8 @@
         "UnityEngine.UI",
         "Unity.TextMeshPro",
         "Unity.Addressables",
-        "Unity.ResourceManager"
+        "Unity.ResourceManager",
+        "Assembly-CSharp-firstpass"
     ],
     "includePlatforms": [],
     "excludePlatforms": [],

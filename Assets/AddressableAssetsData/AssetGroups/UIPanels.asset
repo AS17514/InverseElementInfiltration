@@ -32,6 +32,11 @@ MonoBehaviour:
     m_ReadOnly: 0
     m_SerializedLabels: []
     FlaggedDuringContentUpdateRestriction: 0
+  - m_GUID: 3e39db517f800bf45b659929d7ec51c9
+    m_Address: Piece_Card
+    m_ReadOnly: 0
+    m_SerializedLabels: []
+    FlaggedDuringContentUpdateRestriction: 0
   - m_GUID: 6c3fa049300e2b7489fde55e9ea3b506
     m_Address: EditPanel
     m_ReadOnly: 0
@@ -57,13 +62,33 @@ MonoBehaviour:
     m_ReadOnly: 0
     m_SerializedLabels: []
     FlaggedDuringContentUpdateRestriction: 0
+  - m_GUID: 888b5beda7e203f43954aec6cd31c8de
+    m_Address: Program_Card
+    m_ReadOnly: 0
+    m_SerializedLabels: []
+    FlaggedDuringContentUpdateRestriction: 0
   - m_GUID: 8d2878eea917a4a429b959435a569a47
     m_Address: SettingsPanel
     m_ReadOnly: 0
     m_SerializedLabels: []
     FlaggedDuringContentUpdateRestriction: 0
+  - m_GUID: a4c6d20acbc7860479ac44fc12e5fccf
+    m_Address: BehaviorTooltip
+    m_ReadOnly: 0
+    m_SerializedLabels: []
+    FlaggedDuringContentUpdateRestriction: 0
   - m_GUID: b7bea0b451040c34d9181aaf50364ecd
     m_Address: SaveLoadPanel
+    m_ReadOnly: 0
+    m_SerializedLabels: []
+    FlaggedDuringContentUpdateRestriction: 0
+  - m_GUID: bf3ad0d1ec8c3aa45955b92fe35a28f1
+    m_Address: Piece_ProgramInfo
+    m_ReadOnly: 0
+    m_SerializedLabels: []
+    FlaggedDuringContentUpdateRestriction: 0
+  - m_GUID: c2ed3ee41df187c4098b3e65c6af8d99
+    m_Address: Piece_Handcard
     m_ReadOnly: 0
     m_SerializedLabels: []
     FlaggedDuringContentUpdateRestriction: 0

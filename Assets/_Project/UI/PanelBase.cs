@@ -73,13 +73,17 @@ namespace TheLaw.UI
         static Camera FindOrCreateUICamera()
         {
             var vp = Object.FindObjectOfType<UICameraViewport>();
-            if (vp != null) return vp.GetComponent<Camera>();
+            if (vp != null)
+            {
+                var existingCam = vp.GetComponent<Camera>();
+                existingCam.clearFlags = CameraClearFlags.Depth; // 强制全屏透明层（场景相机可能是旧 SolidColor）
+                return existingCam;
+            }
 
             var go = new GameObject("UICamera");
             var cam = go.AddComponent<Camera>();
             cam.orthographic = true;
-            cam.clearFlags = CameraClearFlags.SolidColor;
-            cam.backgroundColor = Color.black;
+            cam.clearFlags = CameraClearFlags.Depth; // 全屏 UI 层：透明区域透出主相机（棋盘）
             cam.cullingMask = LayerMask.GetMask("UI");
             cam.depth = 1;
             cam.allowHDR = false;

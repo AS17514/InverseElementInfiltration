@@ -32,8 +32,7 @@ namespace TheLaw.EditorTools
             var go = new GameObject(UICamName);
             var cam = go.AddComponent<Camera>();
             cam.orthographic = true;
-            cam.clearFlags = CameraClearFlags.SolidColor;
-            cam.backgroundColor = Color.black; // UI 区外不画；区内黑底
+            cam.clearFlags = CameraClearFlags.Depth; // 全屏 UI 层：透明区域透出主相机
             cam.cullingMask = LayerMask.GetMask("UI");
             cam.depth = 1; // 高于主相机
             cam.allowHDR = false;

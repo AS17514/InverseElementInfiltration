@@ -909,12 +909,8 @@ namespace TheLaw.UI
                 _previewCell = new Vector2Int(-1, -1);
             }
 
-            // 清空现有卡片（while 循环——foreach 中 DestroyImmediate 会破坏枚举器导致残留）
-            while (_panel.HandRoot.childCount > 0)
-            {
-                DestroyImmediate(_panel.HandRoot.GetChild(0).gameObject);
-            }
             // 手牌卡为独立 prefab（Piece_Handcard）——Addressables 按需加载
+            // 注意：清空旧卡放在协程内（加载完成后同帧清+建）——避免重建中间空白帧（闪一下）
             _handBuildSeq++;
             StartCoroutine(LoadAndBuildHand(_handBuildSeq));
         }
@@ -930,19 +926,67 @@ namespace TheLaw.UI
                 yield break;
             }
             var template = handle.Result;
+            // 差异重建：同一 defId 复用旧卡（布局插值滑动到新位置）；只销毁移除/新建新增
+            var oldCards = new List<(GameObject go, int defId)>();
+            foreach (Transform child in _panel.HandRoot)
+            {
+                var drag = child.GetComponent<HandCardDrag>();
+                if (drag != null) oldCards.Add((child.gameObject, drag.DefId));
+            }
+            bool fromEmpty = oldCards.Count == 0;
+            var reused = new bool[oldCards.Count];
             var layout = _panel.HandRoot.GetComponent<HandLayoutController>();
             if (layout == null) layout = _panel.HandRoot.gameObject.AddComponent<HandLayoutController>();
             var hand = _state.Hand;
             for (int i = 0; i < hand.Count; i++)
             {
                 var def = ConfigTable.Get<PieceDef>(hand[i]);
-                var card = Instantiate(template, _panel.HandRoot);
-                card.name = $"Card_{i}_{def.displayName}";
-                card.SetActive(true);
-                FillCard(card, def, i);
-                AddCardDrag(card, def.Id, i);
+                GameObject card = null;
+                // 复用：找第一个未复用且 defId 相同的旧卡（保留其位置 → 布局插值滑动）
+                for (int j = 0; j < oldCards.Count; j++)
+                {
+                    if (!reused[j] && oldCards[j].defId == def.Id)
+                    {
+                        card = oldCards[j].go;
+                        reused[j] = true;
+                        break;
+                    }
+                }
+                if (card == null)
+                {
+                    card = Instantiate(template, _panel.HandRoot);
+                    card.SetActive(true);
+                    FillCard(card, def, i);
+                    AddCardDrag(card, def.Id, i);
+                    if (fromEmpty) FadeInCard(card, i); // 仅从无到有时淡入
+                }
+                else
+                {
+                    card.name = $"Card_{i}_{def.displayName}";
+                    card.SetActive(true);
+                }
             }
-            layout.RefreshCards();
+            // 销毁未复用的旧卡（已移除的）
+            for (int j = 0; j < oldCards.Count; j++)
+            {
+                if (!reused[j] && oldCards[j].go != null)
+                {
+                    DestroyImmediate(oldCards[j].go);
+                }
+            }
+            // 有复用卡 → 不 instant（布局插值产生滑动过渡）；从无到有 → instant 落位
+            layout.RefreshCards(fromEmpty);
+        }
+
+        /// <summary>新卡淡入（alpha 0→1，按索引错峰）——重建后重排有过渡而非瞬间出现。</summary>
+        void FadeInCard(GameObject card, int index)
+        {
+            var cg = card.GetComponent<CanvasGroup>();
+            if (cg == null) cg = card.AddComponent<CanvasGroup>();
+            cg.alpha = 0f;
+            DG.Tweening.DOTween.To(() => cg.alpha, a => cg.alpha = a, 1f, 0.2f)
+                .SetDelay(index * 0.04f)
+                .SetTarget(cg);
         }
 
         void FillCard(GameObject card, PieceDef def, int index)
@@ -1031,31 +1075,42 @@ namespace TheLaw.UI
         public void OnCardDrag(Vector2 screenPos)
         {
             if (!_draggingCard || _previewPiece == null) return;
-            var ray = Camera.main != null ? Camera.main.ScreenPointToRay(screenPos) : default;
-            if (ray.origin == default || !Physics.Raycast(ray, out var hit, 200f))
+            var cam = Camera.main;
+            if (cam == null) return;
+            var ray = cam.ScreenPointToRay(screenPos);
+            // 命中合法格 → 吸附定位点
+            if (Physics.Raycast(ray, out var hit, 200f))
             {
-                _previewPiece.transform.position = new Vector3(0f, -50f, 0f);
-                _previewCell = new Vector2Int(-1, -1);
-                return;
+                var cell = PieceViewFactory.CellFromWorld(hit.point);
+                if (IsDeployableCell(cell))
+                {
+                    _previewPiece.transform.position = PieceViewFactory.CellToWorld(cell);
+                    _previewCell = cell;
+                    RefacePreview();
+                    return;
+                }
             }
-            var cell = PieceViewFactory.CellFromWorld(hit.point);
-            if (!IsDeployableCell(cell))
+            // 未吸附：立绘跟随光标（射线与 y=0 棋盘平面交点，保持可见）
+            var plane = new Plane(Vector3.up, Vector3.zero);
+            if (plane.Raycast(ray, out float enter))
             {
-                _previewPiece.transform.position = new Vector3(0f, -50f, 0f);
-                _previewCell = new Vector2Int(-1, -1);
-                return;
+                var p = ray.GetPoint(enter);
+                p.y = Mathf.Clamp(p.y, 0.05f, 5f); // 略高于棋盘，不穿地
+                _previewPiece.transform.position = p;
+                RefacePreview();
             }
-            // 吸附定位点 + 重新匹配相机朝向（创建时位置在隐藏处，角度是错的）
-            _previewPiece.transform.position = PieceViewFactory.CellToWorld(cell);
+            _previewCell = new Vector2Int(-1, -1);
+        }
+
+        /// <summary>预览朝向跟随相机（位置变化后重算）。</summary>
+        void RefacePreview()
+        {
             var portraitT = _previewPiece.transform.Find("Portrait");
-            if (portraitT != null && Camera.main != null)
-            {
-                Vector3 toCam = Camera.main.transform.position - portraitT.position;
-                float horiz = new Vector2(toCam.x, toCam.z).magnitude;
-                float angle = Mathf.Atan2(toCam.y, horiz) * Mathf.Rad2Deg;
-                portraitT.rotation = Quaternion.Euler(angle, 0f, 0f);
-            }
-            _previewCell = cell;
+            if (portraitT == null || Camera.main == null) return;
+            Vector3 toCam = Camera.main.transform.position - portraitT.position;
+            float horiz = new Vector2(toCam.x, toCam.z).magnitude;
+            float angle = Mathf.Atan2(toCam.y, horiz) * Mathf.Rad2Deg;
+            portraitT.rotation = Quaternion.Euler(angle, 0f, 0f);
         }
 
         public void OnCardDragEnd()
@@ -1135,6 +1190,8 @@ namespace TheLaw.UI
         int _defId;
         CanvasGroup _cg;
         DG.Tweening.Tween _fadeTween; // 拖出淡出 tween（显式管理，防销毁后访问）
+
+        public int DefId => _defId; // 差异重建时按 defId 复用卡片
 
         public void Init(BattleController controller, int defId, int cardIndex)
         {

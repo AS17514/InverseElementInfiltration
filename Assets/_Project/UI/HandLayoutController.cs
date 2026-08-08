@@ -52,8 +52,8 @@ namespace TheLaw.UI
             _collapsed = collapsed;
         }
 
-        /// <summary>手牌重建后调用：重新收集卡片。</summary>
-        public void RefreshCards()
+        /// <summary>手牌重建后调用：重新收集卡片。instant=true 立即落位（无动画）；false 让布局插值滑动过渡。</summary>
+        public void RefreshCards(bool instant = true)
         {
             _cards.Clear();
             foreach (Transform child in transform)
@@ -69,7 +69,7 @@ namespace TheLaw.UI
             }
             _hoverIndex = -1;
             _hoverSibling = -1;
-            ApplyLayout(instant: true);
+            ApplyLayout(instant: instant); // 用传入参数（false = 复用卡从旧位置插值滑动过渡）
         }
 
         void Update()

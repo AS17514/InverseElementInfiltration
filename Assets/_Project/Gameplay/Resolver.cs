@@ -184,6 +184,16 @@ namespace TheLaw.Gameplay
         private void ResolveDeploy(DeployAction action)
         {
             var def = ConfigTable.Get<PieceDef>(action.pieceDefId);
+            if (def == null)
+            {
+                return;
+            }
+            if (_state.Pieces.ContainsKey(action.cell))
+            {
+                // 防御：部署格被占用拒绝（正常路径 FindDeployCell/IsValidDeployCell 已保证空格——防未来路径绕过检查覆盖棋盘）
+                Debug.LogWarning($"[Resolver] 部署格被占用，拒绝：cell={action.cell}（{def.name}）");
+                return;
+            }
             var piece = new PieceInstance(def, action.side, action.cell)
             {
                 Id = _state.AllocatePieceId(),

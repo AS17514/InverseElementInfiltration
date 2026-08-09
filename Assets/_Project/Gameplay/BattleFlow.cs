@@ -71,7 +71,7 @@ namespace TheLaw.Gameplay
             _state.EnemyAPMax = floor.enemyMaxAP;
             _state.WaveEndCountdown = -1;
             _floorRules.OnBattleStart(_state, _resolver);
-            ChangePhase(BattlePhase.Placement);
+            ChangePhase(BattlePhase.Placement, force: true); // 强制：塔流程 Phase 可能已停在 Placement——必须发事件让 UI 创建战斗控制器
             // 开局部署首波（startTurn=1 的波——玩家摆位需要看到敌方位置参照）
             HandleWaveAndPromotions();
             // Placement：玩家布置 Hand 中 Initial 棋子（起始标记自由摆）→ UI 摆完发 PlacementFinished
@@ -177,9 +177,10 @@ namespace TheLaw.Gameplay
         }
 
         /// <summary>阶段切换（唯一入口——内部校验转移合法性；副作用只在切换触发）。</summary>
-        public void ChangePhase(BattlePhase newPhase)
+        /// <param name="force">强制切换：阶段相同也发事件（StartBattle 用——塔流程 Phase 可能停在 Placement，幂等 return 会漏发事件导致 UI 无感知）。</param>
+        public void ChangePhase(BattlePhase newPhase, bool force = false)
         {
-            if (_state.Phase == newPhase)
+            if (!force && _state.Phase == newPhase)
             {
                 return;
             }

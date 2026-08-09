@@ -170,22 +170,9 @@ namespace TheLaw.UI
         {
             if (_gameState.Phase != BattlePhase.GameOver) return; // 其他 StateChanged（落账等）不处理
             if (!(data is Side winner)) return;
-            StartCoroutine(LoadBattleResult(winner == Side.Player));
-        }
-
-        /// <summary>战斗结算面板：胜负文案 + 重新开始/返回主菜单。</summary>
-        private System.Collections.IEnumerator LoadBattleResult(bool victory)
-        {
-            bool done = false;
-            BattleResultPanel panel = null;
-            PanelBase.CreateAsync<BattleResultPanel>(p => { panel = p; done = true; });
-            yield return new WaitUntil(() => done);
-            _uiManager.RegisterPanel(panel);
-            panel.ShowResult(victory);
-            panel.OnRestartClicked += () => { _uiManager.HidePanel("BattleResult"); StartNewGame(); };
-            panel.OnBackToMenuClicked += () => { _uiManager.HidePanel("BattleResult"); BackToMainMenu(); };
-            _uiManager.ShowPanel("BattleResult");
-            Debug.Log($"[Bootstrap] 战斗结算显示：{(victory ? "胜利" : "失败")}");
+            // 战斗结束直接回主菜单（结算面板后置安排——胜利/失败即回主界面）
+            Debug.Log($"[Bootstrap] 战斗结束（{(winner == Side.Player ? "胜利" : "失败")}）→ 返回主菜单");
+            BackToMainMenu();
         }
 
         /// <summary>回主菜单：重置状态 + 清档 + 显示主菜单（面板实例常驻，HidePanel 过直接恢复）。</summary>

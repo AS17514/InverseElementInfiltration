@@ -75,6 +75,15 @@ namespace TheLaw.UI
             if (_handSizeTween != null) _handSizeTween.Kill();
             // 随会话销毁战斗面板（重开/回主菜单时清理——防多局累积实例）
             if (_panel != null) Destroy(_panel.gameObject);
+            // 清理盘面视觉：高亮根 + 全部棋子视觉（重开会话时盘面必须清空）
+            ClearHighlights();
+            foreach (var go in FindObjectsOfType<GameObject>())
+            {
+                if (go.name.StartsWith("Piece_"))
+                {
+                    Destroy(go);
+                }
+            }
         }
 
         public void Init(BattleFlow flow, GameState state)

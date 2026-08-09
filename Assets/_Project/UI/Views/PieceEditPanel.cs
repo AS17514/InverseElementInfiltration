@@ -104,23 +104,41 @@ namespace TheLaw.UI
             _infoTypeText = type != null ? type.GetComponentInChildren<TMP_Text>() : null;
             var name = _nonOverlap?.Find("Grp_PortraitNameDisplay/Txt_InfoName");
             _infoName = name != null ? name.GetComponent<TMP_Text>() : null;
+            if (_infoName == null)
+            {
+                // 兜底：深层按名查找（prefab 复制可能带 (1) 后缀）
+                foreach (var t in GetComponentsInChildren<TMP_Text>(true))
+                {
+                    if (t.name == "Txt_InfoName") { _infoName = t; break; }
+                }
+            }
             var portrait = _nonOverlap?.Find("Grp_PortraitNameDisplay/Img_InfoPortrait");
             _infoPortrait = portrait != null ? portrait.GetComponent<Image>() : null;
         }
 
-        // ====== 程序库（所有棋子 programSet 模板去重——全局模板库） ======
+        // ====== 程序库（独立模板库优先，回退棋子自带去重） ======
         void BuildProgramLibrary()
         {
             _programLibrary.Clear();
             var seen = new HashSet<string>();
-            foreach (var def in ConfigTable.All<PieceDef>())
+            // 独立模板库（TemplateLibrary——编辑候选池，协作者 templates.json 导入）
+            foreach (var t in TemplateLibrary.All())
             {
-                foreach (var prog in def.programSet)
+                var key = SlotDescTable.FeatureOf(t);
+                if (seen.Add(key)) _programLibrary.Add(t);
+            }
+            // 回退：模板库未注册时用棋子自带模板去重
+            if (_programLibrary.Count == 0)
+            {
+                foreach (var def in ConfigTable.All<PieceDef>())
                 {
-                    foreach (var slot in prog.slots)
+                    foreach (var prog in def.programSet)
                     {
-                        var key = SlotDescTable.FeatureOf(slot);
-                        if (seen.Add(key)) _programLibrary.Add(slot);
+                        foreach (var slot in prog.slots)
+                        {
+                            var key = SlotDescTable.FeatureOf(slot);
+                            if (seen.Add(key)) _programLibrary.Add(slot);
+                        }
                     }
                 }
             }
@@ -150,7 +168,7 @@ namespace TheLaw.UI
             var rt = (RectTransform)go.transform;
             rt.sizeDelta = new Vector2(150, 150);
             var img = go.GetComponent<Image>();
-            img.color = new Color(0.9f, 0.9f, 0.9f, 1f);
+            img.color = CardTypeColors.For(def.pieceType); // 种类标识色（与手牌一致）
             // 名称文本（临时——正式用 prefab Piece_Card）
             var txtGo = new GameObject("Txt", typeof(RectTransform), typeof(TextMeshProUGUI));
             txtGo.transform.SetParent(go.transform, false);
@@ -255,7 +273,17 @@ namespace TheLaw.UI
                     }
                 }
             }
-            if (_pieceInfo != null) _pieceInfo.gameObject.SetActive(true);
+            // 右侧信息区底色按种类标识（半透明——不盖子级内容）
+            if (_pieceInfo != null)
+            {
+                var infoImg = _pieceInfo.GetComponent<Image>();
+                if (infoImg != null)
+                {
+                    var c = CardTypeColors.For(def.pieceType);
+                    infoImg.color = new Color(c.r, c.g, c.b, 0.45f);
+                }
+                _pieceInfo.gameObject.SetActive(true);
+            }
         }
 
         /// <summary>替换槽位程序块（拖入放置/内部调用）。</summary>

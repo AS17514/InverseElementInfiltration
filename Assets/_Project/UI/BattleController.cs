@@ -1197,9 +1197,9 @@ namespace TheLaw.UI
 
         void FillCard(GameObject card, PieceDef def, int index)
         {
-            // 卡背景色按种类标识（低饱和度：初始=浅绿 / 部署=浅蓝 / 升变=浅红）
+            // 卡背景色按种类标识（低饱和度：初始=绿 / 部署=蓝 / 升变=红）
             var bg = card.GetComponent<Image>();
-            if (bg != null) bg.color = CardTypeColor(def.pieceType);
+            if (bg != null) bg.color = CardTypeColors.For(def.pieceType);
             var nameText = FindCardNode(card.transform, "Txt_InfoName")?.GetComponent<TMP_Text>();
             if (nameText != null) nameText.text = VerticalName(def.displayName); // 竖排（一字一行）
             var valueText = FindCardNode(card.transform, "Img_InfoValue")?.GetComponentInChildren<TMP_Text>();

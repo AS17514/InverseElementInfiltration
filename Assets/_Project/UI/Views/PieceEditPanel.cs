@@ -188,12 +188,21 @@ namespace TheLaw.UI
                 drag.Init(this, slot);
             }
         }
-        /// <summary>保底：Content 加 ContentSizeFitter（垂直撑高——GridLayoutGroup 不改变 Content 尺寸，无 CSF 则滚动条永远满）。</summary>
+        /// <summary>保底：Content 加 ContentSizeFitter（垂直撑高——GridLayoutGroup 不改变 Content 尺寸，无 CSF 则滚动条永远满）。
+        /// 顶部锚 + 顶 pivot：CSF 撑高向下生长（防顶部被裁）。</summary>
         void EnsureScrollContent(Transform content)
         {
             var csf = content.GetComponent<UnityEngine.UI.ContentSizeFitter>();
             if (csf == null) csf = content.gameObject.AddComponent<UnityEngine.UI.ContentSizeFitter>();
             csf.verticalFit = UnityEngine.UI.ContentSizeFitter.FitMode.PreferredSize;
+            var rt = content as RectTransform;
+            if (rt != null)
+            {
+                rt.anchorMin = new Vector2(0f, 1f);
+                rt.anchorMax = new Vector2(0f, 1f);
+                rt.pivot = new Vector2(0.5f, 1f);
+                rt.anchoredPosition = Vector2.zero;
+            }
         }
 
         // ====== 选中棋子 ======

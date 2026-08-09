@@ -14,8 +14,6 @@ namespace TheLaw.UI
     {
         const float CardScale = 0.35f;         // 叠放基准缩放
         const float HoverScale = 0.7f;         // hover 放大（2 倍）
-        const float SparseGap = 15f;           // 牌少：卡间空隙
-        const float DenseReveal = 48f;         // 牌多：每张露出宽度
         const float HoverPushFactor = 0.5f;    // 相邻让位衰减（0.5^距离）
         const float HoverPush = 160f;          // 让位幅度（保序约束：< 4×最小间距=192）
         const float HoverLift = 500f;          // hover 整体上浮（卡顶高出 手牌区顶 500px）
@@ -148,12 +146,8 @@ namespace TheLaw.UI
             float cardW = _cardWidth * CardScale;          // 显示宽 270.7
             float halfW = _root.rect.width * 0.5f;         // 570
 
-            // 间距：≤4 展开（卡宽+15），≥8 堆叠（露出 48），中间平滑插值
-            float expanded = cardW + SparseGap;
-            float spacing;
-            if (n <= 4) spacing = expanded;
-            else if (n >= 8) spacing = DenseReveal;
-            else spacing = Mathf.Lerp(expanded, DenseReveal, Mathf.SmoothStep(0f, 1f, (n - 4) / 4f));
+            // 间距 = 手牌区全宽均分——与 UpdateHoverBySlot 的 N 等分判定完全对齐（显示位置 = hover 触发区域）
+            float spacing = n > 0 ? _root.rect.width / n : 0f;
 
             // y：基础 = 顶部贴当前手牌区顶（随收起自适应）；hover = 上浮基准固定（展开态 250 高度）——
             // 收起时补齐高度差，上浮卡顶不因手牌区变矮而降低

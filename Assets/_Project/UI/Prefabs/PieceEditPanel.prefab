@@ -773,7 +773,6 @@ GameObject:
   m_Component:
   - component: {fileID: 1459774488443148587}
   - component: {fileID: 8115868033029086006}
-  - component: {fileID: 8479133965904211317}
   m_Layer: 5
   m_Name: Grp_InfoProgram
   m_TagString: Untagged
@@ -799,10 +798,10 @@ RectTransform:
   - {fileID: 5687213552895690500}
   m_Father: {fileID: 5635308684974427817}
   m_LocalEulerAnglesHint: {x: 0, y: 0, z: 0}
-  m_AnchorMin: {x: 0, y: 1}
-  m_AnchorMax: {x: 0, y: 1}
-  m_AnchoredPosition: {x: 84.49519, y: -968.75}
-  m_SizeDelta: {x: 100, y: 0}
+  m_AnchorMin: {x: 0, y: 0}
+  m_AnchorMax: {x: 0, y: 0}
+  m_AnchoredPosition: {x: 0, y: 0}
+  m_SizeDelta: {x: 100, y: 505}
   m_Pivot: {x: 0.5, y: 0}
 --- !u!114 &8115868033029086006
 MonoBehaviour:
@@ -830,20 +829,6 @@ MonoBehaviour:
   m_ChildScaleWidth: 0
   m_ChildScaleHeight: 0
   m_ReverseArrangement: 0
---- !u!114 &8479133965904211317
-MonoBehaviour:
-  m_ObjectHideFlags: 0
-  m_CorrespondingSourceObject: {fileID: 0}
-  m_PrefabInstance: {fileID: 0}
-  m_PrefabAsset: {fileID: 0}
-  m_GameObject: {fileID: 1903398123726228368}
-  m_Enabled: 1
-  m_EditorHideFlags: 0
-  m_Script: {fileID: 11500000, guid: 3245ec927659c4140ac4f8d17403cc18, type: 3}
-  m_Name: 
-  m_EditorClassIdentifier: 
-  m_HorizontalFit: 2
-  m_VerticalFit: 2
 --- !u!1 &1938537622901220627
 GameObject:
   m_ObjectHideFlags: 0
@@ -2839,7 +2824,6 @@ GameObject:
   m_Component:
   - component: {fileID: 152299363716911491}
   - component: {fileID: 5502809602832948465}
-  - component: {fileID: 5880415006239059123}
   m_Layer: 5
   m_Name: Grp_InfoBase
   m_TagString: Untagged
@@ -2864,10 +2848,10 @@ RectTransform:
   - {fileID: 2626217219678333839}
   m_Father: {fileID: 5635308684974427817}
   m_LocalEulerAnglesHint: {x: 0, y: 0, z: 0}
-  m_AnchorMin: {x: 0, y: 1}
-  m_AnchorMax: {x: 0, y: 1}
-  m_AnchoredPosition: {x: 84.49519, y: -31.25}
-  m_SizeDelta: {x: 100, y: 0}
+  m_AnchorMin: {x: 0, y: 0}
+  m_AnchorMax: {x: 0, y: 0}
+  m_AnchoredPosition: {x: 0, y: 0}
+  m_SizeDelta: {x: 100, y: 370}
   m_Pivot: {x: 0.5, y: 1}
 --- !u!114 &5502809602832948465
 MonoBehaviour:
@@ -2889,26 +2873,12 @@ MonoBehaviour:
   m_ChildAlignment: 1
   m_Spacing: 35
   m_ChildForceExpandWidth: 1
-  m_ChildForceExpandHeight: 0
+  m_ChildForceExpandHeight: 1
   m_ChildControlWidth: 0
   m_ChildControlHeight: 0
   m_ChildScaleWidth: 0
   m_ChildScaleHeight: 0
   m_ReverseArrangement: 0
---- !u!114 &5880415006239059123
-MonoBehaviour:
-  m_ObjectHideFlags: 0
-  m_CorrespondingSourceObject: {fileID: 0}
-  m_PrefabInstance: {fileID: 0}
-  m_PrefabAsset: {fileID: 0}
-  m_GameObject: {fileID: 5056803634564356151}
-  m_Enabled: 1
-  m_EditorHideFlags: 0
-  m_Script: {fileID: 11500000, guid: 3245ec927659c4140ac4f8d17403cc18, type: 3}
-  m_Name: 
-  m_EditorClassIdentifier: 
-  m_HorizontalFit: 2
-  m_VerticalFit: 2
 --- !u!1 &5218386633316690533
 GameObject:
   m_ObjectHideFlags: 0

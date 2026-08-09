@@ -1197,6 +1197,9 @@ namespace TheLaw.UI
 
         void FillCard(GameObject card, PieceDef def, int index)
         {
+            // 卡背景色按种类标识（低饱和度：初始=浅绿 / 部署=浅蓝 / 升变=浅红）
+            var bg = card.GetComponent<Image>();
+            if (bg != null) bg.color = CardTypeColor(def.pieceType);
             var nameText = FindCardNode(card.transform, "Txt_InfoName")?.GetComponent<TMP_Text>();
             if (nameText != null) nameText.text = VerticalName(def.displayName); // 竖排（一字一行）
             var valueText = FindCardNode(card.transform, "Img_InfoValue")?.GetComponentInChildren<TMP_Text>();
@@ -1230,6 +1233,17 @@ namespace TheLaw.UI
         }
 
         /// <summary>竖排名称：每个字符一行（卡片名称竖向显示）。</summary>
+        /// <summary>卡片背景色（种类标识，低饱和度：初始=浅绿 / 部署=浅蓝 / 升变=浅红）。</summary>
+        static Color CardTypeColor(PieceType type)
+        {
+            switch (type)
+            {
+                case PieceType.Initial: return new Color(0.58f, 0.78f, 0.58f, 1f);   // 浅绿
+                case PieceType.Deployable: return new Color(0.58f, 0.70f, 0.85f, 1f); // 浅蓝
+                default: return new Color(0.85f, 0.62f, 0.62f, 1f);                   // 浅红（升变）
+            }
+        }
+
         static string VerticalName(string name)
         {
             if (string.IsNullOrEmpty(name)) return name;

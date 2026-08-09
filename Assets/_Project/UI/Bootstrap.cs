@@ -181,7 +181,21 @@ namespace TheLaw.UI
             EventCenter.Instance.AddEventListener(GameEvent.StateChanged, OnStateChanged);
             // 事件关：EventOpened → 显示事件面板（选项交互 → EventCompleted 推进）
             EventCenter.Instance.AddEventListener(GameEvent.EventOpened, OnEventOpened);
+            // 战斗开始：TowerFlow 开战（Phase→Placement）→ 创建战斗控制器
+            EventCenter.Instance.AddEventListener(GameEvent.PhaseChanged, OnPhaseChanged);
             // TODO: 进层/开战存档（SaveManager.SaveAll 触发时机——关键事件存档）
+        }
+
+        private void OnPhaseChanged(object data)
+        {
+            // 战斗开始（TowerFlow.StartBattle → Placement）→ 创建战斗控制器（幂等）
+            if (_gameState.Phase == BattlePhase.Placement)
+            {
+                if (GameObject.Find("BattleController") == null)
+                {
+                    CreateBattleController();
+                }
+            }
         }
 
         private void OnEventOpened(object data)
@@ -216,11 +230,25 @@ namespace TheLaw.UI
 
         private void OnStateChanged(object data)
         {
-            if (_gameState.Phase != BattlePhase.GameOver) return; // 其他 StateChanged（落账等）不处理
+            // 字符串信号：摆放未完成（BattleController 处理）/ 编辑（打开编辑面板）/ 构筑（一版跳过）
+            if (data is string s)
+            {
+                if (s == "edit")
+                {
+                    OpenPieceEditor(fromEvent: true); // 事件关：编辑棋子行为（固定链第 1 步）
+                }
+                else if (s == "deck")
+                {
+                    // 构筑面板未拼——一版跳过直接推进（固定链第 2 步）
+                    EventCenter.Instance.EventTrigger(GameEvent.EventCompleted);
+                }
+                return;
+            }
+            // 战斗结算：GameOver 携带胜方 → TowerFlow 收尾（胜利推进/失败结束——RunEnded 驱动回主菜单）
+            if (_gameState.Phase != BattlePhase.GameOver) return;
             if (!(data is Side winner)) return;
-            // 战斗结束直接回主菜单（结算面板后置安排——胜利/失败即回主界面）
-            Debug.Log($"[Bootstrap] 战斗结束（{(winner == Side.Player ? "胜利" : "失败")}）→ 返回主菜单");
-            BackToMainMenu();
+            Debug.Log($"[Bootstrap] 战斗结束（{(winner == Side.Player ? "胜利" : "失败")}）→ TowerFlow 收尾");
+            _towerFlow.OnBattleEnded(winner);
         }
 
         /// <summary>回主菜单：重置状态 + 清档 + 显示主菜单（面板实例常驻，HidePanel 过直接恢复）。</summary>
@@ -244,9 +272,8 @@ namespace TheLaw.UI
         {
             bool victory = data is bool b && b;
             Debug.Log($"[Bootstrap] 整局结束 victory={victory}");
-            SaveManager.Instance.SaveAll();            // 失败/通关 → 清档
-            _gameState.ResetForNewRun();               // 单局制：回塔底
-            // TODO: UIManager 切主菜单 + 重建 TowerFlow（新局从 EnterFloor(0) 开始）
+            // 失败/通关 → 清档 + 回主菜单（单局制）
+            BackToMainMenu();
         }
 
         // ========== ⑥ 主菜单 / 测试直进战斗 ==========
@@ -280,20 +307,21 @@ namespace TheLaw.UI
             OpenPieceEditor();
         }
 
-        /// <summary>打开棋子编辑面板（测试前后端对接：程序编排 → 战斗）。</summary>
-        private void OpenPieceEditor()
+        /// <summary>打开棋子编辑面板（fromEvent：事件关模式——Btn_Next 发 EventCompleted 推进）。</summary>
+        private void OpenPieceEditor(bool fromEvent = false)
         {
             if (_pieceEditPanel == null)
             {
-                StartCoroutine(LoadPieceEditPanel());
+                StartCoroutine(LoadPieceEditPanel(fromEvent));
             }
             else
             {
+                _pieceEditPanel.SetMode(fromEvent);
                 _uiManager.ShowPanel("PieceEdit");
             }
         }
 
-        private System.Collections.IEnumerator LoadPieceEditPanel()
+        private System.Collections.IEnumerator LoadPieceEditPanel(bool fromEvent)
         {
             bool done = false;
             PieceEditPanel panel = null;
@@ -302,24 +330,24 @@ namespace TheLaw.UI
             _pieceEditPanel = panel;
             _uiManager.RegisterPanel(panel);
             panel.Init(_editorSession, _gameState);
-            panel.OnNextClicked += StartBattleAfterEdit; // 编辑完成 → 进战斗
+            panel.SetMode(fromEvent);
+            panel.OnNextClicked += StartBattleAfterEdit; // 新局模式：编辑完成 → TowerFlow 节点序列
             _uiManager.ShowPanel("PieceEdit");
-            Debug.Log("[Bootstrap] 棋子编辑界面已显示");
+            Debug.Log($"[Bootstrap] 棋子编辑界面已显示（{(fromEvent ? "事件模式" : "新局模式")}）");
         }
 
-        /// <summary>编辑完成：直进第 1 层战斗（数据集的 Floor_floor1）。</summary>
+        /// <summary>编辑完成（新局模式）：进入 TowerFlow 节点序列（事件→事件→事件→战斗——固定链）。</summary>
         private void StartBattleAfterEdit()
         {
             _uiManager.HidePanel("PieceEdit");
             var map = GetMapConfig();
             if (map == null || map.floors.Count == 0)
             {
-                Debug.LogError("[Bootstrap] 无地图配置——无法开始战斗");
+                Debug.LogError("[Bootstrap] 无地图配置——无法进入爬塔");
                 return;
             }
-            _battleFlow.StartBattle(map.floors[0], GetDefaultAIParams());
-            CreateBattleController();
-            Debug.Log($"[Bootstrap] 编辑完成进战斗：层 {_gameState.CurrentFloor}，阶段={_gameState.Phase}，手牌 {_gameState.Hand.Count}");
+            _towerFlow.EnterFloor(0); // 节点序列：事件链（编辑→构筑→战斗）由 TowerFlow 驱动
+            Debug.Log($"[Bootstrap] 进入爬塔：层 {_gameState.CurrentFloor}，节点 {_gameState.CurrentNodeIndex}/{_gameState.NodeStates.Count}");
         }
 
         private void CreateBattleController()

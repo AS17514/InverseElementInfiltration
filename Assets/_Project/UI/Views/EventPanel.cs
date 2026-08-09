@@ -114,8 +114,27 @@ namespace TheLaw.UI
         {
             if (_eventNode == null || _currentEventId == null) return;
             _eventNode.OnOptionSelected(_currentEventId, optionIndex); // 规则层校验 + 效果落账
-            // 一版：无交互效果（遗物/婉拒）→ 直接完成推进；edit/deck 专用界面后续细化
-            Complete();
+            // 交互效果（编辑/构筑）：隐藏事件面板等专用界面（StateChanged("edit"/"deck") 由 Bootstrap 处理）
+            bool interactive = false;
+            if (_currentEvent != null && optionIndex >= 0 && optionIndex < _currentEvent.options.Count)
+            {
+                foreach (var e in _currentEvent.options[optionIndex].effects)
+                {
+                    if (e.effectType == EffectType.EditProgram || e.effectType == EffectType.DeckBuild)
+                    {
+                        interactive = true;
+                        break;
+                    }
+                }
+            }
+            if (interactive)
+            {
+                gameObject.SetActive(false); // 等专用面板完成（EventCompleted 推进）——下一节点 EventOpened 再激活
+            }
+            else
+            {
+                Complete(); // 无交互效果（遗物/婉拒）→ 直接推进
+            }
         }
 
         /// <summary>事件交互完成：隐藏面板 + 通知 TowerFlow 推进下一节点。</summary>

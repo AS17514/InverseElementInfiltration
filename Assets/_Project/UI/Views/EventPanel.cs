@@ -114,8 +114,9 @@ namespace TheLaw.UI
                 }
                 else
                 {
-                    // 模板未加载回退：纯代码创建
+                    // 模板未加载回退：纯代码创建（必须挂到 _optionsRoot——防生成在场景根）
                     go = new GameObject($"Option_{i}", typeof(RectTransform), typeof(Image), typeof(Button));
+                    go.transform.SetParent(_optionsRoot, false);
                     var rt = (RectTransform)go.transform;
                     rt.sizeDelta = new Vector2(600, 60);
                     go.GetComponent<Image>().color = new Color(0.25f, 0.4f, 0.65f, 1f);

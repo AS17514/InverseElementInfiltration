@@ -130,6 +130,7 @@ namespace TheLaw.UI
         void RefreshPieceList()
         {
             if (_pieceContent == null) return;
+            EnsureScrollContent(_pieceContent);
             foreach (Transform child in _pieceContent) Destroy(child.gameObject);
             foreach (var def in ConfigTable.All<PieceDef>())
             {
@@ -165,6 +166,7 @@ namespace TheLaw.UI
         void RefreshProgramList()
         {
             if (_programContent == null) return;
+            EnsureScrollContent(_programContent);
             foreach (Transform child in _programContent) Destroy(child.gameObject);
             foreach (var slot in _programLibrary)
             {
@@ -186,6 +188,14 @@ namespace TheLaw.UI
                 drag.Init(this, slot);
             }
         }
+        /// <summary>保底：Content 加 ContentSizeFitter（垂直撑高——GridLayoutGroup 不改变 Content 尺寸，无 CSF 则滚动条永远满）。</summary>
+        void EnsureScrollContent(Transform content)
+        {
+            var csf = content.GetComponent<UnityEngine.UI.ContentSizeFitter>();
+            if (csf == null) csf = content.gameObject.AddComponent<UnityEngine.UI.ContentSizeFitter>();
+            csf.verticalFit = UnityEngine.UI.ContentSizeFitter.FitMode.PreferredSize;
+        }
+
         // ====== 选中棋子 ======
         void SelectPiece(int defId)
         {

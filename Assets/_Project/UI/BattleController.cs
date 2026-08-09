@@ -496,16 +496,28 @@ namespace TheLaw.UI
             StartCoroutine(LoadTooltipAndShow(slotIndex, leftTopWorld));
         }
 
+        bool _tooltipLoading; // 加载锁：防重入双实例（首帧加载慢时连续 hover 会并发创建两个浮窗）
+
         IEnumerator LoadTooltipAndShow(int slotIndex, Vector3 leftTopWorld)
         {
+            if (_tooltipLoading)
+            {
+                yield break; // 加载中：忽略重复请求（加载完成后下次 hover 自然显示）
+            }
             if (_tooltip == null)
             {
+                _tooltipLoading = true;
                 var handle = UnityEngine.AddressableAssets.Addressables.LoadAssetAsync<GameObject>("BehaviorTooltip");
                 yield return handle;
+                _tooltipLoading = false;
                 if (handle.Status != UnityEngine.ResourceManagement.AsyncOperations.AsyncOperationStatus.Succeeded || handle.Result == null)
                 {
                     Debug.LogWarning("[Battle] BehaviorTooltip 加载失败");
                     yield break;
+                }
+                if (_tooltip != null)
+                {
+                    yield break; // 双保险：加载期间已被其他路径创建（防双实例）
                 }
                 var canvas = UnityEngine.Object.FindObjectOfType<Canvas>();
                 if (canvas != null && canvas.transform.parent != null) canvas = null; // 只挂根 Canvas（跳过子 Canvas）

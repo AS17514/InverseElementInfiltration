@@ -148,11 +148,11 @@ namespace TheLaw.UI
             }
         }
 
-        /// <summary>事件交互完成：隐藏面板 + 通知 TowerFlow 推进下一节点。</summary>
+        /// <summary>事件交互完成：先关自己再通知 TowerFlow 推进（防同步推进重新激活面板后被 SetActive(false) 关闭——时序反转）。</summary>
         void Complete()
         {
-            EventCenter.Instance.EventTrigger(GameEvent.EventCompleted);
             gameObject.SetActive(false);
+            EventCenter.Instance.EventTrigger(GameEvent.EventCompleted);
         }
 
         void Exit()

@@ -32,9 +32,23 @@ namespace TheLaw.Gameplay
             this.side = side;
             this.position = position;
             durability = def.durability;
-            facing = def.defaultFacing;
+            // 敌方与我方对向——初始朝向翻转（我方朝上/向前，敌方朝下/向后）
+            facing = side == Side.Enemy ? OppositeFacing(def.defaultFacing) : def.defaultFacing;
             isDeployed = true;
             shieldCount = GetShieldAmount(); // 初始护盾 = 固有 ShieldBlock 能力 amount 之和
+        }
+
+        /// <summary>朝向翻转（上下互换/左右互换）——敌方与我方对向。</summary>
+        public static Facing OppositeFacing(Facing f)
+        {
+            switch (f)
+            {
+                case Facing.Up: return Facing.Down;
+                case Facing.Down: return Facing.Up;
+                case Facing.Left: return Facing.Right;
+                case Facing.Right: return Facing.Left;
+                default: return f;
+            }
         }
 
         /// <summary>护盾量 = 该棋子全部 ShieldBlock 能力（固有 + 临时）amount 之和。</summary>

@@ -28,10 +28,11 @@ namespace TheLaw.UI
 
         private void BindButtons()
         {
-            Bind("Btn_NewGame", OnNewGameClicked);
-            Bind("Btn_ContinueGame", OnContinueClicked);
-            Bind("Btn_Settings", OnSettingsClicked);
-            Bind("Btn_QuitGame", OnQuitClicked);
+            // lambda 直接引用事件字段（运行时读最新值）——传参数会捕获订阅前的 null 快照，点击时永远不触发
+            Bind("Btn_NewGame", () => OnNewGameClicked?.Invoke());
+            Bind("Btn_ContinueGame", () => OnContinueClicked?.Invoke());
+            Bind("Btn_Settings", () => OnSettingsClicked?.Invoke());
+            Bind("Btn_QuitGame", () => OnQuitClicked?.Invoke());
         }
 
         private void Bind(string buttonName, Action handler)

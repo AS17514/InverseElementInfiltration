@@ -36,6 +36,89 @@ namespace TheLaw.EditorTools
             Debug.Log("[配置导入器] 完成：遗物/事件/关卡/地图/模板库");
         }
 
+        /// <summary>
+        /// 一次性工具：把模板资产（Tpl_*.asset）批量填入 Bootstrap 预制体的 _templateConfigs（免手动拖 20 个）。
+        /// 直接修改预制体资产（Prefabs/Bootstrap.prefab）——团队共享生效（场景实例是预制体实例，改资产才落库）。
+        /// 不引用 UI 程序集——按组件类型名匹配 Bootstrap；PrefabUtility 修改预制体内容。
+        /// ⚠️ 不自动保存场景（防把未保存的误操作一起存进去）——场景实例若需同步请手动处理。
+        /// 未来新增模板后重跑一次即可。
+        /// </summary>
+        [MenuItem("工具/收集模板资产到 Bootstrap")]
+        public static void CollectTemplatesToBootstrap()
+        {
+            var templateAssets = new List<TemplateDef>();
+            foreach (var guid in AssetDatabase.FindAssets("t:TemplateDef", new[] { ConfigAssetsDir }))
+            {
+                var path = AssetDatabase.GUIDToAssetPath(guid);
+                var asset = AssetDatabase.LoadAssetAtPath<TemplateDef>(path);
+                if (asset != null)
+                {
+                    templateAssets.Add(asset);
+                }
+            }
+            Debug.Log($"[配置导入器] 找到模板资产 {templateAssets.Count} 个");
+            if (templateAssets.Count == 0)
+            {
+                Debug.LogWarning("[配置导入器] 未找到模板资产——先运行'导入关卡配置（JSON）'生成 Tpl_*.asset");
+                return;
+            }
+
+            // 找 Bootstrap 预制体资产（Prefabs/Bootstrap.prefab——按名字搜，不硬编码路径）
+            string prefabPath = null;
+            foreach (var guid in AssetDatabase.FindAssets("Bootstrap t:Prefab"))
+            {
+                var p = AssetDatabase.GUIDToAssetPath(guid);
+                if (p.EndsWith("Bootstrap.prefab"))
+                {
+                    prefabPath = p;
+                    break;
+                }
+            }
+            if (string.IsNullOrEmpty(prefabPath))
+            {
+                Debug.LogError("[配置导入器] 未找到 Bootstrap.prefab——检查 Prefabs 目录");
+                return;
+            }
+            Debug.Log($"[配置导入器] 找到预制体：{prefabPath}");
+
+            // 修改预制体资产内容（不碰场景实例——实例 override 与资产分离）
+            var contents = PrefabUtility.LoadPrefabContents(prefabPath);
+            MonoBehaviour bootstrap = null;
+            foreach (var mb in contents.GetComponentsInChildren<MonoBehaviour>(true))
+            {
+                if (mb.GetType().Name == "Bootstrap")
+                {
+                    bootstrap = mb;
+                    break;
+                }
+            }
+            if (bootstrap == null)
+            {
+                PrefabUtility.UnloadPrefabContents(contents);
+                Debug.LogError("[配置导入器] Bootstrap.prefab 内未找到 Bootstrap 组件");
+                return;
+            }
+
+            var so = new SerializedObject(bootstrap);
+            var prop = so.FindProperty("_templateConfigs");
+            if (prop == null)
+            {
+                PrefabUtility.UnloadPrefabContents(contents);
+                Debug.LogError("[配置导入器] Bootstrap 组件上未找到 _templateConfigs 字段——检查脚本是否已编译最新版");
+                return;
+            }
+            prop.ClearArray();
+            prop.arraySize = templateAssets.Count;
+            for (int i = 0; i < templateAssets.Count; i++)
+            {
+                prop.GetArrayElementAtIndex(i).objectReferenceValue = templateAssets[i];
+            }
+            so.ApplyModifiedProperties();
+            PrefabUtility.SaveAsPrefabAsset(contents, prefabPath);
+            PrefabUtility.UnloadPrefabContents(contents);
+            Debug.Log($"[配置导入器] 已填充 {templateAssets.Count} 个模板资产到 {prefabPath}（预制体已保存——场景实例如需同步请手动重置/重新实例化）");
+        }
+
         // ========== 遗物 ==========
 
         private static void ImportRelics()

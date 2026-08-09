@@ -29,10 +29,21 @@ namespace TheLaw.UI
         protected virtual void OnShow() { }
         protected virtual void OnHide() { }
 
+        /// <summary>查找根 Canvas（顶层 Canvas）——FindObjectOfType 会误命中运行时子 Canvas（如手牌区 overrideSorting）。</summary>
+        static Canvas FindRootCanvas()
+        {
+            var all = Object.FindObjectsOfType<Canvas>();
+            foreach (var c in all)
+            {
+                if (c.transform.parent == null) return c;
+            }
+            return null;
+        }
+
         /// <summary>确保根 Canvas 存在（ScreenSpaceCamera + 16:9 UI 摄像机；复用现有 Canvas 时自动升级）。</summary>
         protected static Canvas EnsureCanvas()
         {
-            var canvas = Object.FindObjectOfType<Canvas>();
+            var canvas = FindRootCanvas();
             if (canvas == null)
             {
                 var uiCam = FindOrCreateUICamera();
@@ -48,19 +59,17 @@ namespace TheLaw.UI
                 return canvas;
             }
 
-            // 复用现有 Canvas：若未挂 UI 相机（如拼面板时留下的 Overlay Canvas），升级为 ScreenSpaceCamera
-            if (canvas.worldCamera == null)
+            // 复用现有 Canvas：renderMode 不符或未挂 UI 相机 → 强制升级为 ScreenSpaceCamera（Overlay+worldCam 残留也会被纠正）
+            if (canvas.renderMode != RenderMode.ScreenSpaceCamera || canvas.worldCamera == null)
             {
                 var uiCam = FindOrCreateUICamera();
                 canvas.renderMode = RenderMode.ScreenSpaceCamera;
                 canvas.worldCamera = uiCam;
                 canvas.planeDistance = 10f;
-                if (canvas.GetComponent<CanvasScaler>() == null)
-                {
-                    var scaler = canvas.gameObject.AddComponent<CanvasScaler>();
-                    scaler.uiScaleMode = CanvasScaler.ScaleMode.ScaleWithScreenSize;
-                    scaler.referenceResolution = new Vector2(1920, 1080);
-                }
+                var scaler = canvas.GetComponent<CanvasScaler>();
+                if (scaler == null) scaler = canvas.gameObject.AddComponent<CanvasScaler>();
+                scaler.uiScaleMode = CanvasScaler.ScaleMode.ScaleWithScreenSize; // 强制弹性适配（覆盖 ConstantPixelSize 残留）
+                scaler.referenceResolution = new Vector2(1920, 1080);
                 if (canvas.GetComponent<GraphicRaycaster>() == null)
                 {
                     canvas.gameObject.AddComponent<GraphicRaycaster>();

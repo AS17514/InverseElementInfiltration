@@ -83,6 +83,7 @@ namespace TheLaw.UI
 
             // 隐藏场景 Canvas 里的面板预览实例（运行时面板全部由 Addressables 加载，场景里的都是拼面板残留）
             var sceneCanvas = FindObjectOfType<Canvas>();
+            if (sceneCanvas != null && sceneCanvas.transform.parent != null) sceneCanvas = null; // 只处理根 Canvas
             if (sceneCanvas != null)
             {
                 foreach (Transform child in sceneCanvas.transform)
@@ -147,7 +148,8 @@ namespace TheLaw.UI
                     {
                         _selectedPieceId = piece.Id;
                         ShowPieceInfo(piece.Id);
-                        PreviewFirstSlot(piece.Id); // 预览首槽可选格
+                        if (piece.side == Side.Player) PreviewRange(piece.Id); // 移动+攻击范围同时显示
+                        else ClearHighlights();
                     }
                     return;
                 }
@@ -162,29 +164,31 @@ namespace TheLaw.UI
         }
 
         /// <summary>选中后预览首槽：移动=高亮可选格；攻击=全盘可点（无高亮）。</summary>
-        void PreviewFirstSlot(int pieceId)
+        /// <summary>选中后预览范围：移动（首个 Move 槽）绿块 + 攻击（首个 Attack 槽）红框——同时显示（移动独立于行动逻辑）。</summary>
+        void PreviewRange(int pieceId)
         {
             var piece = _state.GetPiece(pieceId);
             if (piece == null) return;
             var program = piece.GetProgram(_state);
-            if (program == null || program.Count == 0) return;
-            if (program[0] is MoveTemplate move)
-            {
-                var opts = _intentResolver.GetMoveOptions(_state, piece, move);
-                _cellOptions = opts;
-                _isMoveSelect = true;
-                ShowHighlights(); // 内部先清旧再建新
-            }
-            else if (program[0] is AttackTemplate atk)
-            {
-                _cellOptions = _boardRules.GetAttackableCells(_state, piece, atk);
-                _isMoveSelect = false;
-                ShowHighlights(); // 攻击范围红框
-            }
-            else
+            if (program == null || program.Count == 0)
             {
                 ClearHighlights();
+                return;
             }
+            List<Vector2Int> moves = null, attacks = null;
+            foreach (var slot in program)
+            {
+                if (moves == null && slot is MoveTemplate m)
+                {
+                    moves = _intentResolver.GetMoveOptions(_state, piece, m);
+                }
+                if (attacks == null && slot is AttackTemplate a)
+                {
+                    attacks = _boardRules.GetAttackableCells(_state, piece, a);
+                }
+                if (moves != null && attacks != null) break;
+            }
+            ShowHighlights(moves, attacks);
         }
 
         /// <summary>点击目标格触发执行：格在槽0可选范围内 → 发 ExecuteRequest + 选格。</summary>
@@ -201,7 +205,12 @@ namespace TheLaw.UI
                 var opts = _intentResolver.GetMoveOptions(_state, piece, move);
                 if (!opts.Contains(cell)) return false; // 非可选格：不执行
             }
-            // 槽0 为攻击：任意格可点（全盘）
+            else if (slot0 is AttackTemplate atk)
+            {
+                // 与规则层契约一致：攻击范围外不执行（防镜像死锁）
+                var opts = _boardRules.GetAttackableCells(_state, piece, atk);
+                if (!opts.Contains(cell)) return false;
+            }
 
             _executing = true;
             _execPieceId = _selectedPieceId;
@@ -255,7 +264,7 @@ namespace TheLaw.UI
             if (isMove)
             {
                 _cellOptions = options ?? new List<Vector2Int>();
-                ShowHighlights(); // 绿块
+                ShowHighlights(_cellOptions, null); // 绿块
             }
             else
             {
@@ -265,7 +274,7 @@ namespace TheLaw.UI
                     && _execProgram[_execIndex] is AttackTemplate atk)
                 {
                     _cellOptions = _boardRules.GetAttackableCells(_state, piece, atk);
-                    ShowHighlights(); // 红块
+                    ShowHighlights(null, _cellOptions); // 红框
                 }
                 else
                 {
@@ -282,7 +291,7 @@ namespace TheLaw.UI
             StartCoroutine(WaitSelectResult());
         }
 
-        /// <summary>选格后帧缓冲：规则层同步落账并发表现事件 → 成功则表现队列接管；失败则继续等选格。</summary>
+        /// <summary>选格后帧缓冲：规则层同步落账并发表现事件 → 成功则表现队列接管；失败则回退选格态（防死锁）。</summary>
         IEnumerator WaitSelectResult()
         {
             yield return null;
@@ -293,7 +302,11 @@ namespace TheLaw.UI
                 ClearHighlights();
                 // 表现播完（PresentationLoop 末尾）会触发 AdvanceAfterPresentation
             }
-            // 失败（非法格）：规则层重新等待，镜像不动，高亮保留
+            else
+            {
+                // 规则层拒绝/无事件成功（全 Skip 等）：回退到当前槽选格态，不卡死镜像
+                _awaitingCell = true;
+            }
         }
 
         void FinishExec()
@@ -301,7 +314,23 @@ namespace TheLaw.UI
             _executing = false;
             _execPieceId = -1;
             _execProgram = null;
-            ClearHighlights();
+            // 选中保留：按新位置刷新范围（移动后位置变了）
+            if (_selectedPieceId >= 0 && _state.Phase == BattlePhase.PlayerTurn)
+            {
+                var piece = _state.GetPiece(_selectedPieceId);
+                if (piece != null && piece.side == Side.Player)
+                {
+                    PreviewRange(_selectedPieceId);
+                }
+                else
+                {
+                    ClearHighlights();
+                }
+            }
+            else
+            {
+                ClearHighlights();
+            }
             RefreshAP();
         }
 
@@ -457,15 +486,33 @@ namespace TheLaw.UI
                     yield break;
                 }
                 var canvas = UnityEngine.Object.FindObjectOfType<Canvas>();
+                if (canvas != null && canvas.transform.parent != null) canvas = null; // 只挂根 Canvas（跳过子 Canvas）
+                if (canvas == null)
+                {
+                    // 兜底：遍历找根 Canvas（FindObjectOfType 顺序未定义，可能先命中子 Canvas）
+                    var all = UnityEngine.Object.FindObjectsOfType<Canvas>();
+                    foreach (var c in all)
+                    {
+                        if (c.transform.parent == null) { canvas = c; break; }
+                    }
+                }
                 var go = Instantiate(handle.Result, canvas != null ? canvas.transform : null);
-                _tooltip = go.GetComponent<RectTransform>();
-                _tooltipText = go.transform.Find("Txt_Desc")?.GetComponent<TMPro.TextMeshProUGUI>();
+                _tooltip = go.GetComponent<RectTransform>();                _tooltipText = go.transform.Find("Txt_Desc")?.GetComponent<TMPro.TextMeshProUGUI>();
                 _tooltip.pivot = new Vector2(1f, 1f); // 右上角为锚点
             }
             if (_tooltipText != null) _tooltipText.text = SlotDetailDesc(_infoProgram[slotIndex]);
-            if (Camera.main != null)
+            // 用 Canvas 的 worldCamera（UICamera）算屏幕坐标——主相机斜俯视坐标系不一致会定位到屏幕外
+            var tooltipCanvas = _tooltip.GetComponentInParent<Canvas>();
+            var uiCam = tooltipCanvas != null ? tooltipCanvas.worldCamera : null;
+            if (uiCam != null)
             {
-                _tooltip.position = Camera.main.WorldToScreenPoint(leftTopWorld); // 右上角 = sprite 左上角
+                // ScreenSpaceCamera 下：像素坐标需经 ScreenPointToWorldPointInRectangle 转回世界坐标（直接赋像素会飞出屏幕）
+                var screenPt = uiCam.WorldToScreenPoint(leftTopWorld);
+                if (RectTransformUtility.ScreenPointToWorldPointInRectangle(
+                        tooltipCanvas.transform as RectTransform, screenPt, uiCam, out var worldPt))
+                {
+                    _tooltip.position = worldPt; // 右上角 = sprite 左上角
+                }
             }
             _tooltip.gameObject.SetActive(true);
         }
@@ -475,22 +522,21 @@ namespace TheLaw.UI
             if (_tooltip != null) _tooltip.gameObject.SetActive(false);
         }
 
-        // ========== 选格高亮（移动=实心绿块 0.8，攻击=空心红框 边框厚 0.2）==========
-        void ShowHighlights()
+        // ========== 选格高亮（移动=实心绿块 0.8，攻击=空心红框 边框厚 0.1——可叠加同时显示）==========
+        void ShowHighlights(List<Vector2Int> moves, List<Vector2Int> attacks)
         {
             ClearHighlights();
-            if (_cellOptions.Count == 0) return;
-            _highlightRoot = new GameObject(_isMoveSelect ? "MoveHighlights" : "AttackHighlights");
-            foreach (var cell in _cellOptions)
+            bool hasMove = moves != null && moves.Count > 0;
+            bool hasAttack = attacks != null && attacks.Count > 0;
+            if (!hasMove && !hasAttack) return;
+            _highlightRoot = new GameObject("RangeHighlights");
+            if (hasMove)
             {
-                if (_isMoveSelect)
-                {
-                    CreateHighlightBlock(cell, HighlightMaterial(0.2f, 0.8f, 0.3f));
-                }
-                else
-                {
-                    CreateHighlightFrame(cell, HighlightMaterial(0.8f, 0.2f, 0.2f));
-                }
+                foreach (var cell in moves) CreateHighlightBlock(cell, HighlightMaterial(0.2f, 0.8f, 0.3f));
+            }
+            if (hasAttack)
+            {
+                foreach (var cell in attacks) CreateHighlightFrame(cell, HighlightMaterial(0.8f, 0.2f, 0.2f));
             }
         }
 
@@ -506,12 +552,12 @@ namespace TheLaw.UI
             SetupHighlightMesh(go, mat);
         }
 
-        /// <summary>空心框（边框厚 0.2，攻击格用）。</summary>
+        /// <summary>空心框（边框厚 0.1，攻击格用）。</summary>
         void CreateHighlightFrame(Vector2Int cell, Material mat)
         {
             float cx = cell.x - 3.5f, cz = cell.y - 3.5f;
-            const float half = 0.4f;   // 框内边半宽（0.8 空心区）
-            const float thick = 0.2f;  // 边框厚度
+            const float half = 0.45f;   // 框内边半宽
+            const float thick = 0.1f;   // 边框厚度（窄框——与移动实心块可叠加显示）
             AddFrameBar(new Vector3(cx, 0.01f, cz + half), new Vector3(1f, thick, 1f), mat); // 上
             AddFrameBar(new Vector3(cx, 0.01f, cz - half), new Vector3(1f, thick, 1f), mat); // 下
             AddFrameBar(new Vector3(cx - half, 0.01f, cz), new Vector3(thick, 1f, 1f), mat); // 左
@@ -568,6 +614,13 @@ namespace TheLaw.UI
             RefreshAll();
             ClearSelection();
             ClearHighlights(); // 阶段切换必清高亮
+            // 阶段切换重置执行镜像（防执行中结束回合致新回合软锁）
+            _executing = false;
+            _execPieceId = -1;
+            _execProgram = null;
+            _execIndex = 0;
+            _awaitingCell = false;
+            _selectResultDirty = false;
             UpdateHandPositionByPhase();
         }
 
@@ -684,7 +737,12 @@ namespace TheLaw.UI
                 _infoProgramBlocks[i] = t != null ? t.GetComponent<SpriteRenderer>() : null;
                 if (_infoProgramBlocks[i] != null && t.GetComponent<Collider>() == null)
                 {
-                    t.gameObject.AddComponent<BoxCollider>(); // hover 检测需要碰撞
+                    // collider 尺寸对齐 sprite 世界尺寸（除以 localScale 得局部尺寸）——默认 (1,1,1) 在 0.16 缩放下只有 0.16 世界尺寸，hover 命中率极低
+                    var sr = _infoProgramBlocks[i];
+                    var bc = t.gameObject.AddComponent<BoxCollider>();
+                    float sx = t.localScale.x != 0 ? t.localScale.x : 1f;
+                    float sy = t.localScale.y != 0 ? t.localScale.y : 1f;
+                    bc.size = new Vector3(sr.bounds.size.x / sx, sr.bounds.size.y / sy, 0.2f);
                 }
             }
             for (int i = 0; i < 3; i++) _infoOthers[i] = GetTmp(ui, $"Txt_Other{i + 1}");

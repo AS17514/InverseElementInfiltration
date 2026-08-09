@@ -45,9 +45,6 @@ namespace TheLaw.UI
                     if (t.name == "Txt_EventName") { EventNameText = t; break; }
                 }
             }
-            // 隐藏静态"当前进度"标签（代码不更新它——防被误认为阶段状态文本）
-            var progress = transform.Find("Grp_TopBar/Txt_CurrentProgress");
-            if (progress != null) progress.gameObject.SetActive(false);
             HandRoot = transform.Find("Grp_Hand") as RectTransform;
 
             // 手牌模板（Grp_Hand 下名为 Piece_Handcard 的节点，保留作克隆模板）

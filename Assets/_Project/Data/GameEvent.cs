@@ -24,6 +24,7 @@ namespace TheLaw.Data
         // ---- UI → 规则层（玩家输入/表现完成）----
         PlayerCellSelected,    // 玩家选格（落点/目标）
         PresentationFinished,  // 表现完成（UI 播完一组表现后发——BattleFlow 解锁）
+        PhaseDisplayed,        // 阶段已展示（UI 渲染阶段名后下一帧发——动画优先：无动画的阶段切换至少展示一帧）
         PlacementFinished,     // 开局摆放完成
 
         // ---- 整局流程 ----

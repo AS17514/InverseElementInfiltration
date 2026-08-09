@@ -712,6 +712,17 @@ namespace TheLaw.UI
             _awaitingCell = false;
             _selectResultDirty = false;
             UpdateHandPositionByPhase();
+            // 阶段展示信号：下一帧通知规则层（动画优先——无动画的阶段切换至少展示一帧）
+            if (data is BattlePhase phase)
+            {
+                StartCoroutine(NotifyPhaseDisplayed(phase));
+            }
+        }
+
+        System.Collections.IEnumerator NotifyPhaseDisplayed(BattlePhase phase)
+        {
+            yield return null;
+            EventCenter.Instance.EventTrigger(GameEvent.PhaseDisplayed, phase);
         }
 
         /// <summary>阶段驱动手牌区状态：准备阶段升高（高 250 展示更多内容），其他阶段收起（高 170 + 下移表示不可部署）。</summary>

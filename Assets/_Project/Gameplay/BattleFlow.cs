@@ -38,6 +38,9 @@ namespace TheLaw.Gameplay
         private ExecContext _ctx;
         private bool _waitingCellSelect;     // 等玩家选格（落点/目标）
         private bool _waitingPresentation;   // 表现等待（等 UI 播完发"表现完成"）
+        private bool _enemyTurnEndPending;   // 敌方回合结束待定——本阶段表现全部播完才切回玩家回合（动画优先）
+        private bool _hadEnemyPresentation;  // 本轮敌方回合是否有表现（有→表现完即切；无→等阶段展示信号）
+        private bool _deployedThisRound;     // 本轮波次是否部署（部署动画挂起点）
 
         public BattleFlow(GameState state, BoardRules boardRules, IntentResolver intentResolver,
             Resolver resolver, EnemyAI enemyAI, RelicSystem relicSystem)
@@ -50,6 +53,7 @@ namespace TheLaw.Gameplay
             _relicSystem = relicSystem;
 
             EventCenter.Instance.AddEventListener(GameEvent.PresentationFinished, OnPresentationFinished);
+            EventCenter.Instance.AddEventListener(GameEvent.PhaseDisplayed, OnPhaseDisplayed);
             EventCenter.Instance.AddEventListener(GameEvent.PlacementFinished, OnPlacementFinished);
         }
 
@@ -118,6 +122,39 @@ namespace TheLaw.Gameplay
             CheckVictory(false);
             if (_state.Phase != BattlePhase.GameOver)
             {
+                // 动画优先：敌方回合展示到本阶段表现全部播完（含波次部署/AI 行动动画）再切回玩家回合
+                _enemyTurnEndPending = true;
+                _hadEnemyPresentation = _waitingPresentation || _deployedThisRound;
+                TryEndEnemyTurn();
+            }
+        }
+
+        /// <summary>敌方回合收尾：表现全部完成才切回玩家回合——阶段切换留动画时间。</summary>
+        private void TryEndEnemyTurn()
+        {
+            if (!_enemyTurnEndPending) return;
+            if (_state.Phase == BattlePhase.GameOver)
+            {
+                _enemyTurnEndPending = false;
+                return;
+            }
+            if (_waitingPresentation || _ctx != null) return; // 动画未播完/执行未结束——继续等
+            if (_hadEnemyPresentation)
+            {
+                // 动画路径：表现已完成（PresentationFinished 驱动到达）——直接切回玩家回合
+                _enemyTurnEndPending = false;
+                StartPlayerTurn();
+            }
+            // 无动画路径：等 UI 阶段展示信号（PhaseDisplayed——阶段名至少展示一帧）
+        }
+
+        /// <summary>UI 阶段展示信号：无动画的敌方回合至少展示一帧后才切回玩家回合。</summary>
+        private void OnPhaseDisplayed(object data)
+        {
+            if (!(data is BattlePhase phase) || phase != BattlePhase.EnemyTurn) return;
+            if (_enemyTurnEndPending && !_waitingPresentation && _ctx == null)
+            {
+                _enemyTurnEndPending = false;
                 StartPlayerTurn();
             }
         }
@@ -136,6 +173,10 @@ namespace TheLaw.Gameplay
                 _ctx = null;
                 _waitingPresentation = false;
                 _waitingCellSelect = false;
+            }
+            if (newPhase == BattlePhase.GameOver)
+            {
+                _enemyTurnEndPending = false; // 终局：不再切回玩家回合
             }
             _state.Phase = newPhase;
             EventCenter.Instance.EventTrigger(GameEvent.PhaseChanged, newPhase);
@@ -421,6 +462,7 @@ namespace TheLaw.Gameplay
                     AdvanceSlot();
                 }
             }
+            TryEndEnemyTurn(); // 动画播完（一轮表现队列排干）——检查敌方回合能否收尾
         }
 
         // ========== 波次调度 + 敌方升变预告 ==========
@@ -443,6 +485,7 @@ namespace TheLaw.Gameplay
             }
 
             // 波次部署（按回合数触发；free=true 不走 AP——规则强制部分）
+            _deployedThisRound = false;
             while (_deployedWaveIndex < _floor.waveDefs.Count)
             {
                 var wave = _floor.waveDefs[_deployedWaveIndex];
@@ -463,6 +506,7 @@ namespace TheLaw.Gameplay
                     _resolver.Resolve(deployAction);
                     deployedThisWave.Add(_state.GetPieceAt(cell));
                 }
+                _deployedThisRound = true;
                 // 本波开始 → 预告下一波升变（配置的升变棋子）
                 foreach (var promo in wave.promotions)
                 {
@@ -488,6 +532,11 @@ namespace TheLaw.Gameplay
                     _waveEnded = true;
                     _state.WaveEndCountdown = wave.endCountdown;
                 }
+            }
+            // 部署动画优先：本回合有波次部署 → 挂起等部署表现播完（阶段切换留动画时间）
+            if (_deployedThisRound)
+            {
+                WaitPresentation();
             }
 
             // 末波倒计时 → 强制结算

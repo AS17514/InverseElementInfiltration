@@ -912,9 +912,11 @@ namespace TheLaw.UI
             if (tmp != null) tmp.text = text;
         }
 
-        /// <summary>程序槽详细描述（信息面板/浮窗用，自然语言）。</summary>
+        /// <summary>程序槽详细描述（信息面板/浮窗用，自然语言）——描述表优先，未命中回退代码生成。</summary>
         static string SlotDetailDesc(Template slot)
         {
+            var mapped = SlotDescTable.Get(slot);
+            if (mapped != null) return mapped;
             switch (slot)
             {
                 case MoveTemplate m:

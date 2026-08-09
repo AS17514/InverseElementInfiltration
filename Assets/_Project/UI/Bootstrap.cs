@@ -28,6 +28,9 @@ namespace TheLaw.UI
         [Tooltip("true=启动直进战斗（跳过主菜单），false=正常主菜单流程")]
         [SerializeField] private bool _directToBattle = false; // 默认主菜单（对接期测试直进可临时开）
 
+        [Header("程序块描述表（结构特征码→描述；未命中回退代码生成）")]
+        [SerializeField] private TextAsset _slotDescriptions;
+
         // 普通类实例（去单例化后由 Bootstrap 创建并持有；规则层行为类显式传递避免网状耦合）
         private static Bootstrap _instance; // 静态实例标记：防重（双实例并存时先到者存活，后到者自毁）
         private UIManager _uiManager;
@@ -60,6 +63,8 @@ namespace TheLaw.UI
             CreateManagers();
             // ② 加载配置（TODO: Addressables）
             LoadConfigs();
+            // ②b 程序块描述表（数据驱动——UI 槽位描述）
+            SlotDescTable.Load(_slotDescriptions);
             // ③ 创建规则层（依赖注入）
             CreateGameplay();
             // ④ 注册存档快照

@@ -294,6 +294,10 @@ PrefabInstance:
       propertyPath: _directToBattle
       value: 0
       objectReference: {fileID: 0}
+    - target: {fileID: 2191935029703393796, guid: 462ca4daaab902a478d2485d4a407210, type: 3}
+      propertyPath: _slotDescriptions
+      value: 
+      objectReference: {fileID: 4900000, guid: 61641052052f35242aa0036fb7af08a7, type: 3}
     - target: {fileID: 8213450160835182599, guid: 462ca4daaab902a478d2485d4a407210, type: 3}
       propertyPath: m_LocalPosition.x
       value: -0.25242

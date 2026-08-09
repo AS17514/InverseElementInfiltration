@@ -22,6 +22,7 @@ namespace TheLaw.UI
         [SerializeField] private List<MapConfig> _mapConfigs = new List<MapConfig>();
         [SerializeField] private List<AIParams> _aiParamConfigs = new List<AIParams>();
         [SerializeField] private List<EventPool> _eventPoolConfigs = new List<EventPool>();
+        [SerializeField] private List<EventDefinition> _eventConfigs = new List<EventDefinition>(); // 事件定义（EventOpened → FindByName 查询——须注册）
         [SerializeField] private List<RelicDef> _relicConfigs = new List<RelicDef>();
         [SerializeField] private List<TemplateDef> _templateConfigs = new List<TemplateDef>(); // 程序块模板库（编辑界面候选池）
 
@@ -102,6 +103,7 @@ namespace TheLaw.UI
             RegisterAll(_mapConfigs);
             RegisterAll(_aiParamConfigs);
             RegisterAll(_eventPoolConfigs);
+            RegisterAll(_eventConfigs);
             RegisterAll(_relicConfigs);
             // 程序块模板库（独立注册表——按"种类+编号"查询，编辑界面候选池）
             foreach (var def in _templateConfigs)
@@ -111,7 +113,7 @@ namespace TheLaw.UI
                     TemplateLibrary.Register(def);
                 }
             }
-            Debug.Log($"[Bootstrap] 配置注册完成：棋子 {_pieceConfigs.Count} / 能力 {_abilityConfigs.Count} / 层 {_floorConfigs.Count} / 地图 {_mapConfigs.Count} / AI {_aiParamConfigs.Count} / 事件池 {_eventPoolConfigs.Count} / 遗物 {_relicConfigs.Count} / 模板 {_templateConfigs.Count}");
+            Debug.Log($"[Bootstrap] 配置注册完成：棋子 {_pieceConfigs.Count} / 能力 {_abilityConfigs.Count} / 层 {_floorConfigs.Count} / 地图 {_mapConfigs.Count} / AI {_aiParamConfigs.Count} / 事件池 {_eventPoolConfigs.Count} / 事件 {_eventConfigs.Count} / 遗物 {_relicConfigs.Count} / 模板 {_templateConfigs.Count}");
         }
 
         /// <summary>批量注册配置（重复 Id 由 ConfigTable.Register 断言拦截）。</summary>
@@ -214,7 +216,7 @@ namespace TheLaw.UI
             }
             else
             {
-                _eventPanel.ShowEvent(_pendingEventId);
+                // 面板已存在：其自身监听 EventOpened 处理（Bootstrap 不再主动推——防双消费双推进）
                 _uiManager.ShowPanel("EventPanel");
             }
         }

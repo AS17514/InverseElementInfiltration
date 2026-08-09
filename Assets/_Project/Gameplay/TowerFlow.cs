@@ -1,6 +1,7 @@
 using System.Collections.Generic;
 using TheLaw.Core;
 using TheLaw.Data;
+using UnityEngine;
 
 namespace TheLaw.Gameplay
 {
@@ -113,7 +114,7 @@ namespace TheLaw.Gameplay
             {
                 return ai;
             }
-            return new AIParams(); // 无配置时默认值兜底
+            return ScriptableObject.CreateInstance<AIParams>(); // SO 不能用 new——CreateInstance 兜底
         }
 
         private void OnRunEnded(bool victory)

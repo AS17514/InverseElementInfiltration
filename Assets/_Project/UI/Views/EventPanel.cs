@@ -62,6 +62,7 @@ namespace TheLaw.UI
         public void ShowEvent(string eventId)
         {
             if (string.IsNullOrEmpty(eventId)) return;
+            if (eventId == _currentEventId) return; // 幂等：同一事件重复推送跳过（防双消费双推进）
             _currentEventId = eventId;
             _currentEvent = ConfigTable.FindByName<EventDefinition>(eventId);
             if (_currentEvent == null)

@@ -3,7 +3,6 @@ using System.IO;
 using TheLaw.Core;
 using TheLaw.Data;
 using UnityEditor;
-using UnityEditor.SceneManagement;
 using UnityEngine;
 using Newtonsoft.Json;
 
@@ -39,7 +38,8 @@ namespace TheLaw.EditorTools
 
         /// <summary>
         /// 一次性工具：把模板资产（Tpl_*.asset）批量填入场景 Bootstrap 组件的 _templateConfigs（免手动拖 20 个）。
-        /// 不引用 UI 程序集——按组件类型名匹配 Bootstrap；SerializedObject 设置序列化字段；保存场景。
+        /// 不引用 UI 程序集——按组件类型名匹配 Bootstrap；SerializedObject 设置序列化字段。
+        /// ⚠️ 不自动保存场景（防把未保存的误操作一起存进去）——修改后手动 Ctrl+S。
         /// 未来新增模板后重跑一次即可。
         /// </summary>
         [MenuItem("工具/收集模板资产到 Bootstrap")]
@@ -48,12 +48,14 @@ namespace TheLaw.EditorTools
             var templateAssets = new List<TemplateDef>();
             foreach (var guid in AssetDatabase.FindAssets("t:TemplateDef", new[] { ConfigAssetsDir }))
             {
-                var asset = AssetDatabase.LoadAssetAtPath<TemplateDef>(AssetDatabase.GUIDToAssetPath(guid));
+                var path = AssetDatabase.GUIDToAssetPath(guid);
+                var asset = AssetDatabase.LoadAssetAtPath<TemplateDef>(path);
                 if (asset != null)
                 {
                     templateAssets.Add(asset);
                 }
             }
+            Debug.Log($"[配置导入器] 找到模板资产 {templateAssets.Count} 个");
             if (templateAssets.Count == 0)
             {
                 Debug.LogWarning("[配置导入器] 未找到模板资产——先运行'导入关卡配置（JSON）'生成 Tpl_*.asset");
@@ -74,9 +76,15 @@ namespace TheLaw.EditorTools
                 Debug.LogError("[配置导入器] 场景中未找到 Bootstrap 组件");
                 return;
             }
+            Debug.Log($"[配置导入器] 找到 Bootstrap：{bootstrap.gameObject.name}");
 
             var so = new SerializedObject(bootstrap);
             var prop = so.FindProperty("_templateConfigs");
+            if (prop == null)
+            {
+                Debug.LogError("[配置导入器] Bootstrap 组件上未找到 _templateConfigs 字段——检查脚本是否已编译最新版");
+                return;
+            }
             prop.ClearArray();
             prop.arraySize = templateAssets.Count;
             for (int i = 0; i < templateAssets.Count; i++)
@@ -84,8 +92,7 @@ namespace TheLaw.EditorTools
                 prop.GetArrayElementAtIndex(i).objectReferenceValue = templateAssets[i];
             }
             so.ApplyModifiedProperties();
-            EditorSceneManager.SaveOpenScenes(); // 保存场景（Main.unity——Bootstrap 组件引用落盘）
-            Debug.Log($"[配置导入器] 已填充 {templateAssets.Count} 个模板资产到 Bootstrap._templateConfigs 并保存场景");
+            Debug.Log($"[配置导入器] 已填充 {templateAssets.Count} 个模板资产到 Bootstrap._templateConfigs（场景已修改——请手动 Ctrl+S 保存）");
         }
 
         // ========== 遗物 ==========

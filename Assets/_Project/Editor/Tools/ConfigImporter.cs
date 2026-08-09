@@ -3,6 +3,7 @@ using System.IO;
 using TheLaw.Core;
 using TheLaw.Data;
 using UnityEditor;
+using UnityEditor.SceneManagement;
 using UnityEngine;
 using Newtonsoft.Json;
 
@@ -34,6 +35,57 @@ namespace TheLaw.EditorTools
 
             AssetDatabase.SaveAssets();
             Debug.Log("[配置导入器] 完成：遗物/事件/关卡/地图/模板库");
+        }
+
+        /// <summary>
+        /// 一次性工具：把模板资产（Tpl_*.asset）批量填入场景 Bootstrap 组件的 _templateConfigs（免手动拖 20 个）。
+        /// 不引用 UI 程序集——按组件类型名匹配 Bootstrap；SerializedObject 设置序列化字段；保存场景。
+        /// 未来新增模板后重跑一次即可。
+        /// </summary>
+        [MenuItem("工具/收集模板资产到 Bootstrap")]
+        public static void CollectTemplatesToBootstrap()
+        {
+            var templateAssets = new List<TemplateDef>();
+            foreach (var guid in AssetDatabase.FindAssets("t:TemplateDef", new[] { ConfigAssetsDir }))
+            {
+                var asset = AssetDatabase.LoadAssetAtPath<TemplateDef>(AssetDatabase.GUIDToAssetPath(guid));
+                if (asset != null)
+                {
+                    templateAssets.Add(asset);
+                }
+            }
+            if (templateAssets.Count == 0)
+            {
+                Debug.LogWarning("[配置导入器] 未找到模板资产——先运行'导入关卡配置（JSON）'生成 Tpl_*.asset");
+                return;
+            }
+
+            MonoBehaviour bootstrap = null;
+            foreach (var mb in Object.FindObjectsOfType<MonoBehaviour>())
+            {
+                if (mb.GetType().Name == "Bootstrap")
+                {
+                    bootstrap = mb;
+                    break;
+                }
+            }
+            if (bootstrap == null)
+            {
+                Debug.LogError("[配置导入器] 场景中未找到 Bootstrap 组件");
+                return;
+            }
+
+            var so = new SerializedObject(bootstrap);
+            var prop = so.FindProperty("_templateConfigs");
+            prop.ClearArray();
+            prop.arraySize = templateAssets.Count;
+            for (int i = 0; i < templateAssets.Count; i++)
+            {
+                prop.GetArrayElementAtIndex(i).objectReferenceValue = templateAssets[i];
+            }
+            so.ApplyModifiedProperties();
+            EditorSceneManager.SaveOpenScenes(); // 保存场景（Main.unity——Bootstrap 组件引用落盘）
+            Debug.Log($"[配置导入器] 已填充 {templateAssets.Count} 个模板资产到 Bootstrap._templateConfigs 并保存场景");
         }
 
         // ========== 遗物 ==========

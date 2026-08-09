@@ -79,10 +79,21 @@ namespace TheLaw.Gameplay
 
         private void OnPlacementFinished(object data)
         {
-            if (_state.Phase == BattlePhase.Placement)
+            if (_state.Phase != BattlePhase.Placement)
             {
-                StartPlayerTurn();
+                return;
             }
+            // 前置条件：手牌中不得还有初始棋子——必须摆完全部起始棋子才能结束摆放（防"跳过摆放"）
+            foreach (var defId in _state.Hand)
+            {
+                var def = ConfigTable.Find<PieceDef>(defId);
+                if (def != null && def.pieceType == PieceType.Initial)
+                {
+                    EventCenter.Instance.EventTrigger(GameEvent.StateChanged, "placement-incomplete"); // 通知 UI 继续摆放
+                    return;
+                }
+            }
+            StartPlayerTurn();
         }
 
         public void StartPlayerTurn()
@@ -215,7 +226,15 @@ namespace TheLaw.Gameplay
                 switch (request)
                 {
                     case DeployRequest deploy:
-                        if (IsValidDeployCell(side, deploy.cell))
+                        // 部署合法性校验（请求校验清单）：
+                        //   ① 格子合法（部署区/界内/不占用）
+                        //   ② 玩家：阶段限定种类（Placement=Initial / PlayerTurn=Deployable）+ 手牌持有（防重复部署）
+                        //   ③ 敌方（波次）：不受种类/手牌限制（波次部署直接 Resolve，不走此分支——此处仅防御）
+                        var deployDef = ConfigTable.Find<PieceDef>(deploy.pieceDefId);
+                        bool deployValid = IsValidDeployCell(side, deploy.cell)
+                            && deployDef != null
+                            && (side == Side.Enemy || IsDeployAllowed(deployDef, _state.Phase));
+                        if (deployValid)
                         {
                             _resolver.Resolve(new DeployAction(deploy.pieceDefId, side, deploy.cell));
                             DeductActionPoint(request.free, side);
@@ -572,6 +591,20 @@ namespace TheLaw.Gameplay
                 }
             }
             return new Vector2Int(-1, -1); // 无空位
+        }
+
+        /// <summary>玩家部署是否允许：阶段限定种类（Placement=初始 / PlayerTurn=部署）+ 手牌持有（防重复部署）。</summary>
+        private bool IsDeployAllowed(PieceDef def, BattlePhase phase)
+        {
+            if (phase == BattlePhase.Placement && def.pieceType != PieceType.Initial)
+            {
+                return false; // 摆放阶段只能放初始棋子
+            }
+            if (phase == BattlePhase.PlayerTurn && def.pieceType != PieceType.Deployable)
+            {
+                return false; // 部署阶段只能放部署棋子（升变棋子靠升变操作上场）
+            }
+            return _state.Hand.Contains(def.Id); // 手牌持有（防重复部署）
         }
 
         private bool IsValidDeployCell(Side side, Vector2Int cell)

@@ -330,6 +330,19 @@ namespace TheLaw.Gameplay
             EventCenter.Instance.EventTrigger(GameEvent.HandChanged, null);
         }
 
+        /// <summary>获得遗物（事件 GrantRelic 效果——整局持续、可叠加）。</summary>
+        public void AddRelic(string relicName)
+        {
+            var relic = ConfigTable.FindByName<RelicDef>(relicName);
+            if (relic == null)
+            {
+                Core.Assert.Fail($"GrantRelic: 找不到遗物资产 {relicName}");
+                return;
+            }
+            _state.Relics.Add(relic);
+            EventCenter.Instance.EventTrigger(GameEvent.RelicObtained, relic);
+        }
+
         /// <summary>给予临时特殊能力（事件 GrantAbility——随战斗结束销毁）。护盾能力同步增加剩余次数。</summary>
         public void GrantTempAbility(int pieceId, int abilityId)
         {

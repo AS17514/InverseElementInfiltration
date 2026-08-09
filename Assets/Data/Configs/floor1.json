@@ -1,0 +1,38 @@
+{
+  "floorName": "floor1",
+  "displayName": "第 1 层·试炼场",
+  "description": "测试用第 1 层——基础对战（全灭敌方获胜），3 波敌方（含升变棋子直接部署）",
+  "victoryRule": "WipeOut",
+  "targetScore": 0,
+  "enemyMaxAP": 3,
+  "eventSequence": [
+    "ability",
+    "edit",
+    "deck"
+  ],
+  "eventPoolIds": [
+    "ability_pool",
+    "edit_pool",
+    "deck_pool"
+  ],
+  "waves": [
+    {
+      "startTurn": 1,
+      "pieceDefIds": ["Soldier", "Soldier", "Swordsman"],
+      "isLastWave": false,
+      "endCountdown": 0
+    },
+    {
+      "startTurn": 4,
+      "pieceDefIds": ["Knight", "ShortArcher"],
+      "isLastWave": false,
+      "endCountdown": 0
+    },
+    {
+      "startTurn": 7,
+      "pieceDefIds": ["Assassin", "Cannoner"],
+      "isLastWave": true,
+      "endCountdown": 3
+    }
+  ]
+}

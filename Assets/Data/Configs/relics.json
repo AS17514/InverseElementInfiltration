@@ -1,0 +1,20 @@
+{
+  "relics": [
+    {
+      "relicName": "relic_range",
+      "displayName": "鹰眼符石",
+      "description": "打磨光滑的古老符石，凝视它时视线仿佛能穿透战场。（测试：攻击射程+1）",
+      "abilities": [
+        { "type": "Passive", "passiveTarget": "AttackRange", "passiveValue": 1 }
+      ]
+    },
+    {
+      "relicName": "relic_move",
+      "displayName": "疾风之靴",
+      "description": "轻若无物的皮靴，穿上后步伐仿佛乘着风。（测试：移动步数+1）",
+      "abilities": [
+        { "type": "Passive", "passiveTarget": "MoveStep", "passiveValue": 1 }
+      ]
+    }
+  ]
+}

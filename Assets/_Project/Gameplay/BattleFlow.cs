@@ -174,7 +174,13 @@ namespace TheLaw.Gameplay
                         break;
                     case PromoteRequest promote:
                         var piece = _state.GetPiece(promote.pieceId);
-                        if (piece != null && piece.side == side && _boardRules.IsPromotionValid(piece))
+                        var promoteDef = ConfigTable.Find<PieceDef>(promote.newDefId);
+                        // 升变规则（放宽）：任意【非升变】棋子 + 手牌有【升变牌】→ 可升变（无映射限制）
+                        bool promoteValid = piece != null && piece.side == side
+                            && piece.def.pieceType != PieceType.Promoted
+                            && promoteDef != null && promoteDef.pieceType == PieceType.Promoted
+                            && _state.Hand.Contains(promote.newDefId);
+                        if (promoteValid)
                         {
                             _resolver.Resolve(new PromoteAction(promote.pieceId, promote.newDefId));
                             DeductActionPoint(request.free, side);

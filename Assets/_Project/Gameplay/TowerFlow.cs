@@ -15,9 +15,6 @@ namespace TheLaw.Gameplay
         private readonly BattleFlow _battleFlow;
         private readonly MapConfig _map;
 
-        /// <summary>每层事件节点数（第 1 关无"改变规则"事件 → 3 个；其余 4 个）。</summary>
-        private int EventCountForFloor(int floorIndex) => floorIndex == 0 ? 3 : 4;
-
         public TowerFlow(GameState state, EventNodeSystem eventNodeSystem, BattleFlow battleFlow, MapConfig map)
         {
             _state = state;
@@ -26,14 +23,17 @@ namespace TheLaw.Gameplay
             _map = map;
         }
 
-        /// <summary>进入某层：生成单线节点序列（事件区 → 战斗关），从第一个节点开始。</summary>
+        /// <summary>
+        /// 进入某层：生成单线节点序列——事件节点 = FloorConfig.eventSequence（类型固定顺序）
+        /// + 战斗关（层末）。事件节点各自对应 eventPoolIds[i] 的池（类型内变体随机）。
+        /// </summary>
         public void EnterFloor(int floorIndex)
         {
             _state.CurrentFloor = floorIndex;
             _state.CurrentNodeIndex = 0;
             _state.NodeStates.Clear();
-            int eventCount = EventCountForFloor(floorIndex);
-            for (int i = 0; i < eventCount; i++)
+            var floor = _map.floors[floorIndex];
+            foreach (var _ in floor.eventSequence)
             {
                 _state.NodeStates.Add(NodeState.Available);
             }
@@ -70,8 +70,9 @@ namespace TheLaw.Gameplay
             }
             else
             {
-                var pools = GetFloorEventPools();
-                _eventNodeSystem.OpenEvent($"event-{_state.CurrentFloor}-{index}", pools);
+                var floor = _map.floors[_state.CurrentFloor];
+                var pool = GetEventPool(floor, index); // 本节点类型对应的事件池（类型内变体随机）
+                _eventNodeSystem.OpenEvent($"event-{_state.CurrentFloor}-{index}", pool);
             }
         }
 
@@ -88,20 +89,14 @@ namespace TheLaw.Gameplay
             }
         }
 
-        /// <summary>本层事件池（从 FloorConfig.eventPoolIds 查）。</summary>
-        private List<EventPool> GetFloorEventPools()
+        /// <summary>节点类型对应的事件池（FloorConfig.eventPoolIds[eventIndex]——与 eventSequence 顺序对应）。</summary>
+        private EventPool GetEventPool(FloorConfig floor, int eventIndex)
         {
-            var result = new List<EventPool>();
-            var floor = _map.floors[_state.CurrentFloor];
-            foreach (var poolId in floor.eventPoolIds)
+            if (eventIndex >= 0 && eventIndex < floor.eventPoolIds.Count)
             {
-                var pool = ConfigTable.FindByName<EventPool>(poolId);
-                if (pool != null)
-                {
-                    result.Add(pool);
-                }
+                return ConfigTable.FindByName<EventPool>(floor.eventPoolIds[eventIndex]);
             }
-            return result;
+            return null;
         }
 
         private AIParams GetDefaultAIParams()

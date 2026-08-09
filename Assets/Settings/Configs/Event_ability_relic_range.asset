@@ -1,0 +1,26 @@
+%YAML 1.1
+%TAG !u! tag:unity3d.com,2011:
+--- !u!114 &11400000
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 0}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: 2a5229c64c4627840ac82f1898345a61, type: 3}
+  m_Name: Event_ability_relic_range
+  m_EditorClassIdentifier: 
+  _id: 536833488
+  options:
+  - optionId: take_range
+    label: "\u62FE\u53D6\u9E70\u773C\u7B26\u77F3\uFF08\u653B\u51FB\u5C04\u7A0B+1\uFF09"
+    available: 1
+    effects:
+    - effectType: 4
+      targetScope: 0
+      targetDefId: 0
+      amount: 0
+      abilityId: 0
+      relicName: relic_range

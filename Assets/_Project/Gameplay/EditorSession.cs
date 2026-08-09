@@ -78,7 +78,10 @@ namespace TheLaw.Gameplay
             }
         }
 
-        /// <summary>可用模板（该棋子程序集出现的模板合集——编辑面板供选择）。</summary>
+        /// <summary>
+        /// 可用模板（编辑面板供选择）= 棋子自带程序集 ∪ 独立模板库（按 id 去重——同编号=同结构）。
+        /// 模板库为编辑候选池：玩家可编排超出自带范围的模板（如事件文案承诺的"攻击[后·左·右选一格]"）。
+        /// </summary>
         public List<Template> GetAvailableTemplates(PieceDef def)
         {
             var result = new List<Template>();
@@ -90,6 +93,23 @@ namespace TheLaw.Gameplay
                     {
                         result.Add(slot);
                     }
+                }
+            }
+            foreach (var template in TemplateLibrary.All())
+            {
+                // 按 id 去重（id=0 未编号直接加入——不参与去重）
+                bool duplicated = false;
+                foreach (var existing in result)
+                {
+                    if (template.id != 0 && existing.id == template.id)
+                    {
+                        duplicated = true;
+                        break;
+                    }
+                }
+                if (!duplicated)
+                {
+                    result.Add(template);
                 }
             }
             return result;

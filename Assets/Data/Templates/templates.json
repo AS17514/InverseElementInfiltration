@@ -1,0 +1,283 @@
+{
+  "templates": [
+    {
+      "type": "Move",
+      "id": 1,
+      "paths": [
+        {
+          "segments": [
+            {
+              "moves": [
+                { "direction": "Up", "steps": [1] }
+              ]
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "type": "Move",
+      "id": 2,
+      "paths": [
+        {
+          "segments": [
+            {
+              "moves": [
+                { "direction": "Left", "steps": [1] },
+                { "direction": "Up", "steps": [1] },
+                { "direction": "Right", "steps": [1] },
+                { "direction": "Down", "steps": [1] }
+              ]
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "type": "Move",
+      "id": 3,
+      "paths": [
+        {
+          "segments": [
+            {
+              "moves": [
+                { "direction": "Up", "steps": [2] }
+              ]
+            },
+            {
+              "moves": [
+                { "direction": "Left", "steps": [1] },
+                { "direction": "Up", "steps": [1] },
+                { "direction": "Right", "steps": [1] }
+              ]
+            }
+          ]
+        },
+        {
+          "segments": [
+            {
+              "moves": [
+                { "direction": "Down", "steps": [1] }
+              ]
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "type": "Move",
+      "id": 4,
+      "paths": [
+        {
+          "segments": [
+            {
+              "moves": [
+                { "direction": "UpLeft", "steps": [1] },
+                { "direction": "Up", "steps": [1] },
+                { "direction": "UpRight", "steps": [1] }
+              ]
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "type": "Move",
+      "id": 5,
+      "paths": [
+        {
+          "segments": [
+            {
+              "moves": [
+                { "direction": "Up", "steps": [1] },
+                { "direction": "UpLeft", "steps": [1] },
+                { "direction": "UpRight", "steps": [1] },
+                { "direction": "Left", "steps": [1, 2] },
+                { "direction": "Right", "steps": [1, 2] }
+              ]
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "type": "Move",
+      "id": 6,
+      "paths": [
+        {
+          "segments": [
+            {
+              "moves": [
+                { "direction": "UpLeft", "steps": [1] },
+                { "direction": "UpRight", "steps": [1] },
+                { "direction": "DownRight", "steps": [1] },
+                { "direction": "DownLeft", "steps": [1] }
+              ]
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "type": "Move",
+      "id": 7,
+      "paths": [
+        {
+          "segments": [
+            {
+              "moves": [
+                { "direction": "UpLeft", "steps": [1] },
+                { "direction": "Left", "steps": [1] },
+                { "direction": "DownLeft", "steps": [1] },
+                { "direction": "Down", "steps": [1] },
+                { "direction": "DownRight", "steps": [1] },
+                { "direction": "Right", "steps": [1] },
+                { "direction": "UpRight", "steps": [1] },
+                { "direction": "Up", "steps": [1] }
+              ]
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "type": "Move",
+      "id": 8,
+      "paths": [
+        {
+          "segments": [
+            {
+              "moves": [
+                { "direction": "Up", "steps": [1, 2] },
+                { "direction": "UpLeft", "steps": [1] },
+                { "direction": "UpRight", "steps": [1] },
+                { "direction": "Right", "steps": [1, 2] },
+                { "direction": "DownRight", "steps": [1] },
+                { "direction": "Down", "steps": [1, 2] },
+                { "direction": "DownLeft", "steps": [1] },
+                { "direction": "Left", "steps": [1, 2] }
+              ]
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "type": "Move",
+      "id": 9,
+      "paths": [
+        {
+          "segments": [
+            {
+              "moves": [
+                { "direction": "Left", "steps": [1] },
+                { "direction": "Right", "steps": [1] }
+              ]
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "type": "Melee",
+      "id": 1,
+      "directions": ["Up"],
+      "range": 1,
+      "damage": 1,
+      "friendlyFire": true
+    },
+    {
+      "type": "Melee",
+      "id": 2,
+      "directions": ["Up", "Left", "Right", "Down"],
+      "range": 1,
+      "damage": 1,
+      "friendlyFire": true
+    },
+    {
+      "type": "MeleeAOE",
+      "id": 3,
+      "directions": ["Up", "UpLeft", "Left", "DownLeft", "Down", "DownRight", "Right", "UpRight"],
+      "range": 1,
+      "damage": 1,
+      "friendlyFire": true
+    },
+    {
+      "type": "DirectFire",
+      "id": 4,
+      "directions": ["Up"],
+      "range": 2,
+      "damage": 1,
+      "friendlyFire": true
+    },
+    {
+      "type": "DirectFire",
+      "id": 5,
+      "directions": ["Up"],
+      "range": 3,
+      "damage": 1,
+      "friendlyFire": true
+    },
+    {
+      "type": "Arcing",
+      "id": 6,
+      "points": [
+        { "dx": 0, "dy": -2 }, { "dx": 0, "dy": -3 }, { "dx": -1, "dy": -2 },
+        { "dx": 1, "dy": -2 }, { "dx": -2, "dy": -1 }, { "dx": -3, "dy": 0 },
+        { "dx": -1, "dy": -1 }, { "dx": -2, "dy": 0 }, { "dx": -1, "dy": 1 },
+        { "dx": 0, "dy": 2 }, { "dx": 1, "dy": 1 }, { "dx": 2, "dy": 0 },
+        { "dx": 1, "dy": -1 }, { "dx": 2, "dy": -1 }, { "dx": 3, "dy": 0 },
+        { "dx": 2, "dy": 1 }, { "dx": 1, "dy": 2 }, { "dx": 0, "dy": 3 },
+        { "dx": -1, "dy": 2 }, { "dx": -2, "dy": 1 }
+      ],
+      "damage": 1,
+      "friendlyFire": true
+    },
+    {
+      "type": "Spell",
+      "id": 7,
+      "points": [
+        { "dx": 0, "dy": -1 }, { "dx": 0, "dy": -2 }, { "dx": -1, "dy": -1 },
+        { "dx": 1, "dy": -1 }, { "dx": 1, "dy": 0 }, { "dx": 2, "dy": 0 },
+        { "dx": 0, "dy": 1 }, { "dx": -1, "dy": 0 }, { "dx": -2, "dy": 0 },
+        { "dx": 0, "dy": 2 }, { "dx": -1, "dy": 1 }, { "dx": 1, "dy": 1 }
+      ],
+      "damage": 1,
+      "friendlyFire": true
+    },
+    {
+      "type": "Melee",
+      "id": 8,
+      "directions": ["Up", "Down", "Left", "UpLeft", "UpRight", "Right"],
+      "range": 1,
+      "damage": 1,
+      "friendlyFire": true
+    },
+    {
+      "type": "Melee",
+      "id": 9,
+      "directions": ["Up", "UpLeft", "UpRight"],
+      "range": 1,
+      "damage": 1,
+      "friendlyFire": true
+    },
+    {
+      "type": "Arcing",
+      "id": 10,
+      "points": [
+        { "dx": -2, "dy": -1 }, { "dx": -1, "dy": -2 }, { "dx": 0, "dy": -3 },
+        { "dx": 1, "dy": -2 }, { "dx": 2, "dy": -1 }
+      ],
+      "damage": 1,
+      "friendlyFire": true
+    },
+    {
+      "type": "Melee",
+      "id": 11,
+      "directions": ["Down", "Left", "Right"],
+      "range": 1,
+      "damage": 1,
+      "friendlyFire": true
+    }
+  ]
+}

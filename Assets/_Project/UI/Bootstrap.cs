@@ -23,6 +23,7 @@ namespace TheLaw.UI
         [SerializeField] private List<AIParams> _aiParamConfigs = new List<AIParams>();
         [SerializeField] private List<EventPool> _eventPoolConfigs = new List<EventPool>();
         [SerializeField] private List<RelicDef> _relicConfigs = new List<RelicDef>();
+        [SerializeField] private List<TemplateDef> _templateConfigs = new List<TemplateDef>(); // 程序块模板库（编辑界面候选池）
 
         [Header("测试开关")]
         [Tooltip("true=启动直进战斗（跳过主菜单），false=正常主菜单流程")]
@@ -102,7 +103,15 @@ namespace TheLaw.UI
             RegisterAll(_aiParamConfigs);
             RegisterAll(_eventPoolConfigs);
             RegisterAll(_relicConfigs);
-            Debug.Log($"[Bootstrap] 配置注册完成：棋子 {_pieceConfigs.Count} / 能力 {_abilityConfigs.Count} / 层 {_floorConfigs.Count} / 地图 {_mapConfigs.Count} / AI {_aiParamConfigs.Count} / 事件池 {_eventPoolConfigs.Count} / 遗物 {_relicConfigs.Count}");
+            // 程序块模板库（独立注册表——按"种类+编号"查询，编辑界面候选池）
+            foreach (var def in _templateConfigs)
+            {
+                if (def != null)
+                {
+                    TemplateLibrary.Register(def);
+                }
+            }
+            Debug.Log($"[Bootstrap] 配置注册完成：棋子 {_pieceConfigs.Count} / 能力 {_abilityConfigs.Count} / 层 {_floorConfigs.Count} / 地图 {_mapConfigs.Count} / AI {_aiParamConfigs.Count} / 事件池 {_eventPoolConfigs.Count} / 遗物 {_relicConfigs.Count} / 模板 {_templateConfigs.Count}");
         }
 
         /// <summary>批量注册配置（重复 Id 由 ConfigTable.Register 断言拦截）。</summary>

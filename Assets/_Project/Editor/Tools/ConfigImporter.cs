@@ -9,16 +9,17 @@ using Newtonsoft.Json;
 namespace TheLaw.EditorTools
 {
     /// <summary>
-    /// 关卡/事件/遗物配置导入器：读取 Assets/Data/Configs/*.json → 生成 SO 资产。
+    /// 关卡/事件/遗物/模板配置导入器：读取 Assets/Data/Configs/*.json + Assets/Data/Templates/*.json → 生成 SO 资产。
     /// 菜单：工具 → 导入关卡配置（JSON）
-    /// 资产落位：Assets/Settings/Configs/（能力 → 按指纹去重复用）
-    /// 导入顺序：遗物/能力 → 事件（池/定义）→ 关卡 → 地图（引用前面资产）
+    /// 资产落位：Assets/Settings/Configs/（能力 → 按指纹去重复用；模板 → TemplateDef）
+    /// 导入顺序：遗物/能力 → 事件（池/定义）→ 关卡 → 地图 → 模板库
     /// </summary>
     public static class ConfigImporter
     {
         private const string ConfigsJsonDir = "Assets/Data/Configs";
         private const string ConfigAssetsDir = "Assets/Settings/Configs";
         private const string PieceAssetsDir = "Assets/Settings/Pieces"; // 波次阵容按棋子资产名 → defId 转换
+        private const string TemplatesJsonDir = "Assets/Data/Templates";
 
         [MenuItem("工具/导入关卡配置（JSON）")]
         public static void ImportAll()
@@ -29,9 +30,10 @@ namespace TheLaw.EditorTools
             ImportEvents();
             ImportFloor();
             ImportMap();
+            ImportTemplates();
 
             AssetDatabase.SaveAssets();
-            Debug.Log("[配置导入器] 完成：遗物/事件/关卡/地图");
+            Debug.Log("[配置导入器] 完成：遗物/事件/关卡/地图/模板库");
         }
 
         // ========== 遗物 ==========
@@ -218,6 +220,112 @@ namespace TheLaw.EditorTools
             EditorUtility.SetDirty(map);
         }
 
+        // ========== 模板库（独立程序块定义——编辑界面候选池）==========
+
+        private static void ImportTemplates()
+        {
+            string path = $"{TemplatesJsonDir}/templates.json";
+            if (!File.Exists(path))
+            {
+                return;
+            }
+            var dto = JsonConvert.DeserializeObject<TemplatesJson>(File.ReadAllText(path));
+            if (dto?.templates == null)
+            {
+                return;
+            }
+            int ok = 0;
+            foreach (var t in dto.templates)
+            {
+                string key = $"{t.type}-{t.id}"; // "Move-1" / "Attack-11"（与描述表 key 同构）
+                string assetPath = $"{ConfigAssetsDir}/Tpl_{t.type}_{t.id}.asset";
+                var def = LoadOrCreate<TemplateDef>(assetPath, $"Tpl_{t.type}_{t.id}"); // 增量：已存在更新不删建
+                def.templateKey = key;
+                def.template = ParseTemplate(t);
+                if (def.Id == 0)
+                {
+                    SetId(def, StableHash(def.name));
+                }
+                EditorUtility.SetDirty(def);
+                ok++;
+            }
+            Debug.Log($"[配置导入器] 模板库：{ok} 条（{TemplatesJsonDir}/templates.json）");
+        }
+
+        private static Template ParseTemplate(TemplateJson t)
+        {
+            switch (t.type)
+            {
+                case "Move":
+                    return ParseMoveTemplate(t);
+                case "Melee":
+                case "MeleeAOE":
+                case "DirectFire":
+                    return new AttackTemplate(
+                        ParseEnum(t.type, AttackMode.Melee),
+                        ParseDirections(t.directions),
+                        t.range,
+                        t.damage,
+                        t.friendlyFire)
+                    { id = t.id };
+                case "Arcing":
+                case "Spell":
+                    var atk = new AttackTemplate
+                    {
+                        mode = ParseEnum(t.type, AttackMode.Arcing),
+                        damage = t.damage,
+                        friendlyFire = t.friendlyFire,
+                        id = t.id,
+                    };
+                    if (t.points != null)
+                    {
+                        foreach (var p in t.points)
+                        {
+                            atk.points.Add(new Vector2Int(p.dx, p.dy));
+                        }
+                    }
+                    return atk;
+                default:
+                    Debug.LogWarning($"[配置导入器] 未知模板类型：{t.type}");
+                    return null;
+            }
+        }
+
+        private static Template ParseMoveTemplate(TemplateJson t)
+        {
+            var template = new MoveTemplate { id = t.id };
+            if (t.paths == null)
+            {
+                return template;
+            }
+            foreach (var path in t.paths)
+            {
+                var movePath = new MovePath();
+                if (path.segments != null)
+                {
+                    foreach (var seg in path.segments)
+                    {
+                        var segment = new MoveSegment();
+                        if (seg.moves != null)
+                        {
+                            foreach (var mv in seg.moves)
+                            {
+                                var step = new MoveStep { direction = ParseDirection(mv.direction) };
+                                if (mv.steps != null)
+                                {
+                                    step.steps = new List<int>(mv.steps);
+                                }
+                                segment.moves.Add(step);
+                            }
+                        }
+                        movePath.segments.Add(segment);
+                    }
+                }
+                template.paths.Add(movePath);
+            }
+            return template;
+        }
+
         // ========== 特殊能力（支持 Passive/Trigger/Attach）==========
 
         private static SpecialAbilityDef GetOrCreateAbility(AbilityJson a)
@@ -327,6 +435,24 @@ namespace TheLaw.EditorTools
             so.ApplyModifiedProperties();
         }
 
+        private static Direction ParseDirection(string s)
+        {
+            return System.Enum.TryParse<Direction>(s, out var d) ? d : Direction.Up;
+        }
+
+        private static Direction ParseDirections(List<string> dirs)
+        {
+            Direction result = Direction.None;
+            if (dirs != null)
+            {
+                foreach (var s in dirs)
+                {
+                    result |= ParseDirection(s);
+                }
+            }
+            return result == Direction.None ? Direction.Up : result;
+        }
+
         private static int StableHash(string s)
         {
             uint hash = 2166136261;
@@ -363,6 +489,23 @@ namespace TheLaw.EditorTools
         }
 
         // ========== DTO ==========
+
+        private class TemplatesJson { public List<TemplateJson> templates; }
+        private class TemplateJson
+        {
+            public string type;                 // Move/Melee/MeleeAOE/DirectFire/Arcing/Spell
+            public int id;                      // 种类内编号（与棋子内联模块/描述表 key 同构）
+            public List<TplPathJson> paths;     // Move
+            public List<string> directions;     // 方向集攻击
+            public int range;
+            public int damage;
+            public bool friendlyFire;
+            public List<PointJson> points;      // 抛射/法术自由点选
+        }
+        private class TplPathJson { public List<TplSegmentJson> segments; }
+        private class TplSegmentJson { public List<TplMoveJson> moves; }
+        private class TplMoveJson { public string direction; public List<int> steps; }
+        private class PointJson { public int dx; public int dy; }
 
         private class MapJson { public string mapName; public string displayName; public string description; public List<string> floors; }
         private class FloorJson { public string floorName; public string displayName; public string description; public string victoryRule; public int targetScore; public int enemyMaxAP; public List<string> eventSequence; public List<string> eventPoolIds; public List<WaveJson> waves; }

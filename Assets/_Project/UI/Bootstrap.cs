@@ -159,9 +159,50 @@ namespace TheLaw.UI
 
         private void WireEvents()
         {
-            // 整局结束：清档 → 回主菜单（TODO: UI 切面板）
+            // 整局结束：清档 → 回主菜单
             EventCenter.Instance.AddEventListener(GameEvent.RunEnded, OnRunEnded);
+            // 战斗结算：EndBattle 发 StateChanged(winner)——GameOver 阶段才处理
+            EventCenter.Instance.AddEventListener(GameEvent.StateChanged, OnStateChanged);
             // TODO: 进层/开战存档（SaveManager.SaveAll 触发时机——关键事件存档）
+        }
+
+        private void OnStateChanged(object data)
+        {
+            if (_gameState.Phase != BattlePhase.GameOver) return; // 其他 StateChanged（落账等）不处理
+            if (!(data is Side winner)) return;
+            StartCoroutine(LoadBattleResult(winner == Side.Player));
+        }
+
+        /// <summary>战斗结算面板：胜负文案 + 重新开始/返回主菜单。</summary>
+        private System.Collections.IEnumerator LoadBattleResult(bool victory)
+        {
+            bool done = false;
+            BattleResultPanel panel = null;
+            PanelBase.CreateAsync<BattleResultPanel>(p => { panel = p; done = true; });
+            yield return new WaitUntil(() => done);
+            _uiManager.RegisterPanel(panel);
+            panel.ShowResult(victory);
+            panel.OnRestartClicked += () => { _uiManager.HidePanel("BattleResult"); StartNewGame(); };
+            panel.OnBackToMenuClicked += () => { _uiManager.HidePanel("BattleResult"); BackToMainMenu(); };
+            _uiManager.ShowPanel("BattleResult");
+            Debug.Log($"[Bootstrap] 战斗结算显示：{(victory ? "胜利" : "失败")}");
+        }
+
+        /// <summary>回主菜单：重置状态 + 清档 + 显示主菜单（面板实例常驻，HidePanel 过直接恢复）。</summary>
+        private void BackToMainMenu()
+        {
+            DestroyBattleController();
+            _gameState.ResetForNewRun();
+            SaveManager.Instance.SaveAll();
+            _uiManager.ShowPanel("MainMenu");
+            Debug.Log("[Bootstrap] 返回主菜单");
+        }
+
+        /// <summary>销毁战斗会话（BattleController 连带销毁战斗面板——防多局累积实例）。</summary>
+        private void DestroyBattleController()
+        {
+            var old = GameObject.Find("BattleController");
+            if (old != null) UnityEngine.Object.Destroy(old);
         }
 
         private void OnRunEnded(object data)
@@ -199,6 +240,7 @@ namespace TheLaw.UI
         /// 事件/地图 UI 后补——届时换 TowerFlow.EnterFloor(0) 走完整节点序列。</summary>
         private void StartNewGame()
         {
+            DestroyBattleController(); // 清理旧战斗会话（重开/结算重开路径）
             _gameState.ResetForNewRun(); // 基础牌组填手牌（协作者实现）；敌方由波次调度产出（数据集 floor1 回合 1/4/7）
             var map = GetMapConfig();
             if (map == null || map.floors.Count == 0)

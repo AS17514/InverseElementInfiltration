@@ -73,6 +73,8 @@ namespace TheLaw.UI
             if (_tooltip != null) _tooltip.gameObject.SetActive(false);
             if (_handPosTween != null) _handPosTween.Kill();
             if (_handSizeTween != null) _handSizeTween.Kill();
+            // 随会话销毁战斗面板（重开/回主菜单时清理——防多局累积实例）
+            if (_panel != null) Destroy(_panel.gameObject);
         }
 
         public void Init(BattleFlow flow, GameState state)

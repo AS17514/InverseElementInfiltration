@@ -130,9 +130,8 @@ namespace TheLaw.UI
                 if (label != null) label.text = option.label;
                 if (!option.available)
                 {
-                    btn.interactable = false; // 灰显
-                    var img = go.GetComponent<Image>();
-                    if (img != null) img.color = new Color(0.4f, 0.4f, 0.4f, 1f);
+                    // 灰显交给 Button.interactable=false（disabledColor 自动）——不改预制体视觉
+                    btn.interactable = false;
                 }
                 else
                 {

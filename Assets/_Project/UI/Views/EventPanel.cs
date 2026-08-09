@@ -100,30 +100,17 @@ namespace TheLaw.UI
         void BuildOptions()
         {
             if (_optionsRoot == null || _currentEvent == null) return;
+            if (_optionTemplate == null)
+            {
+                // 模板未就绪：等加载完成再生成（prefab 视觉为准——不用硬编码兜底）
+                StartCoroutine(BuildOptionsWhenReady());
+                return;
+            }
             foreach (Transform child in _optionsRoot) Destroy(child.gameObject);
             for (int i = 0; i < _currentEvent.options.Count; i++)
             {
                 var option = _currentEvent.options[i];
-                GameObject go;
-                if (_optionTemplate != null)
-                {
-                    go = Instantiate(_optionTemplate, _optionsRoot);
-                    // prefab 根尺寸为 0——实例化后显式设尺寸（与 Text 子级 500×80 匹配）
-                    var rt = (RectTransform)go.transform;
-                    rt.sizeDelta = new Vector2(500, 80);
-                }
-                else
-                {
-                    // 模板未加载回退：纯代码创建（必须挂到 _optionsRoot——防生成在场景根）
-                    go = new GameObject($"Option_{i}", typeof(RectTransform), typeof(Image), typeof(Button));
-                    go.transform.SetParent(_optionsRoot, false);
-                    var rt = (RectTransform)go.transform;
-                    rt.sizeDelta = new Vector2(600, 60);
-                    go.GetComponent<Image>().color = new Color(0.25f, 0.4f, 0.65f, 1f);
-                    var labelGo = new GameObject("Text (TMP)", typeof(RectTransform), typeof(TextMeshProUGUI));
-                    labelGo.transform.SetParent(go.transform, false);
-                    ((RectTransform)labelGo.transform).sizeDelta = new Vector2(560, 50);
-                }
+                var go = Instantiate(_optionTemplate, _optionsRoot);
                 var btn = go.GetComponent<Button>();
                 if (btn == null) btn = go.AddComponent<Button>();
                 var label = go.GetComponentInChildren<TMP_Text>();
@@ -139,6 +126,12 @@ namespace TheLaw.UI
                     btn.onClick.AddListener(() => OnOptionClicked(index));
                 }
             }
+        }
+
+        System.Collections.IEnumerator BuildOptionsWhenReady()
+        {
+            while (_optionTemplate == null) yield return null;
+            BuildOptions();
         }
 
         void OnOptionClicked(int optionIndex)

@@ -928,10 +928,11 @@ namespace TheLaw.UI
             }
         }
 
-        /// <summary>移动描述："移：在上下左右中选择一个进行移动"（可达格已在棋盘显示，不赘述）。</summary>
+        /// <summary>移动描述：移动 = 在可达地块选一个前往（无"再移"概念）——按可达范围分级描述（描述表未收录结构的回退）。</summary>
         static string MoveDescNatural(MoveTemplate m)
         {
-            var parts = new List<string>();
+            Direction dirs = 0;
+            int maxStep = 0;
             if (m.paths != null)
             {
                 foreach (var path in m.paths)
@@ -940,22 +941,31 @@ namespace TheLaw.UI
                     {
                         foreach (var step in seg.moves)
                         {
-                            string dirs = DirsNatural(step.direction);
-                            parts.Add(MoveStepNatural(dirs, step.steps));
+                            dirs |= step.direction;
+                            if (step.steps != null)
+                            {
+                                foreach (var s in step.steps) maxStep = Mathf.Max(maxStep, s);
+                            }
                         }
                     }
                 }
             }
-            if (parts.Count == 0) return "移：原地不动";
-            if (parts.Count == 1) return parts[0];
-            return string.Join("，再", parts);
-        }
+            if (dirs == 0) return "移：原地不动";
 
-        static string MoveStepNatural(string dirs, List<int> steps)
-        {
-            string stepDesc = StepsNatural(steps);
-            if (stepDesc.Length == 0) return $"移：在{dirs}中选择一个进行移动";
-            return $"移：在{dirs}方向移动{stepDesc}格";
+            int count = 0;
+            for (int d = 1; d <= (int)Direction.DownRight; d <<= 1)
+            {
+                if ((dirs & (Direction)d) != 0) count++;
+            }
+            bool hasDiag = (dirs & (Direction.UpLeft | Direction.UpRight | Direction.DownLeft | Direction.DownRight)) != 0;
+
+            if (count >= 8) return maxStep >= 2 ? "移：大范围内选定一格进行移动" : "移：周围范围内选定一格进行移动";
+            if (maxStep >= 2) return "移：较大范围内选定一格进行移动";
+            if (count == 4 && !hasDiag) return "移：上下左右范围内选定一格进行移动";
+            if (count >= 3) return "移：前方范围内选定一格进行移动";
+            if ((dirs & Direction.Left) != 0 && (dirs & Direction.Right) != 0) return "移：左右范围内选定一格进行移动";
+            if (hasDiag) return "移：斜向范围内选定一格进行移动";
+            return "移：前方一格范围内选定进行移动";
         }
 
         static string AttackDescNatural(AttackTemplate a)

@@ -30,6 +30,7 @@ namespace TheLaw.Gameplay
         private class ExecContext
         {
             public int pieceId;
+            public Side side; // 发起方（扣费判定依据——不能用当前阶段，表现完成时阶段可能已切换）
             public List<Template> program;
             public int slotIndex;
             public bool free;
@@ -174,7 +175,7 @@ namespace TheLaw.Gameplay
                     case ExecuteRequest execute:
                         if (_state.GetPiece(execute.pieceId)?.side == side)
                         {
-                            ExecutePiece(execute.pieceId, request.free); // 玩家逐槽选择 / AI 自动选（内部按 side 分流）
+                            ExecutePiece(execute.pieceId, request.free, side); // 玩家逐槽选择 / AI 自动选（内部按 side 分流）
                         }
                         break;
                 }
@@ -188,7 +189,7 @@ namespace TheLaw.Gameplay
             var extraExecutes = _resolver.TakePendingExtraExecutes();
             foreach (var pieceId in extraExecutes)
             {
-                ExecutePiece(pieceId, true);
+                ExecutePiece(pieceId, true, side);
             }
             CheckVictory(false);
             CheckActionPoints();
@@ -221,7 +222,7 @@ namespace TheLaw.Gameplay
 
         // ========== 逐槽可续执行 ==========
 
-        private void ExecutePiece(int pieceId, bool free)
+        private void ExecutePiece(int pieceId, bool free, Side side)
         {
             var piece = _state.GetPiece(pieceId);
             if (piece == null)
@@ -236,6 +237,7 @@ namespace TheLaw.Gameplay
             _ctx = new ExecContext
             {
                 pieceId = pieceId,
+                side = side,
                 program = program, // 执行开始即程序定稿
                 slotIndex = 0,
                 free = free,
@@ -282,7 +284,18 @@ namespace TheLaw.Gameplay
                 case AttackTemplate attack:
                     if (piece.side == Side.Player)
                     {
-                        _waitingCellSelect = true; // 暂停等玩家选目标格（可空放/打己方）
+                        var playerAttackOptions = _intentResolver.GetAttackOptions(_state, piece, attack);
+                        if (playerAttackOptions.Count == 0)
+                        {
+                            // 候选为空（被障碍包围/射程无格）：与 Move 槽一致走 Skip，防永久等待选格死锁
+                            _resolver.Resolve(new SkipAction(piece.Id, SkipReason.NoTarget));
+                            _ctx.slotIndex++;
+                            AdvanceSlot();
+                        }
+                        else
+                        {
+                            _waitingCellSelect = true; // 暂停等玩家选目标格（可空放/打己方）
+                        }
                     }
                     else
                     {
@@ -324,6 +337,12 @@ namespace TheLaw.Gameplay
             {
                 return;
             }
+            if (_ctx.slotIndex >= _ctx.program.Count)
+            {
+                // 防御：程序已走完（镜像/表现竞态导致 UI 残留选格请求）——兜底结束执行
+                FinishExecute();
+                return;
+            }
             var slot = _ctx.program[_ctx.slotIndex];
             switch (slot)
             {
@@ -356,8 +375,15 @@ namespace TheLaw.Gameplay
                 return;
             }
             var free = _ctx.free;
+            var side = _ctx.side;
             _ctx = null;
-            DeductActionPoint(free, _state.Phase == BattlePhase.EnemyTurn ? Side.Enemy : Side.Player);
+            // 按发起方扣费（表现完成时阶段可能已切到对方回合，按当前阶段会扣错阵营）
+            DeductActionPoint(free, side);
+            // 执行扣费是异步的（表现完成后），此处补触发 AP 耗尽检查（回合自动移交）
+            if (side == Side.Player)
+            {
+                CheckActionPoints();
+            }
         }
 
         // ========== 表现等待（等"表现完成"事件——无限等 + 日志）==========

@@ -36,10 +36,12 @@ namespace TheLaw.UI
 
         private void Bind(string buttonName, Action handler)
         {
-            var btnGo = transform.Find(buttonName);
-            if (btnGo == null) return; // 代码构建版只有 StartButton——未绑定的按钮走旧路径
-            var btn = btnGo.GetComponent<Button>();
-            if (btn == null) return;
+            Button btn = null;
+            foreach (var b in GetComponentsInChildren<Button>(true))
+            {
+                if (b.name == buttonName) { btn = b; break; } // 按钮可能在分组子级下（如 Grp_MenuOptions/Btn_NewGame）
+            }
+            if (btn == null) return; // 代码构建版只有 StartButton——未绑定的按钮走旧路径
             btn.onClick.RemoveAllListeners(); // 防重复绑定（面板重建）
             btn.onClick.AddListener(() => handler?.Invoke());
         }

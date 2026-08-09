@@ -1,0 +1,8 @@
+{
+  "mapName": "TestMap",
+  "displayName": "测试地图",
+  "description": "测试用地图——仅第 1 层，验证爬塔流程最小可玩",
+  "floors": [
+    "floor1"
+  ]
+}

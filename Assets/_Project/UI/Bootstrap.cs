@@ -46,6 +46,7 @@ namespace TheLaw.UI
         private BattleFlow _battleFlow;
         private EditorSession _editorSession;
         private PieceEditPanel _pieceEditPanel; // 棋子编辑面板（新局入口——编辑完成进战斗）
+        private EventPanel _eventPanel;         // 事件关面板（EventOpened 显示）
         private EventNodeSystem _eventNodeSystem;
         private TowerFlow _towerFlow;
 
@@ -178,7 +179,39 @@ namespace TheLaw.UI
             EventCenter.Instance.AddEventListener(GameEvent.RunEnded, OnRunEnded);
             // 战斗结算：EndBattle 发 StateChanged(winner)——GameOver 阶段才处理
             EventCenter.Instance.AddEventListener(GameEvent.StateChanged, OnStateChanged);
+            // 事件关：EventOpened → 显示事件面板（选项交互 → EventCompleted 推进）
+            EventCenter.Instance.AddEventListener(GameEvent.EventOpened, OnEventOpened);
             // TODO: 进层/开战存档（SaveManager.SaveAll 触发时机——关键事件存档）
+        }
+
+        private void OnEventOpened(object data)
+        {
+            OpenEventPanel();
+        }
+
+        private void OpenEventPanel()
+        {
+            if (_eventPanel == null)
+            {
+                StartCoroutine(LoadEventPanel());
+            }
+            else
+            {
+                _uiManager.ShowPanel("EventPanel");
+            }
+        }
+
+        private System.Collections.IEnumerator LoadEventPanel()
+        {
+            bool done = false;
+            EventPanel panel = null;
+            PanelBase.CreateAsync<EventPanel>(p => { panel = p; done = true; });
+            yield return new WaitUntil(() => done);
+            _eventPanel = panel;
+            _uiManager.RegisterPanel(panel);
+            panel.Init(_eventNodeSystem);
+            _uiManager.ShowPanel("EventPanel");
+            Debug.Log("[Bootstrap] 事件面板已显示");
         }
 
         private void OnStateChanged(object data)

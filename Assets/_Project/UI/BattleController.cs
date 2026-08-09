@@ -506,12 +506,15 @@ namespace TheLaw.UI
             var uiCam = tooltipCanvas != null ? tooltipCanvas.worldCamera : null;
             if (uiCam != null)
             {
-                // ScreenSpaceCamera 下：像素坐标需经 ScreenPointToWorldPointInRectangle 转回世界坐标（直接赋像素会飞出屏幕）
-                var screenPt = uiCam.WorldToScreenPoint(leftTopWorld);
+                // 屏幕坐标用主相机（玩家视角——块是 3D 对象主相机渲染）；再转 UICamera 的 Canvas 平面
+                // 用 UICamera 投影会与玩家看到的块位置偏差（两相机视角不同）
+                var screenPt = Camera.main != null
+                    ? Camera.main.WorldToScreenPoint(leftTopWorld)
+                    : uiCam.WorldToScreenPoint(leftTopWorld);
                 if (RectTransformUtility.ScreenPointToWorldPointInRectangle(
                         tooltipCanvas.transform as RectTransform, screenPt, uiCam, out var worldPt))
                 {
-                    _tooltip.position = worldPt; // 右上角 = sprite 左上角
+                    _tooltip.position = worldPt; // 右上角 = sprite 左上角（玩家视角）
                 }
             }
             _tooltip.gameObject.SetActive(true);

@@ -41,9 +41,14 @@ namespace TheLaw.UI
             {
                 if (b.name == buttonName) { btn = b; break; } // 按钮可能在分组子级下（如 Grp_MenuOptions/Btn_NewGame）
             }
-            if (btn == null) return; // 代码构建版只有 StartButton——未绑定的按钮走旧路径
+            if (btn == null)
+            {
+                Debug.LogWarning($"[MainMenu] 未找到按钮 {buttonName}");
+                return;
+            }
             btn.onClick.RemoveAllListeners(); // 防重复绑定（面板重建）
-            btn.onClick.AddListener(() => handler?.Invoke());
+            btn.onClick.AddListener(() => { Debug.Log($"[MainMenu] 点击 {buttonName}"); handler?.Invoke(); });
+            Debug.Log($"[MainMenu] 绑定按钮 {buttonName}");
         }
 
         private void Build()

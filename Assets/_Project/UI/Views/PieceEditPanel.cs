@@ -19,17 +19,6 @@ namespace TheLaw.UI
     {
         public override string Key => "PieceEdit";
 
-        /// <summary>编辑完成（Btn_Next——按模式决定下一步）。</summary>
-        public event System.Action OnNextClicked; // 新局模式：进战斗（Bootstrap 接线）
-
-        /// <summary>编辑模式：false=新局（Btn_Next 进战斗）；true=事件关（Btn_Next 发 EventCompleted 推进）。</summary>
-        private bool _fromEvent;
-
-        public void SetMode(bool fromEvent)
-        {
-            _fromEvent = fromEvent;
-        }
-
         [Header("编辑行为")]
         [SerializeField] private bool _enableSlotReorder; // 排序开关（一版默认关：替换只改目标槽）
 
@@ -79,16 +68,9 @@ namespace TheLaw.UI
 
         void OnNext()
         {
-            if (_fromEvent)
-            {
-                // 事件关模式：编辑完成 → 通知 TowerFlow 推进（面板关闭——下一节点 EventOpened 会再激活）
-                gameObject.SetActive(false);
-                EventCenter.Instance.EventTrigger(GameEvent.EventCompleted);
-            }
-            else
-            {
-                OnNextClicked?.Invoke(); // 新局模式：Bootstrap 进 TowerFlow.EnterFloor(0)
-            }
+            // 编辑完成 → 通知 TowerFlow 推进（面板关闭——下一节点 EventOpened 会再激活）
+            gameObject.SetActive(false);
+            EventCenter.Instance.EventTrigger(GameEvent.EventCompleted);
         }
 
         protected override void OnShow()

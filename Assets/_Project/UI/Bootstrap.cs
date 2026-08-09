@@ -235,7 +235,7 @@ namespace TheLaw.UI
             {
                 if (s == "edit")
                 {
-                    OpenPieceEditor(fromEvent: true); // 事件关：编辑棋子行为（固定链第 1 步）
+                    OpenPieceEditor(); // 事件关：编辑棋子行为（固定链第 1 步）
                 }
                 else if (s == "deck")
                 {
@@ -298,30 +298,41 @@ namespace TheLaw.UI
             StartNewGame();
         }
 
-        /// <summary>新局：重置状态（基础牌组填手牌）→ 进入棋子编辑界面（编辑完成 → 直进第 1 层战斗）。
-        /// 事件/地图 UI 后补——届时 StartBattleAfterEdit 换 TowerFlow.EnterFloor(0) 走完整节点序列。</summary>
+        /// <summary>新局：重置状态（基础牌组填手牌）→ 直接进入爬塔节点序列（事件→编辑事件→构筑事件→战斗——固定链）。</summary>
         private void StartNewGame()
         {
             DestroyBattleController(); // 清理旧战斗会话（重开/结算重开路径）
             _gameState.ResetForNewRun(); // 基础牌组填手牌（协作者实现）；敌方由波次调度产出（数据集 floor1 回合 1/4/7）
-            OpenPieceEditor();
+            EnterTower();
         }
 
-        /// <summary>打开棋子编辑面板（fromEvent：事件关模式——Btn_Next 发 EventCompleted 推进）。</summary>
-        private void OpenPieceEditor(bool fromEvent = false)
+        /// <summary>进入爬塔：TowerFlow 节点序列驱动（事件关/编辑/战斗）。</summary>
+        private void EnterTower()
+        {
+            var map = GetMapConfig();
+            if (map == null || map.floors.Count == 0)
+            {
+                Debug.LogError("[Bootstrap] 无地图配置——无法进入爬塔");
+                return;
+            }
+            _towerFlow.EnterFloor(0);
+            Debug.Log($"[Bootstrap] 进入爬塔：层 {_gameState.CurrentFloor}，节点 {_gameState.CurrentNodeIndex}/{_gameState.NodeStates.Count}");
+        }
+
+        /// <summary>打开棋子编辑面板（事件关模式——StateChanged("edit") 驱动；Btn_Next 发 EventCompleted 推进）。</summary>
+        private void OpenPieceEditor()
         {
             if (_pieceEditPanel == null)
             {
-                StartCoroutine(LoadPieceEditPanel(fromEvent));
+                StartCoroutine(LoadPieceEditPanel());
             }
             else
             {
-                _pieceEditPanel.SetMode(fromEvent);
                 _uiManager.ShowPanel("PieceEdit");
             }
         }
 
-        private System.Collections.IEnumerator LoadPieceEditPanel(bool fromEvent)
+        private System.Collections.IEnumerator LoadPieceEditPanel()
         {
             bool done = false;
             PieceEditPanel panel = null;
@@ -330,24 +341,8 @@ namespace TheLaw.UI
             _pieceEditPanel = panel;
             _uiManager.RegisterPanel(panel);
             panel.Init(_editorSession, _gameState);
-            panel.SetMode(fromEvent);
-            panel.OnNextClicked += StartBattleAfterEdit; // 新局模式：编辑完成 → TowerFlow 节点序列
             _uiManager.ShowPanel("PieceEdit");
-            Debug.Log($"[Bootstrap] 棋子编辑界面已显示（{(fromEvent ? "事件模式" : "新局模式")}）");
-        }
-
-        /// <summary>编辑完成（新局模式）：进入 TowerFlow 节点序列（事件→事件→事件→战斗——固定链）。</summary>
-        private void StartBattleAfterEdit()
-        {
-            _uiManager.HidePanel("PieceEdit");
-            var map = GetMapConfig();
-            if (map == null || map.floors.Count == 0)
-            {
-                Debug.LogError("[Bootstrap] 无地图配置——无法进入爬塔");
-                return;
-            }
-            _towerFlow.EnterFloor(0); // 节点序列：事件链（编辑→构筑→战斗）由 TowerFlow 驱动
-            Debug.Log($"[Bootstrap] 进入爬塔：层 {_gameState.CurrentFloor}，节点 {_gameState.CurrentNodeIndex}/{_gameState.NodeStates.Count}");
+            Debug.Log("[Bootstrap] 棋子编辑界面已显示（事件模式）");
         }
 
         private void CreateBattleController()

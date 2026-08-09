@@ -7,6 +7,7 @@
   "modules": [
     {
       "moduleType": "Move",
+      "id": 5,
       "paths": [
         {
           "segments": [
@@ -52,6 +53,7 @@
     },
     {
       "moduleType": "DirectFire",
+      "id": 4,
       "directions": [
         "Up"
       ],
@@ -61,6 +63,7 @@
     },
     {
       "moduleType": "Move",
+      "id": 2,
       "paths": [
         {
           "segments": [

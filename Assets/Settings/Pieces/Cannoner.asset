@@ -23,15 +23,16 @@ MonoBehaviour:
   - {fileID: 11400000, guid: 6dcedbaef4ed3bd468db849ad89183bf, type: 2}
   programSet:
   - slots:
-    - rid: 7823913780353171491
-    - rid: 7823913780353171492
+    - rid: 7823913851562229796
+    - rid: 7823913851562229797
   promotionConfigId: 0
   references:
     version: 2
     RefIds:
-    - rid: 7823913780353171491
+    - rid: 7823913851562229796
       type: {class: AttackTemplate, ns: TheLaw.Data, asm: Data}
       data:
+        id: 10
         mode: 3
         directions: 1
         range: 1
@@ -44,9 +45,10 @@ MonoBehaviour:
         - {x: 0, y: -3}
         - {x: 1, y: -2}
         - {x: 2, y: -1}
-    - rid: 7823913780353171492
+    - rid: 7823913851562229797
       type: {class: MoveTemplate, ns: TheLaw.Data, asm: Data}
       data:
+        id: 9
         paths:
         - segments:
           - moves:

@@ -22,15 +22,16 @@ MonoBehaviour:
   specialAbilities: []
   programSet:
   - slots:
-    - rid: 7823913780353171493
-    - rid: 7823913780353171494
+    - rid: 7823913851562229794
+    - rid: 7823913851562229795
   promotionConfigId: 0
   references:
     version: 2
     RefIds:
-    - rid: 7823913780353171493
+    - rid: 7823913851562229794
       type: {class: MoveTemplate, ns: TheLaw.Data, asm: Data}
       data:
+        id: 4
         paths:
         - segments:
           - moves:
@@ -40,9 +41,10 @@ MonoBehaviour:
               steps: 01000000
             - direction: 32
               steps: 01000000
-    - rid: 7823913780353171494
+    - rid: 7823913851562229795
       type: {class: AttackTemplate, ns: TheLaw.Data, asm: Data}
       data:
+        id: 3
         mode: 1
         directions: 255
         range: 1

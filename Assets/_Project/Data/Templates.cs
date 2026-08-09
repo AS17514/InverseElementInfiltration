@@ -70,6 +70,11 @@ namespace TheLaw.Data
     [Serializable]
     public abstract class Template
     {
+        /// <summary>
+        /// 程序块编号（种类内编号，如 Move-1/Attack-2——同结构可复用同 id）。
+        /// JSON modules 手动指定；描述表（slot-descriptions.json）按"种类+编号"查描述；0 = 未编号（回退代码生成）。
+        /// </summary>
+        public int id;
     }
 
     /// <summary>移动模板：路径选项集合（多条路径独立计算；可达格 = 各路径落点合集；移动方式由模板决定，可编辑）。</summary>

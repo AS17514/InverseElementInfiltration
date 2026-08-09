@@ -8,10 +8,13 @@ using Newtonsoft.Json;
 namespace TheLaw.EditorTools
 {
     /// <summary>
-    /// 棋子配置导入器：读取 Assets/Data/Pieces/*.json（配置器导出）→ 生成 PieceDef SO 资产。
+    /// 棋子配置导入器：读取 Assets/Data/Pieces/*.json（配置器导出）→ 生成/更新 PieceDef SO 资产。
     /// 菜单：工具 → 导入棋子配置（JSON）
     /// 资产落位：棋子 → Assets/Settings/Pieces/；特殊能力 → Assets/Settings/Abilities/（按能力指纹去重复用）
     /// 命名：资产名 = assetName（英文）；displayName = pieceName（中文显示）；Id = 稳定哈希（assetName，重复导入不变）
+    /// ⚠️ 增量模式（2026-08-09）：资产已存在 → 更新字段不删建（GUID 不变，场景引用不断）；
+    ///    不存在 → 新建。旧"清空重建"模式已废弃（删旧建新会让场景 Bootstrap 引用全部断掉）。
+    /// 程序块编号：JSON modules 的 id 字段（种类内编号，同结构可复用同 id——描述表按"种类+编号"查描述）。
     /// </summary>
     public static class PieceConfigImporter
     {
@@ -25,12 +28,15 @@ namespace TheLaw.EditorTools
             EnsureFolder(PieceAssetsDir);
             EnsureFolder(AbilityAssetsDir);
 
-            ClearAssetsIn(PieceAssetsDir); // 清空旧棋子资产（重建——防残留/改名遗留）
-
             var jsonFiles = Directory.GetFiles(PiecesJsonDir, "*.json");
             int ok = 0;
             foreach (var file in jsonFiles)
             {
+                // slot-descriptions.json 是描述表（文案数据），不是棋子配置——跳过（防误解析报格式错误）
+                if (Path.GetFileName(file) == "slot-descriptions.json")
+                {
+                    continue;
+                }
                 try
                 {
                     if (ImportOne(file))
@@ -44,7 +50,7 @@ namespace TheLaw.EditorTools
                 }
             }
             AssetDatabase.SaveAssets();
-            Debug.Log($"[导入器] 完成：{ok}/{jsonFiles.Length} 个棋子导入成功");
+            Debug.Log($"[导入器] 完成：{ok}/{jsonFiles.Length} 个棋子导入成功（增量模式——GUID 不变）");
         }
 
         private static bool ImportOne(string jsonPath)
@@ -71,9 +77,15 @@ namespace TheLaw.EditorTools
                 }
             }
 
-            // 棋子资产（目录已清空——直接创建）
+            // 棋子资产（增量模式：已存在 → 更新字段不删建——GUID 不变，场景引用不断；不存在 → 新建）
             string assetPath = $"{PieceAssetsDir}/{assetName}.asset";
-            var piece = ScriptableObject.CreateInstance<PieceDef>();
+            var piece = AssetDatabase.LoadAssetAtPath<PieceDef>(assetPath);
+            bool created = piece == null;
+            if (created)
+            {
+                piece = ScriptableObject.CreateInstance<PieceDef>();
+                AssetDatabase.CreateAsset(piece, assetPath);
+            }
             piece.name = assetName;
             piece.displayName = dto.pieceName; // 中文显示名
             piece.pieceType = ParseEnum(dto.pieceType, PieceType.Initial);
@@ -82,7 +94,8 @@ namespace TheLaw.EditorTools
             piece.footprint = ParseEnum(dto.footprint, Footprint.Size1x1);
             piece.specialAbilities = abilities;
 
-            // 程序（默认模组 = programSet[0]）
+            // 程序（默认模组 = programSet[0]；增量更新先清空防叠加）
+            piece.programSet.Clear();
             if (dto.modules != null && dto.modules.Count > 0)
             {
                 var slots = new List<Template>();
@@ -97,9 +110,12 @@ namespace TheLaw.EditorTools
                 piece.programSet.Add(new ProgramDef(slots));
             }
 
-            AssetDatabase.CreateAsset(piece, assetPath);
-            SetId(piece, StableHash(assetName)); // 稳定 Id（按资产名哈希——重复导入不变）
-            Debug.Log($"[导入器] 导入：{dto.pieceName}（{assetName}，模块 {(piece.programSet.Count > 0 ? piece.programSet[0].slots.Count : 0)} 个，能力 {abilities.Count} 个，Id={StableHash(assetName)}）");
+            if (piece.Id == 0)
+            {
+                SetId(piece, StableHash(assetName)); // 稳定 Id（按资产名哈希——幂等：已有 Id 不重设）
+            }
+            EditorUtility.SetDirty(piece); // 增量更新必须标脏（新建资产 CreateAsset 已标）
+            Debug.Log($"[导入器] {(created ? "新建" : "更新")}：{dto.pieceName}（{assetName}，模块 {(piece.programSet.Count > 0 ? piece.programSet[0].slots.Count : 0)} 个，能力 {abilities.Count} 个，Id={piece.Id}）");
             return true;
         }
 
@@ -107,21 +123,30 @@ namespace TheLaw.EditorTools
 
         private static Template ParseModule(ModuleJson m)
         {
+            Template template;
             switch (m.moduleType)
             {
                 case "Move":
-                    return ParseMove(m);
+                    template = ParseMove(m);
+                    break;
                 case "Melee":
                 case "MeleeAOE":
                 case "DirectFire":
-                    return ParseDirectionalAttack(m);
+                    template = ParseDirectionalAttack(m);
+                    break;
                 case "Arcing":
                 case "Spell":
-                    return ParsePointAttack(m);
+                    template = ParsePointAttack(m);
+                    break;
                 default:
                     Debug.LogWarning($"[导入器] 未知模块类型：{m.moduleType}");
                     return null;
             }
+            if (template != null)
+            {
+                template.id = m.id; // 程序块编号（种类内编号，同结构可复用——描述表按此查）
+            }
+            return template;
         }
 
         private static Template ParseMove(ModuleJson m)
@@ -253,20 +278,6 @@ namespace TheLaw.EditorTools
             }
         }
 
-        /// <summary>清空目录内全部资产（重建用——防残留/改名遗留）。</summary>
-        private static void ClearAssetsIn(string dir)
-        {
-            if (!AssetDatabase.IsValidFolder(dir))
-            {
-                return;
-            }
-            foreach (var guid in AssetDatabase.FindAssets("t:Object", new[] { dir }))
-            {
-                var path = AssetDatabase.GUIDToAssetPath(guid);
-                AssetDatabase.DeleteAsset(path);
-            }
-        }
-
         /// <summary>设置 GameConfigBase._id（private 序列化字段——SerializedObject 反射设置）。</summary>
         private static void SetId(ScriptableObject asset, int id)
         {
@@ -327,6 +338,7 @@ namespace TheLaw.EditorTools
         private class ModuleJson
         {
             public string moduleType;
+            public int id;                            // 程序块编号（种类内编号，同结构可复用；0=未编号回退代码生成）
             public List<PathJson> paths;              // Move
             public List<string> directions;           // 方向集攻击
             public int range;

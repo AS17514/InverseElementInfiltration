@@ -134,36 +134,43 @@ namespace TheLaw.UI
                 OnCellPicked(cell); // 执行中：当前槽选格
                 return;
             }
-            if (_state.Phase == BattlePhase.PlayerTurn && !_executing)
+
+            // 执行候选：玩家回合、非执行中、已选中我方单位
+            bool canExecute = !_executing && _state.Phase == BattlePhase.PlayerTurn && _selectedPieceId >= 0;
+            if (canExecute)
             {
-                var piece = _state.GetPieceAt(cell);
-                if (piece != null && piece.side == Side.Player)
+                var sel = _state.GetPiece(_selectedPieceId);
+                canExecute = sel != null && sel.side == Side.Player;
+            }
+
+            var piece = _state.GetPieceAt(cell);
+            if (piece != null)
+            {
+                // 已选中我方单位时点敌方棋子 = 执行目标（槽0 范围校验；非法格落入选中切换）
+                if (canExecute && piece.side != Side.Player && TryExecuteSelected(cell)) return;
+                // 任意阶段：敌我棋子均可选中/取消（选中敌方仅查看信息与范围，不可执行）
+                if (_selectedPieceId == piece.Id)
                 {
-                    // 单位自身格：切换选中（再点取消）
-                    if (_selectedPieceId == piece.Id)
-                    {
-                        ClearSelection();
-                    }
-                    else
-                    {
-                        _selectedPieceId = piece.Id;
-                        ShowPieceInfo(piece.Id);
-                        if (piece.side == Side.Player) PreviewRange(piece.Id); // 移动+攻击范围同时显示
-                        else ClearHighlights();
-                    }
-                    return;
+                    ClearSelection();
                 }
-                // 点击目标格 = 开始执行（槽0 选格）；非法格不取消选中
-                if (_selectedPieceId >= 0)
+                else
                 {
-                    TryExecuteSelected(cell);
-                    return;
+                    _selectedPieceId = piece.Id;
+                    ShowPieceInfo(piece.Id);
+                    PreviewRange(piece.Id); // 移动绿块 + 攻击红框同时显示
                 }
+                return;
+            }
+
+            // 空格：已选中我方单位 → 尝试执行（非法格不取消选中）；否则取消选中
+            if (canExecute)
+            {
+                TryExecuteSelected(cell);
+                return;
             }
             ClearSelection();
         }
 
-        /// <summary>选中后预览首槽：移动=高亮可选格；攻击=全盘可点（无高亮）。</summary>
         /// <summary>选中后预览范围：移动（首个 Move 槽）绿块 + 攻击（首个 Attack 槽）红框——同时显示（移动独立于行动逻辑）。</summary>
         void PreviewRange(int pieceId)
         {
@@ -191,7 +198,7 @@ namespace TheLaw.UI
             ShowHighlights(moves, attacks);
         }
 
-        /// <summary>点击目标格触发执行：格在槽0可选范围内 → 发 ExecuteRequest + 选格。</summary>
+        /// <summary>点击目标格触发执行：格在首个有候选槽可选范围内 → 发 ExecuteRequest + 选格。</summary>
         bool TryExecuteSelected(Vector2Int cell)
         {
             var piece = _state.GetPiece(_selectedPieceId);
@@ -199,7 +206,20 @@ namespace TheLaw.UI
             var program = piece.GetProgram(_state);
             if (program == null || program.Count == 0) return false;
 
-            var slot0 = program[0];
+            // 镜像预推进：与规则层 Skip 判定一致，对齐到第一个需要选格的槽（空候选 Move/Attack + Skip 槽全部跳过）
+            int execIndex = 0;
+            while (execIndex < program.Count)
+            {
+                var s = program[execIndex];
+                if (s is SkipTemplate) { execIndex++; continue; }
+                if (s is MoveTemplate mm && _intentResolver.GetMoveOptions(_state, piece, mm).Count == 0) { execIndex++; continue; }
+                if (s is AttackTemplate aa && _boardRules.GetAttackableCells(_state, piece, aa).Count == 0) { execIndex++; continue; }
+                break;
+            }
+            if (execIndex >= program.Count) return false; // 全程序无候选：无可执行内容
+
+            // 首个有候选槽的目标校验（与规则层契约一致：范围外不执行，防镜像死锁）
+            var slot0 = program[execIndex];
             if (slot0 is MoveTemplate move)
             {
                 var opts = _intentResolver.GetMoveOptions(_state, piece, move);
@@ -207,7 +227,6 @@ namespace TheLaw.UI
             }
             else if (slot0 is AttackTemplate atk)
             {
-                // 与规则层契约一致：攻击范围外不执行（防镜像死锁）
                 var opts = _boardRules.GetAttackableCells(_state, piece, atk);
                 if (!opts.Contains(cell)) return false;
             }
@@ -215,9 +234,9 @@ namespace TheLaw.UI
             _executing = true;
             _execPieceId = _selectedPieceId;
             _execProgram = program;
-            _execIndex = 0;
+            _execIndex = execIndex;
             _flow.OnPlayerRequestExecute(new ExecuteRequest(_selectedPieceId));
-            _flow.OnPlayerCellSelected(cell); // 槽0 选格（规则层已等待）
+            _flow.OnPlayerCellSelected(cell); // 首个有候选槽选格（规则层已等待）
             StartCoroutine(WaitSelectResult());
             return true;
         }
@@ -247,7 +266,13 @@ namespace TheLaw.UI
                         }
                         EnterCellSelect(opts, isMove: true);
                         return;
-                    case AttackTemplate:
+                    case AttackTemplate atk:
+                        // 与规则层同判定：无候选走 Skip（防两侧错位 + 永久选格死锁）
+                        if (_boardRules.GetAttackableCells(_state, piece, atk).Count == 0)
+                        {
+                            _execIndex++;
+                            continue;
+                        }
                         EnterCellSelect(null, isMove: false); // 攻击全盘可点
                         return;
                     default: // SkipTemplate 等
@@ -314,23 +339,9 @@ namespace TheLaw.UI
             _executing = false;
             _execPieceId = -1;
             _execProgram = null;
-            // 选中保留：按新位置刷新范围（移动后位置变了）
-            if (_selectedPieceId >= 0 && _state.Phase == BattlePhase.PlayerTurn)
-            {
-                var piece = _state.GetPiece(_selectedPieceId);
-                if (piece != null && piece.side == Side.Player)
-                {
-                    PreviewRange(_selectedPieceId);
-                }
-                else
-                {
-                    ClearHighlights();
-                }
-            }
-            else
-            {
-                ClearHighlights();
-            }
+            // 退出逻辑链：清选中 + 清高亮（单位已行动过，再显示范围会误导玩家）
+            ClearSelection();
+            ClearHighlights();
             RefreshAP();
         }
 
@@ -369,6 +380,11 @@ namespace TheLaw.UI
             var info = (MoveInfo)data;
             _selectResultDirty = true;
             EnqueuePresentation(() => PlayMove(info));
+            // 非执行中选中单位被移动（敌方回合/波次调度）：按新位置刷新范围
+            if (!_executing && info.PieceId == _selectedPieceId)
+            {
+                PreviewRange(_selectedPieceId);
+            }
         }
 
         void OnDamageDealt(object data)
@@ -388,6 +404,12 @@ namespace TheLaw.UI
         void OnPieceDied(object data)
         {
             var info = (DeathInfo)data;
+            // 选中单位死亡：清选中 + 清高亮（防残留高亮指向死棋子）
+            if (info.PieceId == _selectedPieceId)
+            {
+                ClearSelection();
+                ClearHighlights();
+            }
             EnqueuePresentation(() => PlayDeath(info));
         }
 
@@ -589,17 +611,21 @@ namespace TheLaw.UI
         static Material _highlightMatRed;
         static Material HighlightMaterial(float r, float g, float b)
         {
-            if (r > 0.5f && _highlightMatRed == null)
+            if (r > 0.5f)
             {
-                _highlightMatRed = new Material(Shader.Find("Unlit/Color"));
-                _highlightMatRed.color = new Color(r, g, b, 0.4f);
+                if (_highlightMatRed == null)
+                {
+                    _highlightMatRed = new Material(Shader.Find("Unlit/Color"));
+                    _highlightMatRed.color = new Color(r, g, b, 0.4f);
+                }
+                return _highlightMatRed;
             }
-            else if (_highlightMatGreen == null)
+            if (_highlightMatGreen == null)
             {
                 _highlightMatGreen = new Material(Shader.Find("Unlit/Color"));
                 _highlightMatGreen.color = new Color(r, g, b, 0.4f);
             }
-            return r > 0.5f ? _highlightMatRed : _highlightMatGreen;
+            return _highlightMatGreen;
         }
 
         void ClearHighlights()
@@ -715,6 +741,7 @@ namespace TheLaw.UI
         {
             _selectedPieceId = -1;
             ClearPieceInfo();
+            ClearHighlights(); // 取消选中必清棋格提示（防残留误导）
         }
 
         // ========== 场上信息面板（Main 1 场景 UI 根下的 3D 文本）==========

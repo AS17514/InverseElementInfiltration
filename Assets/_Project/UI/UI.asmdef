@@ -4,7 +4,12 @@
     "references": [
         "Core",
         "Data",
-        "Gameplay"
+        "Gameplay",
+        "UnityEngine.UI",
+        "Unity.TextMeshPro",
+        "Unity.Addressables",
+        "Unity.ResourceManager",
+        "Assembly-CSharp-firstpass"
     ],
     "includePlatforms": [],
     "excludePlatforms": [],

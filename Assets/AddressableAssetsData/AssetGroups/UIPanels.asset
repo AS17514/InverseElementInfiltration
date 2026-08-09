@@ -1,0 +1,118 @@
+%YAML 1.1
+%TAG !u! tag:unity3d.com,2011:
+--- !u!114 &11400000
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 0}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: bbb281ee3bf0b054c82ac2347e9e782c, type: 3}
+  m_Name: UIPanels
+  m_EditorClassIdentifier: 
+  m_GroupName: UIPanels
+  m_Data:
+    m_SerializedData: []
+  m_GUID: 892f34792af6aac4ebf2853746d97501
+  m_SerializeEntries:
+  - m_GUID: 1c800e9f11fd543489c70a6725f57e7d
+    m_Address: LoadingPanel
+    m_ReadOnly: 0
+    m_SerializedLabels: []
+    FlaggedDuringContentUpdateRestriction: 0
+  - m_GUID: 3b0caba795573fc4a973caff89fd1a3b
+    m_Address: DeckBuildPanel
+    m_ReadOnly: 0
+    m_SerializedLabels: []
+    FlaggedDuringContentUpdateRestriction: 0
+  - m_GUID: 3d7604bff265ccf478ee936c2fff12a6
+    m_Address: Btn_EventOption
+    m_ReadOnly: 0
+    m_SerializedLabels: []
+    FlaggedDuringContentUpdateRestriction: 0
+  - m_GUID: 3e39db517f800bf45b659929d7ec51c9
+    m_Address: Piece_Card
+    m_ReadOnly: 0
+    m_SerializedLabels: []
+    FlaggedDuringContentUpdateRestriction: 0
+  - m_GUID: 6c3fa049300e2b7489fde55e9ea3b506
+    m_Address: EditPanel
+    m_ReadOnly: 0
+    m_SerializedLabels: []
+    FlaggedDuringContentUpdateRestriction: 0
+  - m_GUID: 762d95d0ad199124da63764f776ae705
+    m_Address: PieceEditPanel
+    m_ReadOnly: 0
+    m_SerializedLabels: []
+    FlaggedDuringContentUpdateRestriction: 0
+  - m_GUID: 7d2de312b8ce90941a8d42e13778d589
+    m_Address: BattlePanel
+    m_ReadOnly: 0
+    m_SerializedLabels: []
+    FlaggedDuringContentUpdateRestriction: 0
+  - m_GUID: 85c959f3162510248a6ef38e72378df2
+    m_Address: StoryPanel
+    m_ReadOnly: 0
+    m_SerializedLabels: []
+    FlaggedDuringContentUpdateRestriction: 0
+  - m_GUID: 85eb7a99ac8b6f1459863a322c351c45
+    m_Address: EndingPanel
+    m_ReadOnly: 0
+    m_SerializedLabels: []
+    FlaggedDuringContentUpdateRestriction: 0
+  - m_GUID: 888b5beda7e203f43954aec6cd31c8de
+    m_Address: Program_Card
+    m_ReadOnly: 0
+    m_SerializedLabels: []
+    FlaggedDuringContentUpdateRestriction: 0
+  - m_GUID: 8d2878eea917a4a429b959435a569a47
+    m_Address: SettingsPanel
+    m_ReadOnly: 0
+    m_SerializedLabels: []
+    FlaggedDuringContentUpdateRestriction: 0
+  - m_GUID: a4c6d20acbc7860479ac44fc12e5fccf
+    m_Address: BehaviorTooltip
+    m_ReadOnly: 0
+    m_SerializedLabels: []
+    FlaggedDuringContentUpdateRestriction: 0
+  - m_GUID: b7bea0b451040c34d9181aaf50364ecd
+    m_Address: SaveLoadPanel
+    m_ReadOnly: 0
+    m_SerializedLabels: []
+    FlaggedDuringContentUpdateRestriction: 0
+  - m_GUID: bf3ad0d1ec8c3aa45955b92fe35a28f1
+    m_Address: Piece_ProgramInfo
+    m_ReadOnly: 0
+    m_SerializedLabels: []
+    FlaggedDuringContentUpdateRestriction: 0
+  - m_GUID: c2ed3ee41df187c4098b3e65c6af8d99
+    m_Address: Piece_Handcard
+    m_ReadOnly: 0
+    m_SerializedLabels: []
+    FlaggedDuringContentUpdateRestriction: 0
+  - m_GUID: c53e73c8e2bcc124498edf673ff18992
+    m_Address: MainMenuPanel
+    m_ReadOnly: 0
+    m_SerializedLabels: []
+    FlaggedDuringContentUpdateRestriction: 0
+  - m_GUID: c56ad6bd754007847b4ea8108fb7a50a
+    m_Address: ConfirmPanel
+    m_ReadOnly: 0
+    m_SerializedLabels: []
+    FlaggedDuringContentUpdateRestriction: 0
+  - m_GUID: db94326f975da6b4ba912ba0ad8ccbcb
+    m_Address: EventPanel
+    m_ReadOnly: 0
+    m_SerializedLabels: []
+    FlaggedDuringContentUpdateRestriction: 0
+  - m_GUID: f94b8dfb8d65a484cadd3c69ace33a73
+    m_Address: BattleResultPanel
+    m_ReadOnly: 0
+    m_SerializedLabels: []
+    FlaggedDuringContentUpdateRestriction: 0
+  m_ReadOnly: 0
+  m_Settings: {fileID: 11400000, guid: 47cc120f2a625024bb26fdfb7b9fdeeb, type: 2}
+  m_SchemaSet:
+    m_Schemas: []

@@ -3,6 +3,7 @@ using TheLaw.Core;
 using TheLaw.Data;
 using TheLaw.Gameplay;
 using UnityEngine;
+using UnityEngine.AddressableAssets;
 
 namespace TheLaw.UI
 {
@@ -23,7 +24,12 @@ namespace TheLaw.UI
         [SerializeField] private List<EventPool> _eventPoolConfigs = new List<EventPool>();
         [SerializeField] private List<RelicDef> _relicConfigs = new List<RelicDef>();
 
+        [Header("测试开关")]
+        [Tooltip("true=启动直进战斗（跳过主菜单），false=正常主菜单流程")]
+        [SerializeField] private bool _directToBattle = true;
+
         // 普通类实例（去单例化后由 Bootstrap 创建并持有；规则层行为类显式传递避免网状耦合）
+        private static Bootstrap _instance; // 静态实例标记：防重（双实例并存时先到者存活，后到者自毁）
         private UIManager _uiManager;
         private TutorialSystem _tutorialSystem;
         private ProgressSystem _progressSystem;
@@ -40,6 +46,16 @@ namespace TheLaw.UI
 
         private void Awake()
         {
+            // DOTween 容量：默认 200/50 快速操作会扩容警告，起步调大
+            DG.Tweening.DOTween.SetTweensCapacity(500, 125);
+            // 防重：静态实例标记（先到者存活，后到者自毁——Destroy 延迟到帧末，双实例并存时双方都看到对方会双双销毁）
+            if (_instance != null && _instance != this)
+            {
+                Destroy(gameObject);
+                return;
+            }
+            _instance = this;
+            DontDestroyOnLoad(gameObject); // 常驻（存档/管理器生命周期跟随进程）
             // ① 按依赖顺序创建常驻管理器
             CreateManagers();
             // ② 加载配置（TODO: Addressables）
@@ -155,12 +171,76 @@ namespace TheLaw.UI
             // TODO: UIManager 切主菜单 + 重建 TowerFlow（新局从 EnterFloor(0) 开始）
         }
 
-        // ========== ⑥ 主菜单 ==========
+        // ========== ⑥ 主菜单 / 测试直进战斗 ==========
 
         private void EnterMainMenu()
         {
-            // TODO: UI 层——UIManager.ShowPanel("MainMenu")
-            // 面板实现 IPanel 主动注册进 _uiManager
+            if (_directToBattle)
+            {
+                // 测试模式：主场景直进战斗（测试流程已迁移进 Main 场景，不再跨场景加载）
+                StartCoroutine(EnterBattleTest());
+            }
+            else
+            {
+                StartCoroutine(LoadMainMenu());
+            }
+        }
+
+        /// <summary>测试模式：直进战斗（初始棋子填手牌 + 临时关卡配置 + 敌方注册 + 战斗控制器）。</summary>
+        private System.Collections.IEnumerator EnterBattleTest()
+        {
+            yield return Addressables.InitializeAsync();
+
+            // 填初始手牌（Initial 类型棋子）
+            int added = 0;
+            foreach (var def in ConfigTable.All<PieceDef>())
+            {
+                if (def.pieceType == PieceType.Initial)
+                {
+                    _resolver.AddToHand(def.Id);
+                    added++;
+                }
+            }
+
+            // 临时关卡配置（无 FloorConfig 资产时的兜底：3 AP、无波次）
+            var floor = ScriptableObject.CreateInstance<FloorConfig>();
+            floor.enemyMaxAP = 3;
+            _battleFlow.StartBattle(floor, GetDefaultAIParams());
+
+            // 创建战斗控制器（先监听，再注册敌方——否则敌方部署事件丢失）
+            var battleGo = new GameObject("BattleController");
+            var controller = battleGo.AddComponent<BattleController>();
+            controller.Init(_battleFlow, _gameState);
+
+            // 注册敌方棋子（规则层需要真实棋子才能测伤害/击杀；视觉由 PlayDeploy 运行时生成）
+            var enemyDefs = new List<PieceDef>();
+            foreach (var def in ConfigTable.All<PieceDef>())
+            {
+                if (def.pieceType == PieceType.Deployable) enemyDefs.Add(def);
+            }
+            var enemyCells = new[]
+            {
+                new Vector2Int(2, 3), new Vector2Int(3, 6),
+                new Vector2Int(5, 2), new Vector2Int(6, 5),
+            };
+            for (int i = 0; i < enemyCells.Length && i < enemyDefs.Count; i++)
+            {
+                _resolver.Resolve(new DeployAction(enemyDefs[i].Id, Side.Enemy, enemyCells[i]));
+            }
+
+            Debug.Log($"[Bootstrap] 测试直进战斗：手牌 {added} 个初始棋子 + 敌方 {enemyCells.Length} 个，阶段={_gameState.Phase}");
+        }
+
+        private System.Collections.IEnumerator LoadMainMenu()
+        {
+            yield return Addressables.InitializeAsync();
+            bool done = false;
+            MainMenuPanel panel = null;
+            PanelBase.CreateAsync<MainMenuPanel>(p => { panel = p; done = true; });
+            yield return new WaitUntil(() => done);
+            _uiManager.RegisterPanel(panel);
+            _uiManager.ShowPanel("MainMenu");
+            Debug.Log("[Bootstrap] 主菜单已显示");
         }
 
         // ========== 生命周期（存档时机）==========

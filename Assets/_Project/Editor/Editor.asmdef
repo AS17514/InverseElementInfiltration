@@ -5,7 +5,12 @@
         "Core",
         "Data",
         "Gameplay",
-        "UI"
+        "UI",
+        "UnityEngine.UI",
+        "Unity.TextMeshPro",
+        "Unity.Addressables",
+        "Unity.Addressables.Editor",
+        "Unity.ResourceManager"
     ],
     "includePlatforms": [
         "Editor"

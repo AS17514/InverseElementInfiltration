@@ -47,13 +47,13 @@ namespace TheLaw.UI
         {
             // DOTween 容量：默认 200/50 快速操作会扩容警告，起步调大
             DG.Tweening.DOTween.SetTweensCapacity(500, 125);
-            // 防重：场景残留 Bootstrap（Main 1 里那份）自动销毁，只保留主场景驱动
+            // 防重：场景残留 Bootstrap（历史遗留）自动销毁，只保留主场景驱动
             if (FindObjectsOfType<Bootstrap>().Length > 1)
             {
                 Destroy(gameObject);
                 return;
             }
-            DontDestroyOnLoad(gameObject); // 测试模式要跨场景加载 Main 1，Bootstrap 必须保活
+            DontDestroyOnLoad(gameObject); // 常驻（存档/管理器生命周期跟随进程）
             // ① 按依赖顺序创建常驻管理器
             CreateManagers();
             // ② 加载配置（TODO: Addressables）
@@ -175,21 +175,13 @@ namespace TheLaw.UI
         {
             if (_directToBattle)
             {
-                // 测试模式：启动 main1 场景（战斗测试场景），加载完直进战斗
-                UnityEngine.SceneManagement.SceneManager.sceneLoaded += OnTestSceneLoaded;
-                UnityEngine.SceneManagement.SceneManager.LoadScene("Main 1");
+                // 测试模式：主场景直进战斗（测试流程已迁移进 Main 场景，不再跨场景加载）
+                StartCoroutine(EnterBattleTest());
             }
             else
             {
                 StartCoroutine(LoadMainMenu());
             }
-        }
-
-        private void OnTestSceneLoaded(UnityEngine.SceneManagement.Scene scene, UnityEngine.SceneManagement.LoadSceneMode mode)
-        {
-            if (scene.name != "Main 1") return;
-            UnityEngine.SceneManagement.SceneManager.sceneLoaded -= OnTestSceneLoaded;
-            StartCoroutine(EnterBattleTest());
         }
 
         /// <summary>测试模式：直进战斗（初始棋子填手牌 + 临时关卡配置 + 敌方注册 + 战斗控制器）。</summary>
@@ -218,7 +210,7 @@ namespace TheLaw.UI
             var controller = battleGo.AddComponent<BattleController>();
             controller.Init(_battleFlow, _gameState);
 
-            // 注册敌方棋子（与场景 BoardBuilder 视觉位置一致——规则层需要真实棋子才能测伤害/击杀）
+            // 注册敌方棋子（规则层需要真实棋子才能测伤害/击杀；视觉由 PlayDeploy 运行时生成）
             var enemyDefs = new List<PieceDef>();
             foreach (var def in ConfigTable.All<PieceDef>())
             {

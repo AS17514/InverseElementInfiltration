@@ -198,8 +198,11 @@ namespace TheLaw.UI
             }
         }
 
+        private string _pendingEventId; // 缓存当前事件 id（懒加载完成后主动推给面板——防首次事件丢失）
+
         private void OnEventOpened(object data)
         {
+            _pendingEventId = data as string;
             OpenEventPanel();
         }
 
@@ -211,6 +214,7 @@ namespace TheLaw.UI
             }
             else
             {
+                _eventPanel.ShowEvent(_pendingEventId);
                 _uiManager.ShowPanel("EventPanel");
             }
         }
@@ -224,8 +228,9 @@ namespace TheLaw.UI
             _eventPanel = panel;
             _uiManager.RegisterPanel(panel);
             panel.Init(_eventNodeSystem);
+            panel.ShowEvent(_pendingEventId); // 主动推首次事件数据（面板注册晚于事件广播——否则显示预制文本/选项无响应）
             _uiManager.ShowPanel("EventPanel");
-            Debug.Log("[Bootstrap] 事件面板已显示");
+            Debug.Log($"[Bootstrap] 事件面板已显示（event={_pendingEventId}）");
         }
 
         private void OnStateChanged(object data)

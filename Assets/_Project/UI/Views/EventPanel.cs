@@ -51,7 +51,16 @@ namespace TheLaw.UI
 
         void OnEventOpened(object data)
         {
-            if (!(data is string eventId)) return;
+            if (data is string eventId)
+            {
+                ShowEvent(eventId);
+            }
+        }
+
+        /// <summary>展示事件（公开——Bootstrap 懒加载完成后主动推数据，防首次事件丢失）。</summary>
+        public void ShowEvent(string eventId)
+        {
+            if (string.IsNullOrEmpty(eventId)) return;
             _currentEventId = eventId;
             _currentEvent = ConfigTable.FindByName<EventDefinition>(eventId);
             if (_currentEvent == null)
@@ -60,7 +69,7 @@ namespace TheLaw.UI
                 Complete(); // 找不到定义直接推进（防卡关）
                 return;
             }
-            if (_title != null) _title.text = _currentEvent.name.Replace("Event_", ""); // 资产名兜底
+            if (_title != null) _title.text = _currentEvent.name.Replace("Event_", ""); // 资产名兜底（文案字段待后端）
             if (_desc != null) _desc.text = Describe(_currentEvent);
             BuildOptions();
             gameObject.SetActive(true);

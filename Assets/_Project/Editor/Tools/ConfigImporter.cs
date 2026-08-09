@@ -18,6 +18,7 @@ namespace TheLaw.EditorTools
     {
         private const string ConfigsJsonDir = "Assets/Data/Configs";
         private const string ConfigAssetsDir = "Assets/Settings/Configs";
+        private const string PieceAssetsDir = "Assets/Settings/Pieces"; // 波次阵容按棋子资产名 → defId 转换
 
         [MenuItem("工具/导入关卡配置（JSON）")]
         public static void ImportAll()
@@ -166,7 +167,7 @@ namespace TheLaw.EditorTools
                 floor.waveDefs.Add(new WaveDef
                 {
                     startTurn = w.startTurn,
-                    pieceDefIds = w.pieceDefIds ?? new List<int>(),
+                    pieceDefIds = ResolvePieceIds(w.pieceDefIds), // 资产名 → defId（int）
                     isLastWave = w.isLastWave,
                     endCountdown = w.endCountdown,
                 });
@@ -306,6 +307,25 @@ namespace TheLaw.EditorTools
             return (int)(hash & 0x7FFFFFFF);
         }
 
+        /// <summary>波次阵容：棋子资产名 → defId（加载 PieceDef 资产取 Id）。</summary>
+        private static List<int> ResolvePieceIds(List<string> assetNames)
+        {
+            var ids = new List<int>();
+            foreach (var name in assetNames ?? new List<string>())
+            {
+                var def = AssetDatabase.LoadAssetAtPath<PieceDef>($"{PieceAssetsDir}/{name}.asset");
+                if (def != null)
+                {
+                    ids.Add(def.Id);
+                }
+                else
+                {
+                    Debug.LogWarning($"[配置导入器] 找不到棋子资产 {name}（Assets/Settings/Pieces/）——波次阵容跳过该项");
+                }
+            }
+            return ids;
+        }
+
         private static T ParseEnum<T>(string s, T fallback) where T : struct
         {
             return System.Enum.TryParse<T>(s, out var v) ? v : fallback;
@@ -315,7 +335,7 @@ namespace TheLaw.EditorTools
 
         private class MapJson { public string mapName; public string displayName; public string description; public List<string> floors; }
         private class FloorJson { public string floorName; public string displayName; public string description; public string victoryRule; public int targetScore; public int enemyMaxAP; public List<string> eventSequence; public List<string> eventPoolIds; public List<WaveJson> waves; }
-        private class WaveJson { public int startTurn; public List<int> pieceDefIds; public bool isLastWave; public int endCountdown; }
+        private class WaveJson { public int startTurn; public List<string> pieceDefIds; public bool isLastWave; public int endCountdown; }
         private class RelicsJson { public List<RelicJson> relics; }
         private class RelicJson { public string relicName; public string displayName; public string description; public List<AbilityJson> abilities; }
         private class EventsJson { public List<PoolJson> pools; public List<EventJson> events; }

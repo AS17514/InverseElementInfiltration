@@ -72,6 +72,11 @@ MonoBehaviour:
   - {fileID: 11400000, guid: 978f6bf0fe64b064081191e1ef696429, type: 2}
   - {fileID: 11400000, guid: 87170fb17f3ecd041a61cc15cb689814, type: 2}
   - {fileID: 11400000, guid: 4e90f84222d58d040bbf3137f39834e4, type: 2}
+  _eventConfigs:
+  - {fileID: 11400000, guid: 84f5400f76a44a947ac25abdabeb0c0d, type: 2}
+  - {fileID: 11400000, guid: 274e1f828718821479ab66033f1fbb4c, type: 2}
+  - {fileID: 11400000, guid: 51331f4bda6c3534181b735907630fa9, type: 2}
+  - {fileID: 11400000, guid: f8b36a95405b66c43a740be0cdb44197, type: 2}
   _relicConfigs:
   - {fileID: 11400000, guid: 47a029b14c1916443a4f9e894e03a57f, type: 2}
   - {fileID: 11400000, guid: b047e44ca096a1b42b2f5cfa4f213c1b, type: 2}
@@ -97,4 +102,4 @@ MonoBehaviour:
   - {fileID: 11400000, guid: 6a5994b1aa4fe884cb89b8f4caae752f, type: 2}
   - {fileID: 11400000, guid: 74108dcd1e6e85c47889ca758b4195bc, type: 2}
   _directToBattle: 0
-  _slotDescriptions: {fileID: 0}
+  _slotDescriptions: {fileID: 4900000, guid: 61641052052f35242aa0036fb7af08a7, type: 3}

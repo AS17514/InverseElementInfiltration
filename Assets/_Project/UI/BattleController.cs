@@ -796,10 +796,9 @@ namespace TheLaw.UI
             switch (_state.Phase)
             {
                 case BattlePhase.Placement:
-                    // 摆放前置（规则层）：手牌还有初始棋子时禁止结束摆放（按钮文字限 4 字）
-                    bool hasInitial = HasInitialInHand();
-                    btn.interactable = !hasInitial;
-                    if (txt != null) txt.text = hasInitial ? "先摆初始" : "结束准备";
+                    // 摆放前置（规则层）：手牌还有初始棋子时禁用（文字恒为"结束准备"）
+                    btn.interactable = !HasInitialInHand();
+                    if (txt != null) txt.text = "结束准备";
                     if (_panel != null) _panel.SetEventName("我方准备");
                     break;
                 case BattlePhase.PlayerTurn:

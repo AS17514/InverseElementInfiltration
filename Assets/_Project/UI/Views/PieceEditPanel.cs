@@ -149,40 +149,84 @@ namespace TheLaw.UI
             }
         }
 
-        // ====== 左列：棋子列表 ======
+        // ====== 左列：棋子列表（Piece_Card prefab + ToggleGroup 单选 + 程序图标区） ======
         void RefreshPieceList()
         {
-            if (_pieceContent == null) return;
+            StartCoroutine(BuildPieceList());
+        }
+
+        System.Collections.IEnumerator BuildPieceList()
+        {
+            if (_pieceContent == null) yield break;
             EnsureScrollContent(_pieceContent);
+            // 加载 Piece_Card / Piece_ProgramInfo 模板（Addressables）
+            var cardHandle = UnityEngine.AddressableAssets.Addressables.LoadAssetAsync<GameObject>("Piece_Card");
+            var progHandle = UnityEngine.AddressableAssets.Addressables.LoadAssetAsync<GameObject>("Piece_ProgramInfo");
+            yield return cardHandle;
+            yield return progHandle;
+            if (cardHandle.Status != UnityEngine.ResourceManagement.AsyncOperations.AsyncOperationStatus.Succeeded || cardHandle.Result == null)
+            {
+                Debug.LogWarning("[PieceEdit] Piece_Card 加载失败——棋子列表为空");
+                yield break;
+            }
+            // ToggleGroup：单选管理（挂 Content 上）
+            var group = _pieceContent.GetComponent<ToggleGroup>();
+            if (group == null) group = _pieceContent.gameObject.AddComponent<ToggleGroup>();
+            group.allowSwitchOff = false;
             foreach (Transform child in _pieceContent) Destroy(child.gameObject);
             foreach (var def in ConfigTable.All<PieceDef>())
             {
-                var card = CreatePieceCard(def);
-                var btn = card.GetComponent<Button>();
-                if (btn == null) btn = card.AddComponent<Button>();
-                var defId = def.Id;
-                btn.onClick.AddListener(() => SelectPiece(defId));
+                var go = Instantiate(cardHandle.Result, _pieceContent);
+                go.name = $"PieceCard_{def.name}";
+                FillPieceCard(go, def, progHandle.Result, group);
             }
         }
 
-        GameObject CreatePieceCard(PieceDef def)
+        void FillPieceCard(GameObject go, PieceDef def, GameObject progTemplate, ToggleGroup group)
         {
-            // 一版纯代码创建（后续换 Piece_Card prefab——Addressables 加载 + FillCard 填参）
-            var go = new GameObject($"PieceCard_{def.name}", typeof(RectTransform), typeof(Image));
-            go.transform.SetParent(_pieceContent, false);
-            var rt = (RectTransform)go.transform;
-            rt.sizeDelta = new Vector2(150, 150);
-            var img = go.GetComponent<Image>();
-            img.color = CardTypeColors.For(def.pieceType); // 种类标识色（与手牌一致）
-            // 名称文本（临时——正式用 prefab Piece_Card）
-            var txtGo = new GameObject("Txt", typeof(RectTransform), typeof(TextMeshProUGUI));
-            txtGo.transform.SetParent(go.transform, false);
-            var txt = txtGo.GetComponent<TextMeshProUGUI>();
-            txt.text = def.displayName;
-            txt.fontSize = 20;
-            txt.alignment = TextAlignmentOptions.Center;
-            ((RectTransform)txtGo.transform).anchoredPosition = Vector2.zero;
-            return go;
+            // 背景种类色（与手牌一致）
+            var bg = go.GetComponent<Image>();
+            if (bg != null) bg.color = CardTypeColors.For(def.pieceType);
+            // 价值数字
+            var valueText = FindDeep(go.transform, "Img_PieceValue")?.GetComponentInChildren<TMP_Text>();
+            if (valueText != null) valueText.text = def.value.ToString();
+            // 类型文字（有 Text 子级才填）
+            var typeText = FindDeep(go.transform, "Img_PieceType")?.GetComponentInChildren<TMP_Text>();
+            if (typeText != null)
+            {
+                typeText.text = def.pieceType == PieceType.Initial ? "始" : def.pieceType == PieceType.Deployable ? "部" : "升";
+            }
+            // 程序图标区：每槽放一个 Piece_ProgramInfo（Text=移/攻/跳）
+            var progRoot = FindDeep(go.transform, "Grp_PieceProgramInfo");
+            if (progRoot != null && progTemplate != null)
+            {
+                var slots = def.programSet != null && def.programSet.Count > 0 ? def.programSet[0].slots : null;
+                int count = slots != null ? Mathf.Min(slots.Count, 4) : 0;
+                for (int i = 0; i < count; i++)
+                {
+                    var p = Instantiate(progTemplate, progRoot);
+                    var t = p.GetComponentInChildren<TMP_Text>();
+                    if (t != null) t.text = SlotTypeChar(slots[i]);
+                }
+            }
+            // Toggle 单选：选中 → SelectPiece
+            var toggle = go.GetComponent<Toggle>();
+            if (toggle != null)
+            {
+                toggle.group = group;
+                var defId = def.Id;
+                toggle.onValueChanged.AddListener(on => { if (on) SelectPiece(defId); });
+            }
+        }
+
+        /// <summary>深层按名查找（容错 prefab 复制 (1) 后缀）。</summary>
+        static Transform FindDeep(Transform root, string name)
+        {
+            foreach (var t in root.GetComponentsInChildren<Transform>(true))
+            {
+                if (t.name == name) return t;
+            }
+            return null;
         }
 
         // ====== 中列：程序库 ======

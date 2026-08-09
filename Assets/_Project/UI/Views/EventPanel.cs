@@ -32,9 +32,9 @@ namespace TheLaw.UI
 
         private void Awake()
         {
-            _title = transform.Find("Txt_EventName")?.GetComponent<TMP_Text>();
-            _desc = transform.Find("Txt_EventDesc")?.GetComponent<TMP_Text>();
-            _optionsRoot = transform.Find("Grp_EventOptions");
+            _title = transform.Find("Grp_TopBar/Txt_EventName")?.GetComponent<TMP_Text>();
+            _desc = transform.Find("Grp_EventContent/Grp_EventDesc/Txt_EventDesc")?.GetComponent<TMP_Text>();
+            _optionsRoot = transform.Find("Grp_EventContent/Grp_EventDesc/Grp_EventOptions");
             _exitBtn = transform.Find("Btn_Exit")?.GetComponent<Button>();
             if (_exitBtn != null)
             {

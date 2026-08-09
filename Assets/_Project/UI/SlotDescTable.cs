@@ -6,9 +6,8 @@ using UnityEngine;
 namespace TheLaw.UI
 {
     /// <summary>
-    /// 程序块描述表（数据驱动）：Assets/Data/Pieces/slot-descriptions.json——key=程序块结构特征码，value=描述。
-    /// 同结构程序块共用一条描述（程序块可复用语义）；未命中返回 null（调用方回退代码生成）。
-    /// 后端给程序块加编号后，key 可切"种类+编号"，表结构不变。
+    /// 程序块描述表（数据驱动）：Assets/Data/Pieces/slot-descriptions.json——key=程序块"种类+编号"（Move-4/Attack-2）。
+    /// 编号来自 Template.id（JSON modules 按结构分组编号，同结构共用同 id）；未编号（0）回退结构特征码，查不到回退代码生成。
     /// </summary>
     public static class SlotDescTable
     {
@@ -33,15 +32,39 @@ namespace TheLaw.UI
             }
         }
 
-        /// <summary>查询程序块描述（未命中返回 null）。</summary>
+        /// <summary>查询程序块描述（未编号/未命中返回 null——回退代码生成）。</summary>
         public static string Get(Template slot)
         {
             if (_table == null || slot == null) return null;
-            return _table.TryGetValue(FeatureOf(slot), out var desc) ? desc : null;
+            switch (slot)
+            {
+                case MoveTemplate m:
+                    if (m.id <= 0) return null; // 未编号（0）——回退代码生成
+                    return _table.TryGetValue($"Move-{m.id}", out var d) ? d : null;
+                case AttackTemplate a:
+                    if (a.id <= 0) return null;
+                    return _table.TryGetValue($"Attack-{a.id}", out var dd) ? dd : null;
+                default:
+                    return null;
+            }
         }
 
-        /// <summary>程序块结构特征码（描述表 key）。</summary>
+        /// <summary>程序块 key（种类+编号优先；未编号 → 结构特征码兜底——列表去重/命名用）。</summary>
         public static string FeatureOf(Template slot)
+        {
+            switch (slot)
+            {
+                case MoveTemplate m:
+                    return m.id > 0 ? $"Move-{m.id}" : FeatureByStructure(m);
+                case AttackTemplate a:
+                    return a.id > 0 ? $"Attack-{a.id}" : FeatureByStructure(a);
+                default:
+                    return "Skip";
+            }
+        }
+
+        /// <summary>结构特征码（未编号模板兜底——按方向集+步数/模式+射程+伤害描述结构）。</summary>
+        static string FeatureByStructure(Template slot)
         {
             switch (slot)
             {
@@ -76,7 +99,6 @@ namespace TheLaw.UI
                         AttackMode.Spell => "Spell",
                         _ => a.mode.ToString(),
                     };
-                    // 抛射/法术：自由点选（无方向/射程概念）
                     if (a.mode == AttackMode.Arcing || a.mode == AttackMode.Spell)
                     {
                         return $"Attack-{mode}--{a.damage}";

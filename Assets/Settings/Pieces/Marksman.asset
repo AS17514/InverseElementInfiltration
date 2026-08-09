@@ -22,14 +22,15 @@ MonoBehaviour:
   specialAbilities: []
   programSet:
   - slots:
-    - rid: 7823913780353171499
+    - rid: 7823913851562229784
   promotionConfigId: 0
   references:
     version: 2
     RefIds:
-    - rid: 7823913780353171499
+    - rid: 7823913851562229784
       type: {class: AttackTemplate, ns: TheLaw.Data, asm: Data}
       data:
+        id: 6
         mode: 3
         directions: 1
         range: 1

@@ -7,6 +7,7 @@
   "modules": [
     {
       "moduleType": "Arcing",
+      "id": 10,
       "points": [
         {
           "dx": -2,
@@ -34,6 +35,7 @@
     },
     {
       "moduleType": "Move",
+      "id": 9,
       "paths": [
         {
           "segments": [

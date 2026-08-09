@@ -63,14 +63,15 @@ namespace TheLaw.EditorTools
                     }
                 }
                 string assetPath = $"{ConfigAssetsDir}/Relic_{r.relicName}.asset";
-                DeleteIfExists(assetPath);
-                var relic = ScriptableObject.CreateInstance<RelicDef>();
-                relic.name = $"Relic_{r.relicName}";
+                var relic = LoadOrCreate<RelicDef>(assetPath, $"Relic_{r.relicName}"); // 增量：已存在更新不删建（GUID 不变）
                 relic.displayName = r.displayName;
                 relic.description = r.description;
                 relic.abilities = abilities;
-                AssetDatabase.CreateAsset(relic, assetPath);
-                SetId(relic, StableHash(relic.name));
+                if (relic.Id == 0)
+                {
+                    SetId(relic, StableHash(relic.name));
+                }
+                EditorUtility.SetDirty(relic);
             }
         }
 
@@ -94,9 +95,7 @@ namespace TheLaw.EditorTools
                 foreach (var e in dto.events)
                 {
                     string assetPath = $"{ConfigAssetsDir}/Event_{e.eventId}.asset";
-                    DeleteIfExists(assetPath);
-                    var def = ScriptableObject.CreateInstance<EventDefinition>();
-                    def.name = $"Event_{e.eventId}";
+                    var def = LoadOrCreate<EventDefinition>(assetPath, $"Event_{e.eventId}"); // 增量：已存在更新不删建
                     def.options = new List<EventOption>();
                     foreach (var o in e.options ?? new List<OptionJson>())
                     {
@@ -114,8 +113,11 @@ namespace TheLaw.EditorTools
                         }
                         def.options.Add(option);
                     }
-                    AssetDatabase.CreateAsset(def, assetPath);
-                    SetId(def, StableHash(def.name));
+                    if (def.Id == 0)
+                    {
+                        SetId(def, StableHash(def.name));
+                    }
+                    EditorUtility.SetDirty(def);
                 }
             }
             // 事件池
@@ -124,16 +126,17 @@ namespace TheLaw.EditorTools
                 foreach (var p in dto.pools)
                 {
                     string assetPath = $"{ConfigAssetsDir}/Pool_{p.poolName}.asset";
-                    DeleteIfExists(assetPath);
-                    var pool = ScriptableObject.CreateInstance<EventPool>();
-                    pool.name = $"Pool_{p.poolName}";
+                    var pool = LoadOrCreate<EventPool>(assetPath, $"Pool_{p.poolName}"); // 增量：已存在更新不删建
                     pool.entries = new List<EventPoolEntry>();
                     foreach (var entry in p.entries ?? new List<EntryJson>())
                     {
                         pool.entries.Add(new EventPoolEntry { eventId = $"Event_{entry.eventId}", weight = entry.weight });
                     }
-                    AssetDatabase.CreateAsset(pool, assetPath);
-                    SetId(pool, StableHash(pool.name));
+                    if (pool.Id == 0)
+                    {
+                        SetId(pool, StableHash(pool.name));
+                    }
+                    EditorUtility.SetDirty(pool);
                 }
             }
         }
@@ -153,9 +156,7 @@ namespace TheLaw.EditorTools
                 return;
             }
             string assetPath = $"{ConfigAssetsDir}/Floor_{dto.floorName}.asset";
-            DeleteIfExists(assetPath);
-            var floor = ScriptableObject.CreateInstance<FloorConfig>();
-            floor.name = $"Floor_{dto.floorName}";
+            var floor = LoadOrCreate<FloorConfig>(assetPath, $"Floor_{dto.floorName}"); // 增量：已存在更新不删建
             floor.victoryRule = ParseEnum(dto.victoryRule, VictoryRule.WipeOut);
             floor.targetScore = dto.targetScore;
             floor.enemyMaxAP = dto.enemyMaxAP;
@@ -172,8 +173,11 @@ namespace TheLaw.EditorTools
                     endCountdown = w.endCountdown,
                 });
             }
-            AssetDatabase.CreateAsset(floor, assetPath);
-            SetId(floor, StableHash(floor.name));
+            if (floor.Id == 0)
+            {
+                SetId(floor, StableHash(floor.name));
+            }
+            EditorUtility.SetDirty(floor);
         }
 
         // ========== 地图 ==========
@@ -191,9 +195,7 @@ namespace TheLaw.EditorTools
                 return;
             }
             string assetPath = $"{ConfigAssetsDir}/Map_{dto.mapName}.asset";
-            DeleteIfExists(assetPath);
-            var map = ScriptableObject.CreateInstance<MapConfig>();
-            map.name = $"Map_{dto.mapName}";
+            var map = LoadOrCreate<MapConfig>(assetPath, $"Map_{dto.mapName}"); // 增量：已存在更新不删建
             map.floors = new List<FloorConfig>();
             foreach (var floorName in dto.floors ?? new List<string>())
             {
@@ -203,8 +205,11 @@ namespace TheLaw.EditorTools
                     map.floors.Add(floor);
                 }
             }
-            AssetDatabase.CreateAsset(map, assetPath);
-            SetId(map, StableHash(map.name));
+            if (map.Id == 0)
+            {
+                SetId(map, StableHash(map.name));
+            }
+            EditorUtility.SetDirty(map);
         }
 
         // ========== 特殊能力（支持 Passive/Trigger/Attach）==========
@@ -280,13 +285,20 @@ namespace TheLaw.EditorTools
             }
         }
 
-        private static void DeleteIfExists(string assetPath)
+        /// <summary>
+        /// 加载资产；不存在则新建（增量模式——资产已存在更新不删建，GUID 不变，Bootstrap 引用不断）。
+        /// 旧"删旧建新"模式每次导入都会让场景 Bootstrap 拖拽引用全部断掉，已废弃。
+        /// </summary>
+        private static T LoadOrCreate<T>(string assetPath, string name) where T : ScriptableObject
         {
-            var existing = AssetDatabase.LoadAssetAtPath<ScriptableObject>(assetPath);
-            if (existing != null)
+            var asset = AssetDatabase.LoadAssetAtPath<T>(assetPath);
+            if (asset == null)
             {
-                AssetDatabase.DeleteAsset(assetPath);
+                asset = ScriptableObject.CreateInstance<T>();
+                asset.name = name;
+                AssetDatabase.CreateAsset(asset, assetPath);
             }
+            return asset;
         }
 
         private static void SetId(ScriptableObject asset, int id)

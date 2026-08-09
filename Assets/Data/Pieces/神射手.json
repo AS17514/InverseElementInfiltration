@@ -7,6 +7,7 @@
   "modules": [
     {
       "moduleType": "Arcing",
+      "id": 6,
       "points": [
         {
           "dx": 0,

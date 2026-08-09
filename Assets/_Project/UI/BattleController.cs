@@ -731,17 +731,18 @@ namespace TheLaw.UI
             EventCenter.Instance.EventTrigger(GameEvent.PhaseDisplayed, phase);
         }
 
-        /// <summary>阶段驱动手牌区状态：准备阶段升高（高 250 展示更多内容），其他阶段收起（高 170 + 下移表示不可部署）。</summary>
+        /// <summary>阶段驱动手牌区状态：准备/我方回合展开（拖部署需要），敌方回合收起（无操作空间）。</summary>
         void UpdateHandPositionByPhase()
         {
             if (_panel == null || _panel.HandRoot == null) return;
             var rt = _panel.HandRoot;
-            bool placement = _state.Phase == BattlePhase.Placement;
-            float targetH = placement ? 210f : 170f;
-            float targetY = placement ? 50f : -60f; // 准备阶段上移 50px
+            // 我方回合也可部署单位——只有敌方回合收起手牌
+            bool expanded = _state.Phase == BattlePhase.Placement || _state.Phase == BattlePhase.PlayerTurn;
+            float targetH = expanded ? 210f : 170f;
+            float targetY = expanded ? 50f : -60f;
             // 显式通知布局控制器收起/展开状态（上浮修正依赖）
             var layout = rt.GetComponent<HandLayoutController>();
-            if (layout != null) layout.SetCollapsed(!placement);
+            if (layout != null) layout.SetCollapsed(!expanded);
             if (_handPosTween != null) _handPosTween.Kill();
             if (_handSizeTween != null) _handSizeTween.Kill();
             var sd = rt.sizeDelta;

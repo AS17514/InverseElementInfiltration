@@ -35,7 +35,8 @@ namespace TheLaw.UI
             _title = transform.Find("Grp_TopBar/Txt_EventName")?.GetComponent<TMP_Text>();
             _desc = transform.Find("Grp_EventContent/Grp_EventDesc/Txt_EventDesc")?.GetComponent<TMP_Text>();
             _optionsRoot = transform.Find("Grp_EventContent/Grp_EventDesc/Grp_EventOptions");
-            _exitBtn = transform.Find("Btn_Exit")?.GetComponent<Button>();
+            // Btn_Exit 在 Grp_TopBar/Grp_Functions/ 下（prefab 布局）
+            _exitBtn = transform.Find("Grp_TopBar/Grp_Functions/Btn_Exit")?.GetComponent<Button>();
             if (_exitBtn != null)
             {
                 _exitBtn.onClick.RemoveAllListeners();

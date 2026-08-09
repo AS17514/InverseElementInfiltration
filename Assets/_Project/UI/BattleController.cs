@@ -72,6 +72,7 @@ namespace TheLaw.UI
             EventCenter.Instance.RemoveEventListener(GameEvent.PieceDied, OnPieceDied);
             if (_tooltip != null) _tooltip.gameObject.SetActive(false);
             if (_handPosTween != null) _handPosTween.Kill();
+            if (_handSizeTween != null) _handSizeTween.Kill();
         }
 
         public void Init(BattleFlow flow, GameState state)
@@ -327,10 +328,13 @@ namespace TheLaw.UI
                 ClearHighlights();
                 // 表现播完（PresentationLoop 末尾）会触发 AdvanceAfterPresentation
             }
+            else if (_executing && _state.Phase == BattlePhase.PlayerTurn)
+            {
+                _awaitingCell = true; // 仍在本回合执行中：回退当前槽选格态（规则层拒绝/无事件）
+            }
             else
             {
-                // 规则层拒绝/无事件成功（全 Skip 等）：回退到当前槽选格态，不卡死镜像
-                _awaitingCell = true;
+                _awaitingCell = false; // 执行已结束/阶段已切换：陈旧请求，不再 re-arm（防永久吞点击）
             }
         }
 
@@ -342,6 +346,9 @@ namespace TheLaw.UI
             // 退出逻辑链：清选中 + 清高亮（单位已行动过，再显示范围会误导玩家）
             ClearSelection();
             ClearHighlights();
+            // 清选格态（防陈旧 WaitSelectResult 协程 re-arm 吞掉后续棋盘点击）
+            _awaitingCell = false;
+            _selectResultDirty = false;
             RefreshAP();
         }
 
@@ -534,7 +541,15 @@ namespace TheLaw.UI
                 _tooltip = go.GetComponent<RectTransform>();                _tooltipText = go.transform.Find("Txt_Desc")?.GetComponent<TMPro.TextMeshProUGUI>();
                 _tooltip.pivot = new Vector2(1f, 1f); // 右上角为锚点
             }
-            if (_tooltipText != null) _tooltipText.text = SlotDetailDesc(_infoProgram[slotIndex]);
+            if (_tooltipText != null)
+            {
+                // 复查：异步加载期间玩家可能切换选中 → _infoProgram 已换/变短（防 NRE/越界）
+                if (_infoProgram == null || slotIndex < 0 || slotIndex >= _infoProgram.Count)
+                {
+                    yield break;
+                }
+                _tooltipText.text = SlotDetailDesc(_infoProgram[slotIndex]);
+            }
             // 用 Canvas 的 worldCamera（UICamera）算屏幕坐标——主相机斜俯视坐标系不一致会定位到屏幕外
             var tooltipCanvas = _tooltip.GetComponentInParent<Canvas>();
             var uiCam = tooltipCanvas != null ? tooltipCanvas.worldCamera : null;
@@ -677,11 +692,12 @@ namespace TheLaw.UI
             var layout = rt.GetComponent<HandLayoutController>();
             if (layout != null) layout.SetCollapsed(!placement);
             if (_handPosTween != null) _handPosTween.Kill();
+            if (_handSizeTween != null) _handSizeTween.Kill();
             var sd = rt.sizeDelta;
             _handPosTween = DOTween.To(() => rt.anchoredPosition, v => rt.anchoredPosition = v,
                 new Vector2(rt.anchoredPosition.x, targetY), 0.2f);
-            DOTween.To(() => rt.sizeDelta, v => rt.sizeDelta = v,
-                new Vector2(sd.x, targetH), 0.2f);
+            _handSizeTween = DOTween.To(() => rt.sizeDelta, v => rt.sizeDelta = v,
+                new Vector2(sd.x, targetH), 0.2f); // 独立跟踪（面板销毁/阶段切换时一并 Kill）
         }
 
         void OnAPChanged(object data)
@@ -984,6 +1000,7 @@ namespace TheLaw.UI
         // ========== 手牌 ==========
         // 手牌区下移 tween（防面板销毁后访问失效 target）
         DG.Tweening.Tween _handPosTween;
+        DG.Tweening.Tween _handSizeTween;
         int _handBuildSeq; // 手牌重建版本号（防异步协程竞态）
         string _lastHandKey = ""; // 上次重建的手牌指纹（无变化跳过重建——防闪烁）
 
@@ -1041,6 +1058,7 @@ namespace TheLaw.UI
             for (int i = 0; i < hand.Count; i++)
             {
                 var def = ConfigTable.Get<PieceDef>(hand[i]);
+                if (def == null) continue; // 配置缺失防御（缺卡不建，避免 NRE 中止整个协程）
                 GameObject card = null;
                 // 复用：找第一个未复用且 defId 相同的旧卡（保留其位置 → 布局插值滑动）
                 for (int j = 0; j < oldCards.Count; j++)
@@ -1064,6 +1082,10 @@ namespace TheLaw.UI
                 {
                     card.name = $"Card_{i}_{def.displayName}";
                     card.SetActive(true);
+                    // 复用卡视觉重置（防拖出动画残留：alpha=0/scale=0.3 时隐形）
+                    var cg = card.GetComponent<CanvasGroup>();
+                    if (cg != null) cg.alpha = 1f;
+                    card.transform.localScale = Vector3.one * 0.35f;
                 }
             }
             // 销毁未复用的旧卡（已移除的）
@@ -1222,8 +1244,9 @@ namespace TheLaw.UI
                 bool free = _state.Phase == BattlePhase.Placement;
                 _flow.OnPlayerRequestDeploy(new DeployRequest(_dragDefId, _previewCell) { free = free });
                 // 成功：PieceDeployed → 规则层 Hand.Remove → OnPieceDeployed 重建手牌
-                // 失败兜底：0.5s 后 Hand 仍含该 defId → 恢复卡片
-                StartCoroutine(RecoverCardIfFailed(_dragDefId));
+                // 失败兜底：0.5s 后 Hand 仍含该 defId → 恢复卡片（引用提前捕获——_dragCard 本方法末尾置空）
+                var card = _dragCard;
+                StartCoroutine(RecoverCardIfFailed(_dragDefId, card));
             }
             else
             {
@@ -1236,27 +1259,28 @@ namespace TheLaw.UI
             _dragCard = null; // 统一清理（防野引用）
         }
 
-        IEnumerator RecoverCardIfFailed(int defId)
+        IEnumerator RecoverCardIfFailed(int defId, GameObject card)
         {
             yield return new WaitForSeconds(0.5f);
             if (_state.Hand.Contains(defId))
             {
-                RestoreDragCard(); // 规则层未移除 → 部署失败 → 恢复卡片（幂等）
+                RestoreDragCard(card); // 规则层未移除 → 部署失败 → 恢复卡片（幂等）
             }
         }
 
         /// <summary>恢复拖出的卡片（淡出动画倒放），不重建手牌——避免无变化闪烁。</summary>
-        void RestoreDragCard()
+        void RestoreDragCard(GameObject card = null)
         {
-            if (_dragCard == null) return;
-            var cg = _dragCard.GetComponent<CanvasGroup>();
+            if (card == null) card = _dragCard;
+            if (card == null) return; // 卡片已销毁（Unity 伪 null）或拖拽清理后无引用
+            var cg = card.GetComponent<CanvasGroup>();
             if (cg != null)
             {
                 DG.Tweening.DOTween.To(() => cg.alpha, a => cg.alpha = a, 1f, 0.15f)
                     .SetTarget(cg); // 绑定 target：卡片销毁时可被 Kill
             }
-            _dragCard.transform.DOScale(0.35f, 0.15f);
-            _dragCard = null;
+            card.transform.DOScale(0.35f, 0.15f);
+            if (card == _dragCard) _dragCard = null;
         }
 
         bool IsDeployableCell(Vector2Int cell)

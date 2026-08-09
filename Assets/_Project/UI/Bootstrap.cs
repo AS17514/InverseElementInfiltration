@@ -29,6 +29,7 @@ namespace TheLaw.UI
         [SerializeField] private bool _directToBattle = true;
 
         // 普通类实例（去单例化后由 Bootstrap 创建并持有；规则层行为类显式传递避免网状耦合）
+        private static Bootstrap _instance; // 静态实例标记：防重（双实例并存时先到者存活，后到者自毁）
         private UIManager _uiManager;
         private TutorialSystem _tutorialSystem;
         private ProgressSystem _progressSystem;
@@ -47,12 +48,13 @@ namespace TheLaw.UI
         {
             // DOTween 容量：默认 200/50 快速操作会扩容警告，起步调大
             DG.Tweening.DOTween.SetTweensCapacity(500, 125);
-            // 防重：场景残留 Bootstrap（历史遗留）自动销毁，只保留主场景驱动
-            if (FindObjectsOfType<Bootstrap>().Length > 1)
+            // 防重：静态实例标记（先到者存活，后到者自毁——Destroy 延迟到帧末，双实例并存时双方都看到对方会双双销毁）
+            if (_instance != null && _instance != this)
             {
                 Destroy(gameObject);
                 return;
             }
+            _instance = this;
             DontDestroyOnLoad(gameObject); // 常驻（存档/管理器生命周期跟随进程）
             // ① 按依赖顺序创建常驻管理器
             CreateManagers();

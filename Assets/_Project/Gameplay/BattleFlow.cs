@@ -127,6 +127,14 @@ namespace TheLaw.Gameplay
             {
                 return;
             }
+            // 阶段切换：清理挂起的执行上下文（表现/选格残留——防跨阶段串扰：
+            // 表现播放中结束回合/敌方 ctx 悬垂进玩家回合，都会让 AdvanceSlot 在错误阶段继续推进）
+            if (_ctx != null && (_waitingPresentation || _waitingCellSelect))
+            {
+                _ctx = null;
+                _waitingPresentation = false;
+                _waitingCellSelect = false;
+            }
             _state.Phase = newPhase;
             EventCenter.Instance.EventTrigger(GameEvent.PhaseChanged, newPhase);
         }

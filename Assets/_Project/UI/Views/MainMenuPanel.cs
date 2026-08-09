@@ -11,7 +11,11 @@ namespace TheLaw.UI
 
         private void Awake()
         {
-            Build();
+            // prefab 路径：CreateAsync 加载含完整布局的 prefab（AddComponent 后 Awake 触发）——有子节点则跳过代码构建（防双份 UI）
+            if (transform.childCount == 0)
+            {
+                Build();
+            }
         }
 
         private void Build()

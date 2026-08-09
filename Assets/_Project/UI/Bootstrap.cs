@@ -26,7 +26,7 @@ namespace TheLaw.UI
 
         [Header("测试开关")]
         [Tooltip("true=启动直进战斗（跳过主菜单），false=正常主菜单流程")]
-        [SerializeField] private bool _directToBattle = true;
+        [SerializeField] private bool _directToBattle = false; // 默认主菜单（对接期测试直进可临时开）
 
         // 普通类实例（去单例化后由 Bootstrap 创建并持有；规则层行为类显式传递避免网状耦合）
         private static Bootstrap _instance; // 静态实例标记：防重（双实例并存时先到者存活，后到者自毁）
@@ -188,49 +188,34 @@ namespace TheLaw.UI
             }
         }
 
-        /// <summary>测试模式：直进战斗（初始棋子填手牌 + 临时关卡配置 + 敌方注册 + 战斗控制器）。</summary>
+        /// <summary>测试模式：直进战斗（跳过主菜单——与正式新局共用 StartNewGame 流程）。</summary>
         private System.Collections.IEnumerator EnterBattleTest()
         {
             yield return Addressables.InitializeAsync();
+            StartNewGame();
+        }
 
-            // 填初始手牌（Initial 类型棋子）
-            int added = 0;
-            foreach (var def in ConfigTable.All<PieceDef>())
+        /// <summary>新局：重置状态（基础牌组填手牌）→ 直进第 1 层战斗。
+        /// 事件/地图 UI 后补——届时换 TowerFlow.EnterFloor(0) 走完整节点序列。</summary>
+        private void StartNewGame()
+        {
+            _gameState.ResetForNewRun(); // 基础牌组填手牌（协作者实现）；敌方由波次调度产出（数据集 floor1 回合 1/4/7）
+            var map = GetMapConfig();
+            if (map == null || map.floors.Count == 0)
             {
-                if (def.pieceType == PieceType.Initial)
-                {
-                    _resolver.AddToHand(def.Id);
-                    added++;
-                }
+                Debug.LogError("[Bootstrap] 无地图配置——无法开始新局");
+                return;
             }
+            _battleFlow.StartBattle(map.floors[0], GetDefaultAIParams());
+            CreateBattleController();
+            Debug.Log($"[Bootstrap] 新局开始：层 {_gameState.CurrentFloor}，阶段={_gameState.Phase}，手牌 {_gameState.Hand.Count}");
+        }
 
-            // 临时关卡配置（无 FloorConfig 资产时的兜底：3 AP、无波次）
-            var floor = ScriptableObject.CreateInstance<FloorConfig>();
-            floor.enemyMaxAP = 3;
-            _battleFlow.StartBattle(floor, GetDefaultAIParams());
-
-            // 创建战斗控制器（先监听，再注册敌方——否则敌方部署事件丢失）
+        private void CreateBattleController()
+        {
             var battleGo = new GameObject("BattleController");
             var controller = battleGo.AddComponent<BattleController>();
             controller.Init(_battleFlow, _gameState);
-
-            // 注册敌方棋子（规则层需要真实棋子才能测伤害/击杀；视觉由 PlayDeploy 运行时生成）
-            var enemyDefs = new List<PieceDef>();
-            foreach (var def in ConfigTable.All<PieceDef>())
-            {
-                if (def.pieceType == PieceType.Deployable) enemyDefs.Add(def);
-            }
-            var enemyCells = new[]
-            {
-                new Vector2Int(2, 3), new Vector2Int(3, 6),
-                new Vector2Int(5, 2), new Vector2Int(6, 5),
-            };
-            for (int i = 0; i < enemyCells.Length && i < enemyDefs.Count; i++)
-            {
-                _resolver.Resolve(new DeployAction(enemyDefs[i].Id, Side.Enemy, enemyCells[i]));
-            }
-
-            Debug.Log($"[Bootstrap] 测试直进战斗：手牌 {added} 个初始棋子 + 敌方 {enemyCells.Length} 个，阶段={_gameState.Phase}");
         }
 
         private System.Collections.IEnumerator LoadMainMenu()
@@ -241,6 +226,11 @@ namespace TheLaw.UI
             PanelBase.CreateAsync<MainMenuPanel>(p => { panel = p; done = true; });
             yield return new WaitUntil(() => done);
             _uiManager.RegisterPanel(panel);
+            // 按钮事件接线（面板只转发输入，流程响应在此）
+            panel.OnNewGameClicked += () => { _uiManager.HidePanel("MainMenu"); StartNewGame(); };
+            panel.OnContinueClicked += () => Debug.Log("[Bootstrap] 继续游戏（存档读取未接线 TODO）");
+            panel.OnSettingsClicked += () => Debug.Log("[Bootstrap] 设置（设置面板未接线 TODO）");
+            panel.OnQuitClicked += Application.Quit;
             _uiManager.ShowPanel("MainMenu");
             Debug.Log("[Bootstrap] 主菜单已显示");
         }

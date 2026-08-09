@@ -197,7 +197,7 @@ namespace TheLaw.UI
             ClearSelection();
         }
 
-        /// <summary>选中后预览范围：移动（首个 Move 槽）绿块 + 攻击（首个 Attack 槽）红框——同时显示（移动独立于行动逻辑）。</summary>
+        /// <summary>选中后只显示首个逻辑块的范围（移动=绿块；攻击=红框）——多个范围杂糅不易读。</summary>
         void PreviewRange(int pieceId)
         {
             var piece = _state.GetPiece(pieceId);
@@ -208,20 +208,18 @@ namespace TheLaw.UI
                 ClearHighlights();
                 return;
             }
-            List<Vector2Int> moves = null, attacks = null;
-            foreach (var slot in program)
+            switch (program[0])
             {
-                if (moves == null && slot is MoveTemplate m)
-                {
-                    moves = _intentResolver.GetMoveOptions(_state, piece, m);
-                }
-                if (attacks == null && slot is AttackTemplate a)
-                {
-                    attacks = _boardRules.GetAttackableCells(_state, piece, a);
-                }
-                if (moves != null && attacks != null) break;
+                case MoveTemplate move:
+                    ShowHighlights(_intentResolver.GetMoveOptions(_state, piece, move), null);
+                    break;
+                case AttackTemplate atk:
+                    ShowHighlights(null, _boardRules.GetAttackableCells(_state, piece, atk));
+                    break;
+                default:
+                    ClearHighlights(); // Skip 等：无范围
+                    break;
             }
-            ShowHighlights(moves, attacks);
         }
 
         /// <summary>点击目标格触发执行：格在首个有候选槽可选范围内 → 发 ExecuteRequest + 选格。</summary>

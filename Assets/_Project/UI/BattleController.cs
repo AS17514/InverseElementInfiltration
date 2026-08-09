@@ -70,6 +70,7 @@ namespace TheLaw.UI
             EventCenter.Instance.RemoveEventListener(GameEvent.DamageDealt, OnDamageDealt);
             EventCenter.Instance.RemoveEventListener(GameEvent.PieceDeployed, OnPieceDeployed);
             EventCenter.Instance.RemoveEventListener(GameEvent.PieceDied, OnPieceDied);
+            EventCenter.Instance.RemoveEventListener(GameEvent.StateChanged, OnStateChanged);
             if (_tooltip != null) _tooltip.gameObject.SetActive(false);
             if (_handPosTween != null) _handPosTween.Kill();
             if (_handSizeTween != null) _handSizeTween.Kill();
@@ -114,6 +115,7 @@ namespace TheLaw.UI
             EventCenter.Instance.AddEventListener(GameEvent.DamageDealt, OnDamageDealt);
             EventCenter.Instance.AddEventListener(GameEvent.PieceDeployed, OnPieceDeployed);
             EventCenter.Instance.AddEventListener(GameEvent.PieceDied, OnPieceDied);
+            EventCenter.Instance.AddEventListener(GameEvent.StateChanged, OnStateChanged);
 
             PanelBase.CreateAsync<BattlePanel>(p =>
             {
@@ -745,15 +747,36 @@ namespace TheLaw.UI
                 new Vector2(sd.x, targetH), 0.2f); // 独立跟踪（面板销毁/阶段切换时一并 Kill）
         }
 
+        /// <summary>手牌是否还有初始棋子（摆放前置判断）。</summary>
+        bool HasInitialInHand()
+        {
+            foreach (var defId in _state.Hand)
+            {
+                var def = ConfigTable.Find<PieceDef>(defId);
+                if (def != null && def.pieceType == PieceType.Initial) return true;
+            }
+            return false;
+        }
+
         void OnAPChanged(object data)
         {
             RefreshAP();
+        }
+
+        /// <summary>通用状态通知（规则层字符串信号——如 placement-incomplete：摆放未完成拒绝结束）。</summary>
+        void OnStateChanged(object data)
+        {
+            if (data is string s && s == "placement-incomplete")
+            {
+                RefreshPhaseButton(); // 刷新按钮状态（提示继续摆放）
+            }
         }
 
         void OnHandChanged(object data)
         {
             if (data == null) return; // AddToEnemyWavePool 也发 HandChanged(null)——敌方侧变化不重建玩家手牌
             RebuildHand();
+            RefreshPhaseButton(); // 手牌变化 → 摆放前置状态可能变化（按钮可用性）
         }
 
         // ========== UI 刷新 ==========
@@ -773,8 +796,10 @@ namespace TheLaw.UI
             switch (_state.Phase)
             {
                 case BattlePhase.Placement:
-                    btn.interactable = true;
-                    if (txt != null) txt.text = "结束准备";
+                    // 摆放前置（规则层）：手牌还有初始棋子时禁止结束摆放
+                    bool hasInitial = HasInitialInHand();
+                    btn.interactable = !hasInitial;
+                    if (txt != null) txt.text = hasInitial ? "先摆放初始棋子" : "结束准备";
                     if (_panel != null) _panel.SetEventName("我方准备");
                     break;
                 case BattlePhase.PlayerTurn:
@@ -1231,17 +1256,23 @@ namespace TheLaw.UI
             drag.Init(this, defId, index);
         }
 
-        public bool CanDragCard()
+        public bool CanDragCard(int defId)
         {
-            // 准备阶段免费部署；玩家回合部署扣 AP（规则层已支持）——执行中/表现播放中禁止拖拽
-            return !_executing && !_presentationPlaying
+            // 阶段限定种类（与规则层 IsDeployAllowed 一致）：Placement=初始 / PlayerTurn=部署；升变牌靠升变操作上场不可部署
+            var def = ConfigTable.Find<PieceDef>(defId);
+            if (def == null) return false;
+            bool typeOk = _state.Phase == BattlePhase.Placement
+                ? def.pieceType == PieceType.Initial
+                : def.pieceType == PieceType.Deployable;
+            // 执行中/表现播放中禁止拖拽（防时序错乱）
+            return typeOk && !_executing && !_presentationPlaying
                 && (_state.Phase == BattlePhase.Placement || _state.Phase == BattlePhase.PlayerTurn);
         }
 
         // ========== 拖拽部署 ==========
         public void OnCardDragStart(int defId, GameObject card)
         {
-            if (!CanDragCard()) return;
+            if (!CanDragCard(defId)) return;
             if (_previewPiece != null) Destroy(_previewPiece); // 防旧预览泄漏
             _draggingCard = true;
             _dragDefId = defId;
@@ -1398,7 +1429,7 @@ namespace TheLaw.UI
 
         public void OnBeginDrag(PointerEventData eventData)
         {
-            if (!_controller.CanDragCard()) return;
+            if (!_controller.CanDragCard(_defId)) return;
             _controller.OnCardDragStart(_defId, gameObject);
             // 拖出动画：淡出 + 缩小（失败时 RestoreDragCard 恢复）
             _fadeTween = DOTween.To(() => _cg.alpha, a => _cg.alpha = a, 0f, 0.15f);

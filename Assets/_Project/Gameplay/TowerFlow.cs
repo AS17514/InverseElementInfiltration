@@ -21,6 +21,14 @@ namespace TheLaw.Gameplay
             _eventNodeSystem = eventNodeSystem;
             _battleFlow = battleFlow;
             _map = map;
+            // 事件完成推进（与 PlacementFinished 同模式：UI 报告完成，规则层决定推进）
+            EventCenter.Instance.AddEventListener(GameEvent.EventCompleted, OnEventCompleted);
+        }
+
+        /// <summary>事件关完成（UI 发 EventCompleted）→ 推进下一个节点（下一事件或战斗）。</summary>
+        private void OnEventCompleted(object data)
+        {
+            AdvanceNode();
         }
 
         /// <summary>

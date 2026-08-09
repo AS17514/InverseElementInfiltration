@@ -48,6 +48,8 @@ namespace TheLaw.Gameplay
             var picked = RandomManager.Instance.NextWeighted(candidates, e => e.weight);
             _state.CurrentEventId = picked.eventId;
             _state.DrawnEventIds.Add(picked.eventId);
+            // 通知 UI：事件关打开（携带当前事件 id——UI 据此打开事件界面）
+            EventCenter.Instance.EventTrigger(GameEvent.EventOpened, _state.CurrentEventId);
         }
 
         /// <summary>选择选项（availability 校验 + 防重入——执行效果）。</summary>

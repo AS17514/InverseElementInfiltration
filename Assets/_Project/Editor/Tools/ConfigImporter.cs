@@ -108,7 +108,8 @@ namespace TheLaw.EditorTools
                                 targetDefId = fx.targetDefId,
                                 amount = fx.amount,
                                 abilityId = fx.abilityId,
-                                relicName = fx.relicName,
+                                // 遗物引用：JSON 裸名 → 资产名（幂等补 Relic_ 前缀——与池/事件同一契约）
+                                relicName = NormalizeAssetName(fx.relicName, "Relic_"),
                             });
                         }
                         def.options.Add(option);
@@ -161,7 +162,12 @@ namespace TheLaw.EditorTools
             floor.targetScore = dto.targetScore;
             floor.enemyMaxAP = dto.enemyMaxAP;
             floor.eventSequence = dto.eventSequence ?? new List<string>();
-            floor.eventPoolIds = dto.eventPoolIds ?? new List<string>();
+            // 事件池引用：JSON 裸名 → 资产名（幂等补 Pool_ 前缀——与池条目 eventId 补 Event_ 前缀同一契约）
+            floor.eventPoolIds = new List<string>();
+            foreach (var id in dto.eventPoolIds ?? new List<string>())
+            {
+                floor.eventPoolIds.Add(id.StartsWith("Pool_") ? id : $"Pool_{id}");
+            }
             floor.waveDefs = new List<WaveDef>();
             foreach (var w in dto.waves ?? new List<WaveJson>())
             {
@@ -299,6 +305,19 @@ namespace TheLaw.EditorTools
                 AssetDatabase.CreateAsset(asset, assetPath);
             }
             return asset;
+        }
+
+        /// <summary>
+        /// 幂等补资产名前缀（JSON 引用字段写裸名，导入器补前缀生成资产名——统一契约）：
+        /// 裸名 "relic_move" → "Relic_relic_move"；已带前缀 "Relic_relic_move" → 原样（防重复导入前缀叠加）。
+        /// </summary>
+        private static string NormalizeAssetName(string name, string prefix)
+        {
+            if (string.IsNullOrEmpty(name))
+            {
+                return name;
+            }
+            return name.StartsWith(prefix) ? name : $"{prefix}{name}";
         }
 
         private static void SetId(ScriptableObject asset, int id)

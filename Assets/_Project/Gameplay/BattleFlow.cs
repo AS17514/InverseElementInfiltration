@@ -552,13 +552,13 @@ namespace TheLaw.Gameplay
             switch (_floor.victoryRule)
             {
                 case VictoryRule.WipeOut:
-                    playerWins = _boardRules.IsEnemyWiped(_state);
+                    playerWins = AllWavesDeployed() && _boardRules.IsEnemyWiped(_state);
                     break;
                 case VictoryRule.ScoreTarget:
-                    playerWins = _boardRules.IsEnemyWiped(_state) || _boardRules.IsScoreTargetReached(_state, _floor);
+                    playerWins = (AllWavesDeployed() && _boardRules.IsEnemyWiped(_state)) || _boardRules.IsScoreTargetReached(_state, _floor);
                     break;
                 case VictoryRule.Both:
-                    playerWins = _boardRules.IsEnemyWiped(_state) && _boardRules.IsScoreTargetReached(_state, _floor);
+                    playerWins = AllWavesDeployed() && _boardRules.IsEnemyWiped(_state) && _boardRules.IsScoreTargetReached(_state, _floor);
                     break;
                 case VictoryRule.PerWaveScore:
                     playerWins = _waveEnded && _boardRules.IsEnemyWiped(_state) &&
@@ -574,6 +574,12 @@ namespace TheLaw.Gameplay
             {
                 EndBattle(Side.Enemy); // 末波强制结算：胜利条件未达成 → 失败
             }
+        }
+
+        /// <summary>全部波次已部署（未出完波前的空棋盘不算全灭胜利——防开局误判）。</summary>
+        private bool AllWavesDeployed()
+        {
+            return _deployedWaveIndex >= _floor.waveDefs.Count;
         }
 
         /// <summary>第 3 关"每波得分均达标"（骨架：每波得分 &gt; 0 视为达标——达标线数值待策划回填）。</summary>

@@ -49,6 +49,7 @@ namespace TheLaw.Gameplay
         /// 每条路径独立计算（起点 = 棋子位置）：段序列顺序执行，段间从各终点继续；
         /// 段内 moves（方向→可选步数）选一个执行——段内多选项产生多个终点（分支）。
         /// 路径格检查：界内 + 非障碍（棋子可穿过）；落点 = 最后一段终点，额外检查非占用（不可重叠）。
+        /// 【方向语义】MoveStep.direction = 相对棋子 facing（正前方）——解析时按 facing 旋转到世界方向。
         /// 解析时应用被动修正：步数 + MoveStep 修正（作用于每段每个选项）。
         /// </summary>
         public List<Vector2Int> GetLegalMoves(GameState state, PieceInstance piece, MoveTemplate template)
@@ -70,7 +71,7 @@ namespace TheLaw.Gameplay
                             foreach (var k in move.steps)
                             {
                                 int steps = k + stepModifier;
-                                var dirVec = DirectionToVector(move.direction);
+                                var dirVec = RotateVector(DirectionToVector(move.direction), piece.facing); // 相对 facing → 世界方向
                                 var cursor = start;
                                 bool blocked = false;
                                 for (int i = 0; i < steps; i++)
@@ -122,6 +123,8 @@ namespace TheLaw.Gameplay
         ///       近战     → 射程 1（相邻格，无阻挡概念）
         ///       近战群攻 → 范围内全部格子被攻击（玩家选一格仅作确认；无阻挡概念）
         /// 攻击时玩家从候选格集合中选一格（普通攻击打所选格；近战群攻打范围内全部）。
+        /// 【方向语义】directions = 相对棋子 facing（正前方）——解析时按 facing 旋转到世界方向
+        ///   （敌方 facing 已镜像——Up↔Down——方向自动朝向我方，无需额外按阵营翻转）
         /// 解析时应用被动修正：射程 + AttackRange 修正（对点模式不适用）。
         /// </summary>
         public List<Vector2Int> GetAttackableCells(GameState state, PieceInstance piece, AttackTemplate template)
@@ -149,7 +152,7 @@ namespace TheLaw.Gameplay
                 {
                     continue;
                 }
-                var dirVec = DirectionToVector((Direction)dir);
+                var dirVec = RotateVector(DirectionToVector((Direction)dir), piece.facing); // 相对 facing → 世界方向
                 var cursor = piece.position;
                 for (int i = 0; i < range; i++)
                 {
@@ -251,6 +254,26 @@ namespace TheLaw.Gameplay
         }
 
         // ========== 工具 ==========
+
+        /// <summary>
+        /// 相对方向向量按棋子 facing 旋转到世界方向（方向语义：directions = 相对正前方）。
+        /// 旋转表：Up 无旋转 / Down 180° / Left 90° / Right -90°（向量变换验证）。
+        /// </summary>
+        private Vector2Int RotateVector(Vector2Int v, Facing facing)
+        {
+            switch (facing)
+            {
+                case Facing.Down:
+                    return new Vector2Int(-v.x, -v.y); // 180°
+                case Facing.Left:
+                    return new Vector2Int(-v.y, v.x);  // 相对Up(0,1)→世界Left(-1,0)
+                case Facing.Right:
+                    return new Vector2Int(v.y, -v.x);  // 相对Up(0,1)→世界Right(1,0)
+                case Facing.Up:
+                default:
+                    return v; // 无旋转（默认正前方=世界上方）
+            }
+        }
 
         private Vector2Int DirectionToVector(Direction dir)
         {

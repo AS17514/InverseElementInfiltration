@@ -796,10 +796,10 @@ namespace TheLaw.UI
             switch (_state.Phase)
             {
                 case BattlePhase.Placement:
-                    // 摆放前置（规则层）：手牌还有初始棋子时禁止结束摆放
+                    // 摆放前置（规则层）：手牌还有初始棋子时禁止结束摆放（按钮文字限 4 字）
                     bool hasInitial = HasInitialInHand();
                     btn.interactable = !hasInitial;
-                    if (txt != null) txt.text = hasInitial ? "先摆放初始棋子" : "结束准备";
+                    if (txt != null) txt.text = hasInitial ? "先摆初始" : "结束准备";
                     if (_panel != null) _panel.SetEventName("我方准备");
                     break;
                 case BattlePhase.PlayerTurn:
@@ -809,7 +809,7 @@ namespace TheLaw.UI
                     break;
                 case BattlePhase.EnemyTurn:
                     btn.interactable = false;
-                    if (txt != null) txt.text = "敌方回合中";
+                    if (txt != null) txt.text = "等待中"; // 按钮文字限 4 字
                     if (_panel != null) _panel.SetEventName("敌方回合");
                     break;
                 default:
@@ -1218,7 +1218,13 @@ namespace TheLaw.UI
             {
                 bool show = s < slotCount;
                 var block = FindCardNode(card.transform, $"Img_InfoProgram{s + 1}");
-                if (block != null) block.gameObject.SetActive(show);
+                if (block != null)
+                {
+                    block.gameObject.SetActive(show);
+                    // 槽位图标文字（移/攻/跳）
+                    var blockText = block.GetComponentInChildren<TMP_Text>();
+                    if (blockText != null && show) blockText.text = SlotTypeCharStatic(slots[s]);
+                }
                 var desc = FindCardNode(card.transform, $"Txt_InfoProgram{s + 1}Desc");
                 if (desc != null)
                 {
@@ -1229,6 +1235,17 @@ namespace TheLaw.UI
                         if (tmp != null) tmp.text = SlotDetailDesc(slots[s]); // 单槽自然语言描述
                     }
                 }
+            }
+        }
+
+        /// <summary>槽位图标字符（移/攻/跳）。</summary>
+        static string SlotTypeCharStatic(Template t)
+        {
+            switch (t)
+            {
+                case MoveTemplate: return "移";
+                case AttackTemplate: return "攻";
+                default: return "跳";
             }
         }
 

@@ -108,6 +108,9 @@ namespace TheLaw.UI
                 if (_optionTemplate != null)
                 {
                     go = Instantiate(_optionTemplate, _optionsRoot);
+                    // prefab 根尺寸为 0——实例化后显式设尺寸（与 Text 子级 500×80 匹配）
+                    var rt = (RectTransform)go.transform;
+                    rt.sizeDelta = new Vector2(500, 80);
                 }
                 else
                 {

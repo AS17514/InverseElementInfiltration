@@ -18,6 +18,9 @@ namespace TheLaw.UI
     {
         public override string Key => "PieceEdit";
 
+        /// <summary>编辑完成（Btn_Next——下一步进战斗）。</summary>
+        public event System.Action OnNextClicked;
+
         [Header("编辑行为")]
         [SerializeField] private bool _enableSlotReorder; // 排序开关（一版默认关：替换只改目标槽）
 
@@ -56,6 +59,21 @@ namespace TheLaw.UI
             BuildProgramLibrary();
             RefreshPieceList();
             RefreshProgramList();
+            // Btn_Next：编辑完成 → 下一步（Bootstrap 接线进战斗）
+            var next = transform.Find("Grp/Grp_L/Grp_Top/Btn_Next")?.GetComponent<Button>();
+            if (next != null)
+            {
+                next.onClick.RemoveAllListeners();
+                next.onClick.AddListener(() => OnNextClicked?.Invoke());
+            }
+        }
+
+        protected override void OnShow()
+        {
+            // 新局重置：清选中 + 隐藏信息区
+            _selectedDefId = -1;
+            _slotTemplates.Clear();
+            if (_pieceInfo != null) _pieceInfo.gameObject.SetActive(false);
         }
 
         void ResolveNodes()

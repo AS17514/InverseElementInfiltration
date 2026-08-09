@@ -44,6 +44,7 @@ namespace TheLaw.UI
         private EnemyAI _enemyAI;
         private BattleFlow _battleFlow;
         private EditorSession _editorSession;
+        private PieceEditPanel _pieceEditPanel; // 棋子编辑面板（新局入口——编辑完成进战斗）
         private EventNodeSystem _eventNodeSystem;
         private TowerFlow _towerFlow;
 
@@ -228,21 +229,55 @@ namespace TheLaw.UI
             StartNewGame();
         }
 
-        /// <summary>新局：重置状态（基础牌组填手牌）→ 直进第 1 层战斗。
-        /// 事件/地图 UI 后补——届时换 TowerFlow.EnterFloor(0) 走完整节点序列。</summary>
+        /// <summary>新局：重置状态（基础牌组填手牌）→ 进入棋子编辑界面（编辑完成 → 直进第 1 层战斗）。
+        /// 事件/地图 UI 后补——届时 StartBattleAfterEdit 换 TowerFlow.EnterFloor(0) 走完整节点序列。</summary>
         private void StartNewGame()
         {
             DestroyBattleController(); // 清理旧战斗会话（重开/结算重开路径）
             _gameState.ResetForNewRun(); // 基础牌组填手牌（协作者实现）；敌方由波次调度产出（数据集 floor1 回合 1/4/7）
+            OpenPieceEditor();
+        }
+
+        /// <summary>打开棋子编辑面板（测试前后端对接：程序编排 → 战斗）。</summary>
+        private void OpenPieceEditor()
+        {
+            if (_pieceEditPanel == null)
+            {
+                StartCoroutine(LoadPieceEditPanel());
+            }
+            else
+            {
+                _uiManager.ShowPanel("PieceEdit");
+            }
+        }
+
+        private System.Collections.IEnumerator LoadPieceEditPanel()
+        {
+            bool done = false;
+            PieceEditPanel panel = null;
+            PanelBase.CreateAsync<PieceEditPanel>(p => { panel = p; done = true; });
+            yield return new WaitUntil(() => done);
+            _pieceEditPanel = panel;
+            _uiManager.RegisterPanel(panel);
+            panel.Init(_editorSession, _gameState);
+            panel.OnNextClicked += StartBattleAfterEdit; // 编辑完成 → 进战斗
+            _uiManager.ShowPanel("PieceEdit");
+            Debug.Log("[Bootstrap] 棋子编辑界面已显示");
+        }
+
+        /// <summary>编辑完成：直进第 1 层战斗（数据集的 Floor_floor1）。</summary>
+        private void StartBattleAfterEdit()
+        {
+            _uiManager.HidePanel("PieceEdit");
             var map = GetMapConfig();
             if (map == null || map.floors.Count == 0)
             {
-                Debug.LogError("[Bootstrap] 无地图配置——无法开始新局");
+                Debug.LogError("[Bootstrap] 无地图配置——无法开始战斗");
                 return;
             }
             _battleFlow.StartBattle(map.floors[0], GetDefaultAIParams());
             CreateBattleController();
-            Debug.Log($"[Bootstrap] 新局开始：层 {_gameState.CurrentFloor}，阶段={_gameState.Phase}，手牌 {_gameState.Hand.Count}");
+            Debug.Log($"[Bootstrap] 编辑完成进战斗：层 {_gameState.CurrentFloor}，阶段={_gameState.Phase}，手牌 {_gameState.Hand.Count}");
         }
 
         private void CreateBattleController()

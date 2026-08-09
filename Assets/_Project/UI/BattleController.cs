@@ -86,6 +86,9 @@ namespace TheLaw.UI
             }
         }
 
+        /// <summary>退出战斗请求（Bootstrap 订阅——回主菜单）。</summary>
+        public event System.Action OnExitRequested;
+
         public void Init(BattleFlow flow, GameState state)
         {
             _flow = flow;
@@ -119,6 +122,10 @@ namespace TheLaw.UI
                 if (_panel.PhaseButton != null)
                 {
                     _panel.PhaseButton.onClick.AddListener(OnPhaseButtonClicked);
+                }
+                if (_panel.ExitButton != null)
+                {
+                    _panel.ExitButton.onClick.AddListener(() => OnExitRequested?.Invoke());
                 }
                 RefreshAll();
                 UpdateHandPositionByPhase(); // 初始阶段即应用手牌区状态（准备阶段高度 250）
@@ -155,6 +162,10 @@ namespace TheLaw.UI
         // ========== 棋盘点击 ==========
         void HandleBoardClick(Vector2Int cell)
         {
+            if (_presentationPlaying)
+            {
+                return; // 表现播放中：所有操作等动画播完（防时序错乱）
+            }
             if (_awaitingCell)
             {
                 OnCellPicked(cell); // 执行中：当前槽选格
@@ -458,8 +469,8 @@ namespace TheLaw.UI
 
         IEnumerator PlayDamage(DamageInfo info)
         {
-            // 测试：目标闪烁一下（飘字后续加）
-            var go = GameObject.Find($"Piece_{info.AttackerId}");
+            // 闪烁目标（被攻击方）——原实现闪攻击者（敌方），玩家看不到自己被攻击
+            var go = GameObject.Find($"Piece_{info.TargetId}");
             if (go != null)
             {
                 var sr = go.transform.Find("Portrait")?.GetComponent<SpriteRenderer>();
@@ -467,7 +478,7 @@ namespace TheLaw.UI
                 {
                     sr.color = Color.white;
                     yield return new WaitForSeconds(0.08f);
-                    sr.color = PieceViewFactory.TintFor(_state.GetPiece(info.AttackerId)?.DefId ?? 0);
+                    sr.color = PieceViewFactory.TintFor(_state.GetPiece(info.TargetId)?.DefId ?? 0);
                 }
             }
             yield return new WaitForSeconds(0.15f);
@@ -778,6 +789,7 @@ namespace TheLaw.UI
 
         void OnPhaseButtonClicked()
         {
+            if (_presentationPlaying) return; // 表现播放中禁点阶段按钮
             switch (_state.Phase)
             {
                 case BattlePhase.Placement:
@@ -1210,8 +1222,9 @@ namespace TheLaw.UI
 
         public bool CanDragCard()
         {
-            // 准备阶段免费部署；玩家回合部署扣 AP（规则层已支持）——执行中禁止拖拽（防选格冲突）
-            return !_executing && (_state.Phase == BattlePhase.Placement || _state.Phase == BattlePhase.PlayerTurn);
+            // 准备阶段免费部署；玩家回合部署扣 AP（规则层已支持）——执行中/表现播放中禁止拖拽
+            return !_executing && !_presentationPlaying
+                && (_state.Phase == BattlePhase.Placement || _state.Phase == BattlePhase.PlayerTurn);
         }
 
         // ========== 拖拽部署 ==========

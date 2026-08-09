@@ -250,6 +250,7 @@ namespace TheLaw.UI
             var battleGo = new GameObject("BattleController");
             var controller = battleGo.AddComponent<BattleController>();
             controller.Init(_battleFlow, _gameState);
+            controller.OnExitRequested += BackToMainMenu; // 战斗面板退出按钮 → 回主菜单
         }
 
         private System.Collections.IEnumerator LoadMainMenu()

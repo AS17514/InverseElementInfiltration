@@ -13,6 +13,7 @@ namespace TheLaw.UI
         public override string Key => "Battle";
 
         public Button PhaseButton { get; private set; }
+        public Button ExitButton { get; private set; }
         public TMP_Text PhaseButtonText { get; private set; }
         public TMP_Text APValueText { get; private set; }
         public TMP_Text EventNameText { get; private set; }
@@ -27,6 +28,7 @@ namespace TheLaw.UI
         void ResolveNodes()
         {
             PhaseButton = transform.Find("Btn_PhaseAction")?.GetComponent<Button>();
+            ExitButton = transform.Find("Btn_Exit")?.GetComponent<Button>();
             if (PhaseButton != null)
             {
                 // 按钮文本子节点未命名——直接找子级 TMP
@@ -35,6 +37,17 @@ namespace TheLaw.UI
             }
             APValueText = transform.Find("Grp_AP/Txt_APValue")?.GetComponent<TMP_Text>();
             EventNameText = transform.Find("Grp_TopBar/Txt_EventName")?.GetComponent<TMP_Text>();
+            if (EventNameText == null)
+            {
+                // 兜底：深层按名查找（防路径漂移）
+                foreach (var t in GetComponentsInChildren<TMP_Text>(true))
+                {
+                    if (t.name == "Txt_EventName") { EventNameText = t; break; }
+                }
+            }
+            // 隐藏静态"当前进度"标签（代码不更新它——防被误认为阶段状态文本）
+            var progress = transform.Find("Grp_TopBar/Txt_CurrentProgress");
+            if (progress != null) progress.gameObject.SetActive(false);
             HandRoot = transform.Find("Grp_Hand") as RectTransform;
 
             // 手牌模板（Grp_Hand 下名为 Piece_Handcard 的节点，保留作克隆模板）

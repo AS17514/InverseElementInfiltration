@@ -90,6 +90,7 @@ namespace TheLaw.Gameplay
 
             // 目标格结算（空格 = 空放：无伤害仍耗槽）
             var target = _state.GetPieceAt(action.targetCell);
+            int targetId = target != null ? target.Id : -1; // 死亡前记录——HandleDeath 会从 Pieces 移除
             bool died = false;
             if (target != null)
             {
@@ -103,6 +104,7 @@ namespace TheLaw.Gameplay
             EventCenter.Instance.EventTrigger(GameEvent.DamageDealt, new DamageInfo
             {
                 AttackerId = piece.Id,
+                TargetId = targetId,
                 TargetCell = action.targetCell,
                 Damage = damage,
                 TargetDied = died,
@@ -439,6 +441,7 @@ namespace TheLaw.Gameplay
     public class DamageInfo
     {
         public int AttackerId;
+        public int TargetId;            // 目标棋子 id（-1=空放）——死亡后从 Pieces 移除，UI 需在死亡前记录
         public Vector2Int TargetCell;
         public int Damage;
         public bool TargetDied;

@@ -441,7 +441,11 @@ namespace TheLaw.UI
         {
             var info = (DeployInfo)data;
             EnqueuePresentation(() => PlayDeploy(info));
-            if (info.Side == Side.Player) RebuildHand(); // 规则层已 Hand.Remove——本地重建移除该卡
+            if (info.Side == Side.Player)
+            {
+                RebuildHand(); // 规则层已 Hand.Remove——本地重建移除该卡
+                RefreshPhaseButton(); // ResolveDeploy 不发 HandChanged——按钮摆放前置状态需手动刷新
+            }
         }
 
         void OnPieceDied(object data)

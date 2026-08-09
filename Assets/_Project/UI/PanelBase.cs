@@ -48,6 +48,7 @@ namespace TheLaw.UI
             {
                 var uiCam = FindOrCreateUICamera();
                 var root = new GameObject("UIRoot");
+                root.layer = LayerMask.NameToLayer("UI"); // UI 层（UICamera cullingMask 只渲染 UI 层——默认 Default 层不可见）
                 canvas = root.AddComponent<Canvas>();
                 canvas.renderMode = RenderMode.ScreenSpaceCamera;
                 canvas.worldCamera = uiCam;
@@ -60,6 +61,11 @@ namespace TheLaw.UI
             }
 
             // 复用现有 Canvas：renderMode 不符或未挂 UI 相机 → 强制升级为 ScreenSpaceCamera（Overlay+worldCam 残留也会被纠正）
+            // 无条件保证 UI 层（UICamera cullingMask 只渲染 UI 层——非 UI 层 Canvas 相机捕捉不到）
+            if (canvas.gameObject.layer != LayerMask.NameToLayer("UI"))
+            {
+                canvas.gameObject.layer = LayerMask.NameToLayer("UI");
+            }
             if (canvas.renderMode != RenderMode.ScreenSpaceCamera || canvas.worldCamera == null)
             {
                 var uiCam = FindOrCreateUICamera();

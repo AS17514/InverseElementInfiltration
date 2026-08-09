@@ -75,3 +75,26 @@ MonoBehaviour:
   _relicConfigs:
   - {fileID: 11400000, guid: 47a029b14c1916443a4f9e894e03a57f, type: 2}
   - {fileID: 11400000, guid: b047e44ca096a1b42b2f5cfa4f213c1b, type: 2}
+  _templateConfigs:
+  - {fileID: 11400000, guid: 243e7bad1ad26444a818fdddd654973f, type: 2}
+  - {fileID: 11400000, guid: f5e330f25540b6e438ec0c41194e8645, type: 2}
+  - {fileID: 11400000, guid: 73a4b967f8adbf14e92ea9cb539d2f4b, type: 2}
+  - {fileID: 11400000, guid: 9bccaf96ecdd0344d997f5221f51e015, type: 2}
+  - {fileID: 11400000, guid: d66140469e86bda43be276586a7a7d39, type: 2}
+  - {fileID: 11400000, guid: 90ed7cf2cb0e0ff4a94b8aa43880e874, type: 2}
+  - {fileID: 11400000, guid: 303c87efaa629254cb42791de5a945fc, type: 2}
+  - {fileID: 11400000, guid: cf3a3bb2a2c6810478cf104d6a16cbb8, type: 2}
+  - {fileID: 11400000, guid: c306f53671b09784a8d5b2103132be6b, type: 2}
+  - {fileID: 11400000, guid: 34c885096b78584479bafe19c05576b3, type: 2}
+  - {fileID: 11400000, guid: 097ba030b4b4da141a9bda9a74531038, type: 2}
+  - {fileID: 11400000, guid: 596fb645145190940824585fc4073d8a, type: 2}
+  - {fileID: 11400000, guid: 55755f0ba702cc14aa426491664a7e6e, type: 2}
+  - {fileID: 11400000, guid: 0a6523c2ada978e49a1670f8c3c61935, type: 2}
+  - {fileID: 11400000, guid: c4f953ff893a756499e2a8ca8de89d3f, type: 2}
+  - {fileID: 11400000, guid: 04e3206d854b6aa43964d3d44758be31, type: 2}
+  - {fileID: 11400000, guid: e93df6a7364d63e458de4492907a7ee1, type: 2}
+  - {fileID: 11400000, guid: 060f0d2636338d749899ec065c3f2558, type: 2}
+  - {fileID: 11400000, guid: 6a5994b1aa4fe884cb89b8f4caae752f, type: 2}
+  - {fileID: 11400000, guid: 74108dcd1e6e85c47889ca758b4195bc, type: 2}
+  _directToBattle: 0
+  _slotDescriptions: {fileID: 0}

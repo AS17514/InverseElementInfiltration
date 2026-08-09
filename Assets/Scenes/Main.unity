@@ -298,6 +298,42 @@ PrefabInstance:
       propertyPath: _slotDescriptions
       value: 
       objectReference: {fileID: 4900000, guid: 61641052052f35242aa0036fb7af08a7, type: 3}
+    - target: {fileID: 2191935029703393796, guid: 462ca4daaab902a478d2485d4a407210, type: 3}
+      propertyPath: _templateConfigs.Array.data[11]
+      value: 
+      objectReference: {fileID: 11400000, guid: 596fb645145190940824585fc4073d8a, type: 2}
+    - target: {fileID: 2191935029703393796, guid: 462ca4daaab902a478d2485d4a407210, type: 3}
+      propertyPath: _templateConfigs.Array.data[12]
+      value: 
+      objectReference: {fileID: 11400000, guid: 55755f0ba702cc14aa426491664a7e6e, type: 2}
+    - target: {fileID: 2191935029703393796, guid: 462ca4daaab902a478d2485d4a407210, type: 3}
+      propertyPath: _templateConfigs.Array.data[13]
+      value: 
+      objectReference: {fileID: 11400000, guid: 0a6523c2ada978e49a1670f8c3c61935, type: 2}
+    - target: {fileID: 2191935029703393796, guid: 462ca4daaab902a478d2485d4a407210, type: 3}
+      propertyPath: _templateConfigs.Array.data[14]
+      value: 
+      objectReference: {fileID: 11400000, guid: c4f953ff893a756499e2a8ca8de89d3f, type: 2}
+    - target: {fileID: 2191935029703393796, guid: 462ca4daaab902a478d2485d4a407210, type: 3}
+      propertyPath: _templateConfigs.Array.data[15]
+      value: 
+      objectReference: {fileID: 11400000, guid: 04e3206d854b6aa43964d3d44758be31, type: 2}
+    - target: {fileID: 2191935029703393796, guid: 462ca4daaab902a478d2485d4a407210, type: 3}
+      propertyPath: _templateConfigs.Array.data[16]
+      value: 
+      objectReference: {fileID: 11400000, guid: e93df6a7364d63e458de4492907a7ee1, type: 2}
+    - target: {fileID: 2191935029703393796, guid: 462ca4daaab902a478d2485d4a407210, type: 3}
+      propertyPath: _templateConfigs.Array.data[17]
+      value: 
+      objectReference: {fileID: 11400000, guid: 060f0d2636338d749899ec065c3f2558, type: 2}
+    - target: {fileID: 2191935029703393796, guid: 462ca4daaab902a478d2485d4a407210, type: 3}
+      propertyPath: _templateConfigs.Array.data[18]
+      value: 
+      objectReference: {fileID: 11400000, guid: 6a5994b1aa4fe884cb89b8f4caae752f, type: 2}
+    - target: {fileID: 2191935029703393796, guid: 462ca4daaab902a478d2485d4a407210, type: 3}
+      propertyPath: _templateConfigs.Array.data[19]
+      value: 
+      objectReference: {fileID: 11400000, guid: 74108dcd1e6e85c47889ca758b4195bc, type: 2}
     - target: {fileID: 8213450160835182599, guid: 462ca4daaab902a478d2485d4a407210, type: 3}
       propertyPath: m_LocalPosition.x
       value: -0.25242

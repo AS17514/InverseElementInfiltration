@@ -37,6 +37,6 @@ MonoBehaviour:
   - edit
   - deck
   eventPoolIds:
-  - ability_pool
-  - edit_pool
-  - deck_pool
+  - Pool_ability_pool
+  - Pool_edit_pool
+  - Pool_deck_pool

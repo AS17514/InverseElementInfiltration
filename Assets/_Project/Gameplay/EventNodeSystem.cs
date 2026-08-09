@@ -19,11 +19,13 @@ namespace TheLaw.Gameplay
             _resolver = resolver;
         }
 
-        /// <summary>打开事件节点（抽取事件 → 写 CurrentEventId）。</summary>
-        public void OpenEvent(string nodeId, List<EventPool> pools)
+        /// <summary>
+        /// 打开事件节点：从【本节点类型对应的事件池】随机抽 1 个事件（类型内变体随机——顺序固定由 TowerFlow 节点序列保证）。
+        /// </summary>
+        public void OpenEvent(string nodeId, EventPool pool)
         {
             var candidates = new List<EventPoolEntry>();
-            foreach (var pool in pools)
+            if (pool != null)
             {
                 foreach (var entry in pool.entries)
                 {
@@ -33,10 +35,15 @@ namespace TheLaw.Gameplay
                     }
                 }
             }
-            // 候选空 → 必出兜底（从第一池全部条目）
-            if (candidates.Count == 0 && pools.Count > 0)
+            // 候选空 → 必出兜底（该池全部条目；池空则断言——配置缺失当场暴露）
+            if (candidates.Count == 0)
             {
-                candidates = new List<EventPoolEntry>(pools[0].entries);
+                if (pool == null || pool.entries.Count == 0)
+                {
+                    Core.Assert.Fail($"OpenEvent: 事件池为空或缺失（node={nodeId}）——检查 FloorConfig.eventPoolIds");
+                    return;
+                }
+                candidates = new List<EventPoolEntry>(pool.entries);
             }
             var picked = RandomManager.Instance.NextWeighted(candidates, e => e.weight);
             _state.CurrentEventId = picked.eventId;
@@ -79,10 +86,18 @@ namespace TheLaw.Gameplay
                         _resolver.ModifyTargetDurability(effect.targetDefId, effect.amount); // 目标棋子（简化：按 defId 首棋子）
                         break;
                     case EffectType.EditProgram:
-                        // 棋子编辑事件：由 EditorSession 交互完成（此处骨架）
+                        // 棋子编辑事件：打开编辑器（UI 交互——由 UI 层触发 EditorSession；此处占位）
+                        EventCenter.Instance.EventTrigger(GameEvent.StateChanged, "edit");
                         break;
                     case EffectType.GrantAbility:
                         _resolver.GrantTempAbility(effect.targetDefId, effect.abilityId); // 给予临时特殊能力
+                        break;
+                    case EffectType.GrantRelic:
+                        _resolver.AddRelic(effect.relicName); // 获得遗物（整局持续）
+                        break;
+                    case EffectType.DeckBuild:
+                        // 牌组构筑：打开构筑界面（UI 交互——由 UI 层触发；此处占位）
+                        EventCenter.Instance.EventTrigger(GameEvent.StateChanged, "deck");
                         break;
                 }
             }

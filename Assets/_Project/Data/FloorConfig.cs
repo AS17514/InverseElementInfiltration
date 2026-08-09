@@ -14,7 +14,8 @@ namespace TheLaw.Data
         public int targetScore;                               // 目标分数（2/3/4 关用；数值待策划回填）
         public List<WaveDef> waveDefs = new List<WaveDef>();  // 波次定义（按回合触发）
         public int enemyMaxAP = 3;                            // 敌方每回合行动次数上限（随关卡变化）
-        public List<string> eventPoolIds = new List<string>();// 本层事件池（跨层复用：池为一等对象）
+        public List<string> eventSequence = new List<string>(); // 事件节点类型序列（固定顺序：如 [ability, edit, deck]——与 eventPoolIds 顺序对应）
+        public List<string> eventPoolIds = new List<string>();// 本层事件池（跨层复用：池为一等对象；与 eventSequence 顺序对应）
     }
 
     /// <summary>波次定义（敌方按回合间隔部署）。</summary>

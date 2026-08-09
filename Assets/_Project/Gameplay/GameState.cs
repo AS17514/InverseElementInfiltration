@@ -111,6 +111,12 @@ namespace TheLaw.Gameplay
             NodeStates.Clear();
             ReplayLog.Clear();
             _nextPieceId = 1;
+
+            // 初始手牌 = 基础牌组：全部已注册棋子（当前 12 个 = 4 初始 + 4 部署 + 4 升变——构筑事件后续限定）
+            foreach (var def in ConfigTable.All<PieceDef>())
+            {
+                Hand.Add(def.Id);
+            }
         }
 
         // ========== ISnapshot（经 DTO——Vector2Int/PieceDef 引用不可直接序列化）==========

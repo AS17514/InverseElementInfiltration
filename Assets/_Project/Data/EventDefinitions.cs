@@ -42,8 +42,10 @@ namespace TheLaw.Data
     {
         AddPiece,        // 增加新棋子（从预定义 Def 池选择——运行时不合成）
         ModifyDurability,// 改承伤（±amount）
-        EditProgram,     // 改棋子程序（编辑事件用）
+        EditProgram,     // 改棋子程序（编辑事件——打开编辑器，UI 交互）
         GrantAbility,    // 给予临时特殊能力
+        GrantRelic,      // 获得遗物（relicName 指向 RelicDef 资产名）
+        DeckBuild,       // 打开牌组构筑（UI 交互）
     }
 
     /// <summary>效果定义（targetScope + targetRule？空 = 玩家手动选目标）。</summary>
@@ -56,5 +58,6 @@ namespace TheLaw.Data
         public int targetDefId;                // AddPiece 用：Def id
         public int amount;                     // 数值参数（承伤/价值等）
         public int abilityId;                  // GrantAbility 用：特殊能力 id
+        public string relicName;               // GrantRelic 用：遗物资产名（RelicDef.name）
     }
 }

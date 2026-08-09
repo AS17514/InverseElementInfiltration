@@ -50,6 +50,8 @@ namespace TheLaw.UI
             RegisterSnapshots();
             // ⑤ 事件接线（进层/开战存档、RunEnded）
             WireEvents();
+            // ⑤b 开局初始化（新局状态——含基础牌组手牌填充，ResetForNewRun 内完成）
+            _gameState.ResetForNewRun();
             // ⑥ 进主菜单（TODO: UI 层面板）
             EnterMainMenu();
         }

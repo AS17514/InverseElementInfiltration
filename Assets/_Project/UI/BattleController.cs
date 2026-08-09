@@ -123,7 +123,21 @@ namespace TheLaw.UI
                 RefreshAll();
                 UpdateHandPositionByPhase(); // 初始阶段即应用手牌区状态（准备阶段高度 250）
                 ClearPieceInfo(); // 初始：信息面板隐藏（无选中/无临时状态）
+                // 补齐开局已有棋子视觉（首波部署早于控制器创建——PieceDeployed 事件已丢）
+                SyncExistingPieces();
             });
+        }
+
+        /// <summary>同步棋盘已有棋子视觉（开局首波/后续会话补齐——事件早于监听时视觉不创建）。</summary>
+        void SyncExistingPieces()
+        {
+            foreach (var kv in _state.Pieces)
+            {
+                var piece = kv.Value;
+                if (GameObject.Find($"Piece_{piece.Id}") != null) continue;
+                PieceViewFactory.CreatePieceView(piece.Id, piece.side, piece.position,
+                    piece.side == Side.Player ? PieceViewFactory.TintFor(piece.DefId) : PieceViewFactory.TintFor(piece.DefId + 1));
+            }
         }
 
         void Update()
@@ -733,6 +747,7 @@ namespace TheLaw.UI
         void RefreshPhaseButton()
         {
             if (_panel == null || _panel.PhaseButton == null) return;
+            Debug.Log($"[Battle] RefreshPhaseButton phase={_state.Phase} eventNameSet=true");
             var btn = _panel.PhaseButton;
             var txt = _panel.PhaseButtonText;
             switch (_state.Phase)
@@ -1185,13 +1200,14 @@ namespace TheLaw.UI
 
         public bool CanDragCard()
         {
-            return _state.Phase == BattlePhase.Placement;
+            // 准备阶段免费部署；玩家回合部署扣 AP（规则层已支持）——执行中禁止拖拽（防选格冲突）
+            return !_executing && (_state.Phase == BattlePhase.Placement || _state.Phase == BattlePhase.PlayerTurn);
         }
 
         // ========== 拖拽部署 ==========
         public void OnCardDragStart(int defId, GameObject card)
         {
-            if (_state.Phase != BattlePhase.Placement) return; // 仅准备阶段可部署
+            if (!CanDragCard()) return;
             if (_previewPiece != null) Destroy(_previewPiece); // 防旧预览泄漏
             _draggingCard = true;
             _dragDefId = defId;

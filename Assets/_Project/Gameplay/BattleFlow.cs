@@ -66,6 +66,8 @@ namespace TheLaw.Gameplay
             _state.WaveEndCountdown = -1;
             _floorRules.OnBattleStart(_state, _resolver);
             ChangePhase(BattlePhase.Placement);
+            // 开局部署首波（startTurn=1 的波——玩家摆位需要看到敌方位置参照）
+            HandleWaveAndPromotions();
             // Placement：玩家布置 Hand 中 Initial 棋子（起始标记自由摆）→ UI 摆完发 PlacementFinished
         }
 
@@ -444,7 +446,8 @@ namespace TheLaw.Gameplay
             while (_deployedWaveIndex < _floor.waveDefs.Count)
             {
                 var wave = _floor.waveDefs[_deployedWaveIndex];
-                if (wave.startTurn > _state.TurnCount)
+                // 波 N 在第 N 回合开始时在场（TurnCount=0 开局部署首波——玩家摆位参照敌方位置）
+                if (wave.startTurn - 1 > _state.TurnCount)
                 {
                     break;
                 }

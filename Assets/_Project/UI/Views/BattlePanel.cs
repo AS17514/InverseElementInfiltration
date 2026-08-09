@@ -43,8 +43,9 @@ namespace TheLaw.UI
 
             if (PhaseButton == null || APValueText == null || HandRoot == null)
             {
-                Debug.LogWarning($"[BattlePanel] 节点引用缺失：Btn={PhaseButton != null} AP={APValueText != null} Hand={HandRoot != null}");
+                Debug.LogWarning($"[BattlePanel] 节点引用缺失：Btn={PhaseButton != null} AP={APValueText != null} Hand={HandRoot != null} EventName={(EventNameText != null)}");
             }
+            Debug.Log($"[BattlePanel] 节点解析：Btn={PhaseButton != null} AP={APValueText != null} Hand={HandRoot != null} EventName={(EventNameText != null)}");
         }
 
         public void SetAP(int current, int max)

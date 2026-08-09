@@ -19,6 +19,7 @@ namespace TheLaw.UI
         private EventNodeSystem _eventNode;
         private EventDefinition _currentEvent;
         private string _currentEventId;
+        private GameObject _optionTemplate; // Btn_EventOption prefab（Addressables 缓存）
 
         private TMP_Text _title;
         private TMP_Text _desc;
@@ -43,6 +44,18 @@ namespace TheLaw.UI
                 _exitBtn.onClick.AddListener(() => Exit());
             }
             EventCenter.Instance.AddEventListener(GameEvent.EventOpened, OnEventOpened);
+            // 预加载选项按钮模板（Btn_EventOption）
+            StartCoroutine(LoadOptionTemplate());
+        }
+
+        System.Collections.IEnumerator LoadOptionTemplate()
+        {
+            var handle = UnityEngine.AddressableAssets.Addressables.LoadAssetAsync<GameObject>("Btn_EventOption");
+            yield return handle;
+            if (handle.Status == UnityEngine.ResourceManagement.AsyncOperations.AsyncOperationStatus.Succeeded)
+            {
+                _optionTemplate = handle.Result;
+            }
         }
 
         void OnDestroy()
@@ -91,27 +104,31 @@ namespace TheLaw.UI
             for (int i = 0; i < _currentEvent.options.Count; i++)
             {
                 var option = _currentEvent.options[i];
-                var go = new GameObject($"Option_{i}", typeof(RectTransform), typeof(Image), typeof(Button));
-                go.transform.SetParent(_optionsRoot, false);
-                var rt = (RectTransform)go.transform;
-                rt.sizeDelta = new Vector2(600, 60);
-                go.GetComponent<Image>().color = new Color(0.25f, 0.4f, 0.65f, 1f);
+                GameObject go;
+                if (_optionTemplate != null)
+                {
+                    go = Instantiate(_optionTemplate, _optionsRoot);
+                }
+                else
+                {
+                    // 模板未加载回退：纯代码创建
+                    go = new GameObject($"Option_{i}", typeof(RectTransform), typeof(Image), typeof(Button));
+                    var rt = (RectTransform)go.transform;
+                    rt.sizeDelta = new Vector2(600, 60);
+                    go.GetComponent<Image>().color = new Color(0.25f, 0.4f, 0.65f, 1f);
+                    var labelGo = new GameObject("Text (TMP)", typeof(RectTransform), typeof(TextMeshProUGUI));
+                    labelGo.transform.SetParent(go.transform, false);
+                    ((RectTransform)labelGo.transform).sizeDelta = new Vector2(560, 50);
+                }
                 var btn = go.GetComponent<Button>();
-                btn.targetGraphic = go.GetComponent<Image>();
-
-                var labelGo = new GameObject("Label", typeof(RectTransform), typeof(TextMeshProUGUI));
-                labelGo.transform.SetParent(go.transform, false);
-                var label = labelGo.GetComponent<TextMeshProUGUI>();
-                label.text = option.label;
-                label.fontSize = 26;
-                label.alignment = TextAlignmentOptions.Left;
-                ((RectTransform)labelGo.transform).sizeDelta = new Vector2(560, 50);
-                ((RectTransform)labelGo.transform).anchoredPosition = Vector2.zero;
-
+                if (btn == null) btn = go.AddComponent<Button>();
+                var label = go.GetComponentInChildren<TMP_Text>();
+                if (label != null) label.text = option.label;
                 if (!option.available)
                 {
                     btn.interactable = false; // 灰显
-                    go.GetComponent<Image>().color = new Color(0.4f, 0.4f, 0.4f, 1f);
+                    var img = go.GetComponent<Image>();
+                    if (img != null) img.color = new Color(0.4f, 0.4f, 0.4f, 1f);
                 }
                 else
                 {

@@ -24,9 +24,6 @@ namespace TheLaw.UI
         [Header("拖拽吸附")]
         [Tooltip("吸附判定：槽位矩形外扩量（区域吸附——指针进入外扩矩形即命中，多矩形重叠取中心最近）")]
         [SerializeField] private float _snapExpand = 10f;
-        [Header("程序插入规则（策划可调）")]
-        [Tooltip("锁定块是否允许被顺移（当前绝对固定——false 锁定槽直接拒绝；true 时 Insert/Move 目标为锁定槽仍拒绝，仅解锁顺移区间）")]
-        [SerializeField] private bool _allowShiftLocked = false;
 
         // ====== 节点引用 ======
         private Transform _pieceContent;   // 左列棋子列表 Content

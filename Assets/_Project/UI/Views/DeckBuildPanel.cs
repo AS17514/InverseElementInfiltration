@@ -6,6 +6,7 @@ using TheLaw.Gameplay;
 using TMPro;
 using UnityEngine;
 using UnityEngine.AddressableAssets;
+using UnityEngine.EventSystems;
 using UnityEngine.UI;
 
 namespace TheLaw.UI
@@ -90,6 +91,7 @@ namespace TheLaw.UI
             RebuildPool();
             RebuildDeck();
             RefreshLimits();
+            ClearPieceInfo(); // 初始化无选中棋子——Grp_PieceInfo 隐藏（悬停卡片才显示）
         }
 
         // ====== 节点解析 ======
@@ -178,6 +180,10 @@ namespace TheLaw.UI
                 var go = Instantiate(_cardTemplate, _poolContent);
                 go.name = $"PoolCard_{def.Id}_{def.displayName}";
                 FillCardData(go, def);
+                // 悬停显示信息（CardHover——PointerEnter/PointerExit）
+                var hover = go.GetComponent<CardHover>();
+                if (hover == null) hover = go.AddComponent<CardHover>();
+                hover.Init(this, def);
                 var toggle = go.GetComponent<Toggle>();
                 if (toggle != null)
                 {
@@ -196,7 +202,7 @@ namespace TheLaw.UI
             RebuildPool();
         }
 
-        /// <summary>牌池卡点击：on=true 入队（超限拒绝回弹）；on=false 出队。</summary>
+        /// <summary>牌池卡点击：on=true 入队（超限拒绝回弹）；on=false 出队。信息显示由悬停（CardHover）负责——点击不显示。</summary>
         void OnPoolToggle(int defId, bool on)
         {
             if (on)
@@ -210,15 +216,7 @@ namespace TheLaw.UI
             }
             RebuildDeck();
             RefreshLimits();
-            if (on)
-            {
-                var def = ConfigTable.Find<PieceDef>(defId);
-                if (def != null) ShowPieceInfo(def);
-            }
-            else
-            {
-                ClearPieceInfo();
-            }
+            // 点击不再 ShowPieceInfo/ClearPieceInfo——信息区由 CardHover 悬停驱动（2026-08-11 需求）
         }
 
         /// <summary>限制校验（数量/总价值——与 Resolver.BuildDeck 同规则，UI 提前拦截）。</summary>
@@ -265,18 +263,31 @@ namespace TheLaw.UI
                 var go = Instantiate(_cardTemplate, _deckContent);
                 go.name = $"DeckCard_{def.Id}_{def.displayName}";
                 FillCardData(go, def);
-                // 出战卡点击 = 出队（Button 组件，targetGraphic=自身 Image）
-                var img = go.GetComponent<Image>();
-                var btn = go.AddComponent<Button>();
-                btn.targetGraphic = img;
-                var defId = def.Id;
-                btn.onClick.RemoveAllListeners();
-                btn.onClick.AddListener(() => OnDeckCardClick(defId, go));
+                // 悬停显示信息（CardHover——PointerEnter/PointerExit）
+                var hover = go.GetComponent<CardHover>();
+                if (hover == null) hover = go.AddComponent<CardHover>();
+                hover.Init(this, def);
+                // 出战卡点击 = 出队。⚠️ 根节点已有 Toggle（Selectable 子类）——AddComponent<Button> 返回 null（实测），
+                // 复用 Toggle 的 onValueChanged：isOn 置 true → 出队 + 回弹 false（玩家点击切换）
+                var toggle = go.GetComponent<Toggle>();
+                if (toggle != null)
+                {
+                    var defId = def.Id;
+                    toggle.onValueChanged.RemoveAllListeners();
+                    toggle.onValueChanged.AddListener(on =>
+                    {
+                        if (on)
+                        {
+                            OnDeckCardClick(defId, go);
+                            toggle.isOn = false; // 回弹（点击 = 瞬时出队，不留选中态）
+                        }
+                    });
+                }
                 _deckCards.Add(go);
             }
         }
 
-        /// <summary>出战卡点击：出队 + 牌池对应 Toggle 回弹（isOn=false）。</summary>
+        /// <summary>出战卡点击：出队 + 牌池对应 Toggle 回弹（isOn=false）。信息显示由悬停（CardHover）负责。</summary>
         void OnDeckCardClick(int defId, GameObject card)
         {
             _deck.Remove(defId);
@@ -291,7 +302,7 @@ namespace TheLaw.UI
             }
             RebuildDeck();
             RefreshLimits();
-            ClearPieceInfo();
+            // 点击出队不碰信息区（悬停驱动）
         }
 
         // ====== 限制显示 ======
@@ -395,7 +406,8 @@ namespace TheLaw.UI
 
         // ====== 信息区（同 PieceEditPanel 逻辑——选中棋子详情）======
 
-        void ShowPieceInfo(PieceDef def)
+        /// <summary>悬停显示棋子信息（CardHover 调用——跨类所以 internal）。</summary>
+        internal void ShowPieceInfo(PieceDef def)
         {
             if (_infoName != null) _infoName.text = VerticalName(def.displayName);
             if (_infoValueText != null) _infoValueText.text = def.value.ToString();
@@ -429,7 +441,8 @@ namespace TheLaw.UI
             }
         }
 
-        void ClearPieceInfo()
+        /// <summary>隐藏信息区（CardHover 调用——跨类所以 internal）。</summary>
+        internal void ClearPieceInfo()
         {
             if (_pieceInfo != null) _pieceInfo.gameObject.SetActive(false);
             for (int i = 0; i < 4; i++)
@@ -481,6 +494,32 @@ namespace TheLaw.UI
                 Debug.LogWarning("[DeckBuild] Piece_Card 加载失败——牌池/出战列表为空");
             }
             // 重建统一由 OnShow（模板未就绪时 RebuildPoolWhenReady 等待）驱动——此处不重复触发
+        }
+    }
+
+    /// <summary>
+    /// 卡片悬停显示信息（牌池/出战卡通用）：PointerEnter → ShowPieceInfo；PointerExit → ClearPieceInfo。
+    /// 2026-08-11 需求：信息显示时机 = 光标覆盖卡片，而非点击。
+    /// </summary>
+    public class CardHover : MonoBehaviour, IPointerEnterHandler, IPointerExitHandler
+    {
+        private DeckBuildPanel _panel;
+        private PieceDef _def;
+
+        public void Init(DeckBuildPanel panel, PieceDef def)
+        {
+            _panel = panel;
+            _def = def;
+        }
+
+        public void OnPointerEnter(PointerEventData eventData)
+        {
+            if (_panel != null && _def != null) _panel.ShowPieceInfo(_def);
+        }
+
+        public void OnPointerExit(PointerEventData eventData)
+        {
+            if (_panel != null) _panel.ClearPieceInfo();
         }
     }
 }

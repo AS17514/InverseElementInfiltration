@@ -75,7 +75,7 @@
       "options": [
         {
           "optionId": "start_deck",
-          "label": "构筑牌组（进入战斗）",
+          "label": "构筑牌组（构筑完成后进入战斗）",
           "effects": [
             { "effectType": "DeckBuild" }
           ]

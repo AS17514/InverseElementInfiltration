@@ -21,6 +21,8 @@ namespace TheLaw.UI
 
         [Header("编辑行为")]
         [SerializeField] private bool _enableSlotReorder; // 排序开关（一版默认关：替换只改目标槽）
+        [Header("拖拽吸附")]
+        [SerializeField] private float _snapRadius = 30f; // 吸附热区半径（逻辑像素——槽位 20×20 图标半宽 10 + 裕量 20）
 
         // ====== 节点引用 ======
         private Transform _pieceContent;   // 左列棋子列表 Content
@@ -213,6 +215,8 @@ namespace TheLaw.UI
                     var drop = p.GetComponent<PieceCardSlotDrop>();
                     if (drop == null) drop = p.gameObject.AddComponent<PieceCardSlotDrop>();
                     drop.Init(this, def.Id, i);
+                    // 吸附高亮（拖拽经过时视觉提醒——SlotSnapHighlight 同节点挂载）
+                    if (p.GetComponent<SlotSnapHighlight>() == null) p.gameObject.AddComponent<SlotSnapHighlight>();
                 }
             }
             // Toggle 单选：选中 → SelectPiece
@@ -223,6 +227,24 @@ namespace TheLaw.UI
                 var defId = def.Id;
                 toggle.onValueChanged.AddListener(on => { if (on) SelectPiece(defId); });
             }
+        }
+
+        /// <summary>吸附热区半径（逻辑像素——EditorProgramDrag 吸附判定用）。</summary>
+        public float SnapRadius => _snapRadius;
+
+        /// <summary>收集左列全部棋子卡面槽位（拖拽吸附候选——拖拽期间列表不重建，OnBeginDrag 调用一次）。</summary>
+        public List<PieceCardSlotDrop> CollectCardSlotDrops()
+        {
+            var list = new List<PieceCardSlotDrop>();
+            if (_pieceContent == null) return list;
+            foreach (Transform card in _pieceContent)
+            {
+                foreach (var drop in card.GetComponentsInChildren<PieceCardSlotDrop>(true))
+                {
+                    list.Add(drop);
+                }
+            }
+            return list;
         }
 
         /// <summary>棋子卡面槽位放置（拖程序块到卡上程序块图标 → 替换该槽——与信息区槽位同语义，直接改棋子行动逻辑）。</summary>
@@ -499,15 +521,28 @@ namespace TheLaw.UI
         }
     }
 
-    /// <summary>编辑面板拖拽源（程序块卡 → 槽位）。</summary>
+    /// <summary>
+    /// 编辑面板拖拽源（程序块卡 → 槽位/棋子卡面）。
+    /// 幽灵 = Img_ProgramType 图标副本（半透明跟手）；ScreenSpaceCamera 下坐标必须走 RectTransformUtility 换算。
+    /// 吸附：指针进入卡面槽位热区（SnapRadius）→ 槽位高亮（SlotSnapHighlight）→ 松手落账该槽（HandledBySnap 防 EventSystem 双触发）。
+    /// </summary>
     public class EditorProgramDrag : MonoBehaviour, IBeginDragHandler, IDragHandler, IEndDragHandler
     {
         private PieceEditPanel _panel;
         private Template _template;
         private CanvasGroup _cg;
-        private GameObject _ghost;        // 拖拽幽灵（视觉跟随副本）——原卡留原位，GridLayout 不重排
+        private GameObject _ghost;        // 拖拽幽灵（类型图标副本）——原卡留原位，GridLayout 不重排
+
+        private RectTransform _canvasRect; // UIRoot RectTransform（屏幕→世界换算用）
+        private Camera _cam;               // UI 相机（canvas.worldCamera 优先，Overlay 下为 null）
+        private List<PieceCardSlotDrop> _slotCandidates; // 吸附候选（OnBeginDrag 收集一次）
+        private PieceCardSlotDrop _snapTarget;           // 当前吸附槽位（高亮中）
+        private SlotSnapHighlight _snapHighlight;        // 当前吸附槽位的高亮组件
 
         public Template Template => _template;
+
+        /// <summary>本帧拖拽是否已由吸附落账（EventSystem OnDrop 需跳过——防双触发）。</summary>
+        public bool HandledBySnap { get; private set; }
 
         public void Init(PieceEditPanel panel, Template template)
         {
@@ -520,9 +555,12 @@ namespace TheLaw.UI
         public void OnBeginDrag(PointerEventData eventData)
         {
             _cg.alpha = 0.3f; // 原卡半透明留原位（库卡不消耗——拖拽语义=复制放置）
+            HandledBySnap = false;
             // 幽灵 = 仅类型图标（Img_ProgramType 副本）挂 Canvas 根跟随鼠标——半透明，不挡 raycast
             var canvas = GetComponentInParent<Canvas>();
             if (canvas == null) return;
+            _canvasRect = canvas.transform as RectTransform;
+            _cam = canvas.worldCamera ?? eventData.pressEventCamera;
             var typeNode = PieceEditPanel.FindDeep(transform, "Img_ProgramType");
             if (typeNode == null) return;
             _ghost = Instantiate(typeNode.gameObject, canvas.transform);
@@ -534,11 +572,22 @@ namespace TheLaw.UI
             if (ghostCg == null) ghostCg = _ghost.AddComponent<CanvasGroup>();
             ghostCg.alpha = 0.6f;             // 半透明跟随
             ghostCg.blocksRaycasts = false;   // 幽灵不挡槽位 raycast
+            // 吸附候选：左列棋子卡面全部槽位（拖拽期间列表不重建）
+            if (_panel != null) _slotCandidates = _panel.CollectCardSlotDrops();
         }
 
         public void OnDrag(PointerEventData eventData)
         {
-            if (_ghost != null) _ghost.transform.position = eventData.position;
+            // ScreenSpaceCamera 下世界坐标 ≠ 屏幕坐标（根 Canvas scale 0.01）——必须 RectTransformUtility 换算
+            if (_ghost != null && _canvasRect != null)
+            {
+                if (RectTransformUtility.ScreenPointToWorldPointInRectangle(
+                        _canvasRect, eventData.position, _cam, out var world))
+                {
+                    _ghost.transform.position = world;
+                }
+            }
+            UpdateSnap(eventData);
         }
 
         public void OnEndDrag(PointerEventData eventData)
@@ -546,7 +595,73 @@ namespace TheLaw.UI
             _cg.alpha = 1f;
             if (_ghost != null) Destroy(_ghost);
             _ghost = null;
-            // 原卡从未离开 Content——放置成功与否由槽位 OnDrop 处理（pointerDrag=原卡，EditorProgramDrag 可查）
+            // 吸附落点：由拖拽源直接落账（热区 > 图标 rect——指针可能不在 rect 内，EventSystem OnDrop 不触发）
+            if (_snapTarget != null)
+            {
+                _panel.ReplacePieceCardSlot(_snapTarget.DefId, _snapTarget.SlotIndex, _template);
+                HandledBySnap = true; // EventSystem 若仍触发 OnDrop → 槽位侧跳过（防双落账）
+            }
+            ClearSnap();
+            _slotCandidates = null;
+        }
+
+        // ====== 吸附状态机 ======
+
+        /// <summary>每帧吸附判定：指针距各卡面槽中心 ≤ SnapRadius → 取最近者高亮（相邻槽间距 25px——必须取最近防重叠）。</summary>
+        void UpdateSnap(PointerEventData eventData)
+        {
+            if (_panel == null || _slotCandidates == null) return;
+            float radius = _panel.SnapRadius;
+            PieceCardSlotDrop best = null;
+            float bestDist = float.MaxValue;
+            foreach (var drop in _slotCandidates)
+            {
+                if (drop == null) continue;
+                var rt = drop.transform as RectTransform;
+                if (rt == null) continue;
+                if (!RectTransformUtility.ScreenPointToLocalPointInRectangle(rt, eventData.position, _cam, out var local))
+                {
+                    continue;
+                }
+                float dist = local.magnitude; // 相对 pivot（槽中心）距离
+                if (dist <= radius && dist < bestDist)
+                {
+                    best = drop;
+                    bestDist = dist;
+                }
+            }
+            if (best != _snapTarget)
+            {
+                ClearSnap(); // 切换目标：先清旧高亮
+                _snapTarget = best;
+                if (_snapTarget != null)
+                {
+                    _snapHighlight = _snapTarget.GetComponent<SlotSnapHighlight>();
+                    if (_snapHighlight == null) _snapHighlight = _snapTarget.gameObject.AddComponent<SlotSnapHighlight>();
+                    _snapHighlight.Activate();
+                }
+            }
+        }
+
+        /// <summary>清除吸附高亮（OnEndDrag/OnDisable/OnDestroy 兜底）。</summary>
+        void ClearSnap()
+        {
+            if (_snapHighlight != null)
+            {
+                _snapHighlight.Deactivate();
+                _snapHighlight = null;
+            }
+            _snapTarget = null;
+        }
+
+        void OnDisable()
+        {
+            ClearSnap();
+        }
+
+        void OnDestroy()
+        {
+            ClearSnap();
         }
     }
 
@@ -565,7 +680,7 @@ namespace TheLaw.UI
         public void OnDrop(PointerEventData eventData)
         {
             var drag = eventData.pointerDrag != null ? eventData.pointerDrag.GetComponent<EditorProgramDrag>() : null;
-            if (drag == null) return;
+            if (drag == null || drag.HandledBySnap) return; // 吸附已落账 → 跳过（防双触发）
             _panel.ReplaceSlot(_slotIndex, drag.Template);
         }
     }
@@ -580,6 +695,9 @@ namespace TheLaw.UI
         private int _defId;
         private int _slotIndex;
 
+        public int DefId => _defId;       // 吸附落账用（EditorProgramDrag 直接调 ReplacePieceCardSlot）
+        public int SlotIndex => _slotIndex;
+
         public void Init(PieceEditPanel panel, int defId, int slotIndex)
         {
             _panel = panel;
@@ -590,7 +708,7 @@ namespace TheLaw.UI
         public void OnDrop(PointerEventData eventData)
         {
             var drag = eventData.pointerDrag != null ? eventData.pointerDrag.GetComponent<EditorProgramDrag>() : null;
-            if (drag == null) return;
+            if (drag == null || drag.HandledBySnap) return; // 吸附已落账 → 跳过（防双触发）
             _panel.ReplacePieceCardSlot(_defId, _slotIndex, drag.Template);
         }
     }

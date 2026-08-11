@@ -14,7 +14,6 @@ namespace TheLaw.UI
         private RectTransform _rt;
         private Color _origColor;
         private Vector3 _origScale;
-        private bool _origRecorded;
         private Tween _tween;
 
         void Awake()
@@ -23,16 +22,12 @@ namespace TheLaw.UI
             _rt = (RectTransform)transform;
         }
 
-        /// <summary>吸附生效：放大 + 金色（首次激活记录原始值——防重复 Activate 覆盖）。</summary>
+        /// <summary>吸附生效：放大 + 金色。每次激活重录原值（拖拽始于上次落账/选中后——记录即最新状态色）。</summary>
         public void Activate()
         {
             if (_img == null) return;
-            if (!_origRecorded)
-            {
-                _origColor = _img.color;
-                _origScale = _rt.localScale;
-                _origRecorded = true;
-            }
+            _origColor = _img.color;
+            _origScale = _rt.localScale;
             Kill();
             _tween = DOTween.Sequence()
                 .Append(_rt.DOScale(_origScale * 1.3f, 0.08f).SetEase(Ease.OutBack))
@@ -40,13 +35,21 @@ namespace TheLaw.UI
                 .Join(DOTween.To(() => _img.color, c => _img.color = c, new Color(1f, 0.84f, 0.2f, 1f), 0.08f)); // 金色 #FFD75C
         }
 
-        /// <summary>吸附解除：Kill tween + 恢复缩放。颜色不恢复——由 FillPieceInfo 状态色统一控制（防覆盖落账后的新状态色）。</summary>
-        public void Deactivate()
+        /// <summary>
+        /// 吸附解除：Kill tween + 恢复颜色/缩放。
+        /// restoreColor=false：落账成功路径（颜色已由 CommitProgram→FillPieceInfo 设新状态色，不覆盖）；
+        /// restoreColor=true：取消/失败/无效释放路径（无落账无刷新——恢复原色防金色残留）。
+        /// </summary>
+        public void Deactivate(bool restoreColor = true)
         {
             Kill();
-            if (_rt != null && _origRecorded)
+            if (_rt != null)
             {
                 _rt.localScale = _origScale;
+            }
+            if (_img != null && restoreColor)
+            {
+                _img.color = _origColor;
             }
         }
 

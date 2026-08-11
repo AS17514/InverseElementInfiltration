@@ -5,6 +5,7 @@ using TheLaw.Gameplay;
 using TMPro;
 using UnityEngine;
 using UnityEngine.EventSystems;
+using UnityEngine.InputSystem;
 using UnityEngine.UI;
 
 namespace TheLaw.UI
@@ -65,6 +66,8 @@ namespace TheLaw.UI
             BuildProgramLibrary();
             RefreshPieceList();
             RefreshProgramList();
+            // 程序编辑落账 → 刷新程序库数量（Txt_ProgramCount——随拖入拖出实时变化）
+            EventCenter.Instance.AddEventListener(GameEvent.ProgramEdited, OnProgramEdited);
             // Btn_Next：编辑完成 → 下一步（新局=进战斗 / 事件关=EventCompleted 推进）
             // 路径跟随 2026-08-11 面板重构：Grp/Grp_R/Grp_Low/Btn_Next（旧 Grp_L/Grp_Top 已不存在）
             var next = transform.Find("Grp/Grp_R/Grp_Low/Btn_Next")?.GetComponent<Button>();
@@ -73,6 +76,11 @@ namespace TheLaw.UI
                 next.onClick.RemoveAllListeners();
                 next.onClick.AddListener(OnNext);
             }
+        }
+
+        void OnDestroy()
+        {
+            EventCenter.Instance.RemoveEventListener(GameEvent.ProgramEdited, OnProgramEdited);
         }
 
         void OnNext()
@@ -403,24 +411,66 @@ namespace TheLaw.UI
             }
         }
 
-        /// <summary>统计模板 id 在全部棋子程序中的出现次数（id=0 未编号不计——同 id=同结构）。</summary>
-        static int CountInPieces(Template slot)
+        /// <summary>
+        /// 统计模板（类型+id）在全部棋子**当前程序**（默认 + CurrentPrograms 编辑差异）中的出现次数。
+        /// 匹配键 = FeatureOf（类型+编号）——id 跨类型共享（Move-4/DirectFire-4 同 id=4），裸 id 统计会串。
+        /// </summary>
+        int CountInPieces(Template slot)
         {
-            if (slot.id <= 0) return 0;
+            string key = SlotDescTable.FeatureOf(slot);
             int n = 0;
             foreach (var def in ConfigTable.All<PieceDef>())
             {
-                if (def.programSet == null) continue;
-                foreach (var prog in def.programSet)
+                List<Template> prog;
+                if (_state != null && _state.TryGetCurrentProgram(def.Id, out var edited))
                 {
-                    if (prog.slots == null) continue;
-                    foreach (var s in prog.slots)
-                    {
-                        if (s != null && s.id == slot.id) n++;
-                    }
+                    prog = edited; // 编辑差异优先
+                }
+                else if (def.programSet != null && def.programSet.Count > 0)
+                {
+                    prog = def.programSet[0].slots; // 默认程序
+                }
+                else
+                {
+                    continue;
+                }
+                if (prog == null) continue;
+                foreach (var s in prog)
+                {
+                    if (s != null && SlotDescTable.FeatureOf(s) == key) n++;
                 }
             }
             return n;
+        }
+
+        /// <summary>程序编辑落账（ProgramEdited 事件）→ 程序库卡数量文本刷新（不重建卡片——拖拽中安全）。</summary>
+        void OnProgramEdited(object data)
+        {
+            if (_programContent == null) return;
+            foreach (Transform child in _programContent)
+            {
+                var card = child.gameObject;
+                if (card == null) continue;
+                var count = FindDeep(card.transform, "Txt_ProgramCount")?.GetComponent<TMP_Text>();
+                if (count == null) continue;
+                // 卡名 Prog_{FeatureOf} 反查模板（BuildProgramList 命名约定）——无法反查则跳过
+                string name = card.name;
+                if (!name.StartsWith("Prog_")) continue;
+                var slot = FindSlotByFeature(name.Substring(5));
+                if (slot == null) continue;
+                int n = CountInPieces(slot);
+                count.text = n >= 2 ? $"×{n}" : "";
+            }
+        }
+
+        /// <summary>按卡名（Prog_Move-1 等）反查程序库模板。</summary>
+        Template FindSlotByFeature(string feature)
+        {
+            foreach (var slot in _programLibrary)
+            {
+                if (SlotDescTable.FeatureOf(slot) == feature) return slot;
+            }
+            return null;
         }
 
         /// <summary>程序库 GridLayout 列宽适配：cellSize.x×列数+spacing 超出 Content 宽 → 缩 cellSize 到能放 2 列（保持网格布局语义）。</summary>
@@ -698,6 +748,8 @@ namespace TheLaw.UI
         private List<InfoSlotTarget> _slotTargets;   // 吸附候选（信息区 4 槽双节点，OnBeginDrag 收集一次）
         private InfoSlotTarget _snapTarget;          // 当前吸附槽位（高亮中）
         private SlotSnapHighlight _snapHighlight;    // 当前吸附槽位的高亮组件
+        private bool _cancelled;           // Esc 取消拖拽标记（OnEndDrag 跳过落账）
+        private Rect _ownSlotRect;         // 自身源槽屏幕矩形（InfoSlot——松手在自身 Desc 区域守卫用）
 
         public Template Template => _template;
         public DragSource Source => _source;
@@ -757,7 +809,19 @@ namespace TheLaw.UI
             ghostCg.alpha = 0.6f;             // 半透明跟随
             ghostCg.blocksRaycasts = false;   // 幽灵不挡槽位 raycast
             // 吸附候选：信息区 4 槽位（Img∪Desc 屏幕包围盒——空隙自动补齐；拖拽期间布局不重建）
-            if (_panel != null) _slotTargets = _panel.CollectInfoSlotTargets(_cam);
+            if (_panel != null)
+            {
+                _slotTargets = _panel.CollectInfoSlotTargets(_cam);
+                // 自身源槽矩形（InfoSlot——UpdateSnap 排除自身列 + OnEndDrag 松手在自身 Desc 区域守卫）
+                if (_source == DragSource.InfoSlot)
+                {
+                    foreach (var t in _slotTargets)
+                    {
+                        if (t.SlotIndex == _sourceSlot) { _ownSlotRect = t.ScreenRect; break; }
+                    }
+                }
+            }
+            _cancelled = false;
         }
 
         public void OnDrag(PointerEventData eventData)
@@ -779,6 +843,7 @@ namespace TheLaw.UI
             _cg.alpha = 1f;
             if (_ghost != null) Destroy(_ghost);
             _ghost = null;
+            if (_cancelled) { _cancelled = false; ClearSnap(true); _slotTargets = null; return; } // Esc 已取消：只清理不落账
             // 落账语义（插入排序）——职责只在 OnEndDrag（Unity ReleaseMouse 顺序：OnDrop 先于 OnEndDrag，
             // 若在 OnDrop 落账会与吸附落账双触发；故 OnDrop 不落账，此处统一处理）：
             //  Library+吸附 = 插入；InfoSlot+吸附 = 重排；InfoSlot+空白 = 移除；Library+空白 = 无操作
@@ -794,25 +859,32 @@ namespace TheLaw.UI
                 if (drop != null) dropSlot = drop.SlotIndex;
             }
 
-            if (dropSlot >= 0)
+            bool committed = false; // 落账成功？（决定 ClearSnap 是否恢复颜色——成功时 FillPieceInfo 已设新状态色）
+            bool droppedOnOwn = _source == DragSource.InfoSlot
+                && (dropSlot == _sourceSlot
+                    || (dropSlot < 0 && _ownSlotRect.Contains(eventData.position))); // 松手在自身 Desc 区域（无 EditorSlotDrop）
+            if (droppedOnOwn)
             {
-                // 落账（成功/失败都标记 HandledBySnap——本帧拖拽已处理，OnDrop 不再落账无双触发路径）
+                HandledBySnap = true; // 拖回自身列 = 无操作（不高亮不落账）
+            }
+            else if (dropSlot >= 0)
+            {
                 if (_source == DragSource.Library)
                 {
-                    _panel.InsertProgram(dropSlot, _template);
+                    committed = _panel.InsertProgram(dropSlot, _template);
                 }
                 else
                 {
-                    _panel.MoveProgram(_sourceSlot, dropSlot);
+                    committed = _panel.MoveProgram(_sourceSlot, dropSlot);
                 }
                 HandledBySnap = true;
             }
             else if (_source == DragSource.InfoSlot)
             {
-                _panel.RemoveProgramAt(_sourceSlot); // 拖出空白 = 移除该块
+                committed = _panel.RemoveProgramAt(_sourceSlot); // 拖出空白 = 移除该块
                 HandledBySnap = true;
             }
-            ClearSnap();
+            ClearSnap(!committed); // 落账成功：不恢复颜色（FillPieceInfo 已刷新）；失败/取消：恢复原色
             _slotTargets = null;
         }
 
@@ -821,7 +893,7 @@ namespace TheLaw.UI
         /// <summary>
         /// 每帧吸附判定（区域吸附）：指针屏幕点 ∈ 槽位包围盒（Img∪Desc 并集，外扩 SnapExpand）即命中；
         /// 多矩形重叠 → 取中心距离最近。空槽位点（常显）同样可命中——拖入=插入该位置。
-        /// 锁定槽（且不允许顺移）直接排除——拖入必失败，不高亮误导。
+        /// 锁定槽（且不允许顺移）与自身源槽直接排除。
         /// </summary>
         void UpdateSnap(PointerEventData eventData)
         {
@@ -834,6 +906,7 @@ namespace TheLaw.UI
             foreach (var target in _slotTargets)
             {
                 if (target == null) continue;
+                if (target.SlotIndex == _sourceSlot) continue; // 自身源槽：不吸附不高亮（Library 模式 _sourceSlot=-1 永不匹配）
                 if (!allowShiftLocked && _panel.IsSlotLocked(target.SlotIndex)) continue; // 锁定槽不可拖入
                 var r = target.ScreenRect;
                 // 外扩矩形包含判定（区域吸附——包围盒自动覆盖 Img↔Desc 空隙）
@@ -851,7 +924,7 @@ namespace TheLaw.UI
             }
             if (best != _snapTarget)
             {
-                ClearSnap(); // 切换目标：先清旧高亮
+                ClearSnap(true); // 切换目标：先清旧高亮（恢复原色——无落账）
                 _snapTarget = best;
                 if (_snapTarget != null)
                 {
@@ -861,25 +934,45 @@ namespace TheLaw.UI
             }
         }
 
-        /// <summary>清除吸附高亮（OnEndDrag/OnDisable/OnDestroy 兜底）。</summary>
-        void ClearSnap()
+        /// <summary>清除吸附高亮（OnEndDrag/OnDisable/OnDestroy 兜底）。restoreColor：是否恢复原色（落账成功=false）。</summary>
+        void ClearSnap(bool restoreColor)
         {
             if (_snapHighlight != null)
             {
-                _snapHighlight.Deactivate();
+                _snapHighlight.Deactivate(restoreColor);
                 _snapHighlight = null;
             }
             _snapTarget = null;
         }
 
+        /// <summary>取消拖拽（Esc 兜底——InputSystem 的 cancel 不会路由到拖拽源；恢复 alpha/幽灵/高亮，不落账）。</summary>
+        void CancelDrag()
+        {
+            _cancelled = true;
+            _cg.alpha = 1f;
+            if (_ghost != null) Destroy(_ghost);
+            _ghost = null;
+            ClearSnap(true);
+            _slotTargets = null;
+        }
+
+        void Update()
+        {
+            // Esc 取消拖拽（InputSystem 下 cancel 事件不会发给拖拽源——轮询兜底）
+            if (_ghost != null && Keyboard.current != null && Keyboard.current.escapeKey.wasPressedThisFrame)
+            {
+                CancelDrag();
+            }
+        }
+
         void OnDisable()
         {
-            ClearSnap();
+            CancelDrag();
         }
 
         void OnDestroy()
         {
-            ClearSnap();
+            CancelDrag();
         }
     }
 

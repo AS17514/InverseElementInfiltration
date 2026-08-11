@@ -9,7 +9,8 @@
         "Unity.TextMeshPro",
         "Unity.Addressables",
         "Unity.ResourceManager",
-        "Assembly-CSharp-firstpass"
+        "Assembly-CSharp-firstpass",
+        "Unity.InputSystem"
     ],
     "includePlatforms": [],
     "excludePlatforms": [],

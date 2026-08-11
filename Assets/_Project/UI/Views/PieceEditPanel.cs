@@ -58,7 +58,8 @@ namespace TheLaw.UI
             RefreshPieceList();
             RefreshProgramList();
             // Btn_Next：编辑完成 → 下一步（新局=进战斗 / 事件关=EventCompleted 推进）
-            var next = transform.Find("Grp/Grp_L/Grp_Top/Btn_Next")?.GetComponent<Button>();
+            // 路径跟随 2026-08-11 面板重构：Grp/Grp_R/Grp_Low/Btn_Next（旧 Grp_L/Grp_Top 已不存在）
+            var next = transform.Find("Grp/Grp_R/Grp_Low/Btn_Next")?.GetComponent<Button>();
             if (next != null)
             {
                 next.onClick.RemoveAllListeners();
@@ -83,8 +84,9 @@ namespace TheLaw.UI
 
         void ResolveNodes()
         {
-            _pieceContent = transform.Find("Grp/Grp_L/Grp_Pieces/Grp_PieceDisplay/Viewport/Content");
-            _programContent = transform.Find("Grp/Grp_L/Grp_Programs/Grp_ProgramDisplay/Viewport/Content");
+            // 路径跟随 2026-08-11 面板重构：棋子列表在 Grp/Grp_R/Grp_Pieces/...，程序库在 Grp/Grp_Programs/...（无 Grp_L 层）
+            _pieceContent = transform.Find("Grp/Grp_R/Grp_Pieces/Grp_PieceDisplay/Viewport/Content");
+            _programContent = transform.Find("Grp/Grp_Programs/Grp_ProgramDisplay/Viewport/Content");
             _pieceInfo = transform.Find("Grp/Grp_PieceInfo");
             if (_pieceInfo == null) return;
             _overlapDisplay = _pieceInfo.Find("Grp_OverlapDisplay");
@@ -234,6 +236,8 @@ namespace TheLaw.UI
         {
             if (_programContent == null) return;
             EnsureScrollContent(_programContent);
+            // GridLayout 与视口不匹配（2×550+15=1115 > 视口 550）→ 重配为单列（2026-08-11 排查：列宽超视口被 Mask 裁掉半边）
+            FitGridToViewport(_programContent);
             foreach (Transform child in _programContent) Destroy(child.gameObject);
             foreach (var slot in _programLibrary)
             {
@@ -255,8 +259,28 @@ namespace TheLaw.UI
                 drag.Init(this, slot);
             }
         }
+
+        /// <summary>程序库 GridLayout 列宽适配：cellSize.x×列数+spacing 超出 Content 宽 → 缩 cellSize 到能放 2 列（保持网格布局语义）。</summary>
+        void FitGridToViewport(Transform content)
+        {
+            var grid = content.GetComponent<UnityEngine.UI.GridLayoutGroup>();
+            if (grid == null) return;
+            var rt = content as RectTransform;
+            if (rt == null || rt.rect.width <= 0) return;
+            int cols = grid.constraint == UnityEngine.UI.GridLayoutGroup.Constraint.FixedColumnCount
+                ? Mathf.Max(1, grid.constraintCount)
+                : 1;
+            float need = grid.cellSize.x * cols + grid.spacing.x * (cols - 1);
+            if (need > rt.rect.width)
+            {
+                float cellX = (rt.rect.width - grid.spacing.x * (cols - 1)) / cols;
+                grid.cellSize = new Vector2(Mathf.Max(50f, cellX), grid.cellSize.y);
+            }
+        }
         /// <summary>保底：Content 加 ContentSizeFitter（垂直撑高——GridLayoutGroup 不改变 Content 尺寸，无 CSF 则滚动条永远满）。
-        /// 顶部锚 + 顶 pivot：CSF 撑高向下生长（防顶部被裁）。</summary>
+        /// 顶部锚 + 顶 pivot：CSF 撑高向下生长（防顶部被裁）。
+        /// 2026-08-11 重构后 Content 是 Viewport 子级：锚点横向拉伸（anchorMax.x=1）→ Content 宽 = Viewport 宽，
+        /// 否则 sizeDelta.x=0 时卡片横向溢出/被 Mask 裁剪（原 (0,1)-(0,1) 固定宽导致中列程序卡不可见）。</summary>
         void EnsureScrollContent(Transform content)
         {
             var csf = content.GetComponent<UnityEngine.UI.ContentSizeFitter>();
@@ -266,9 +290,10 @@ namespace TheLaw.UI
             if (rt != null)
             {
                 rt.anchorMin = new Vector2(0f, 1f);
-                rt.anchorMax = new Vector2(0f, 1f);
+                rt.anchorMax = new Vector2(1f, 1f); // 横向拉伸：宽度 = 视口宽度（修复卡片溢出/被裁）
                 rt.pivot = new Vector2(0.5f, 1f);
                 rt.anchoredPosition = Vector2.zero;
+                rt.sizeDelta = new Vector2(0f, rt.sizeDelta.y);
             }
         }
 
@@ -399,6 +424,8 @@ namespace TheLaw.UI
         private PieceEditPanel _panel;
         private Template _template;
         private CanvasGroup _cg;
+        private Transform _originParent;   // 拖前父级（放回用——程序库 Content）
+        private Vector3 _originLocalPos;   // 拖前局部位置（无布局组件时恢复用）
 
         public Template Template => _template;
 
@@ -410,13 +437,38 @@ namespace TheLaw.UI
             if (_cg == null) _cg = gameObject.AddComponent<CanvasGroup>();
         }
 
-        public void OnBeginDrag(PointerEventData eventData) { _cg.alpha = 0.6f; _cg.blocksRaycasts = false; }
-        public void OnDrag(PointerEventData eventData) { transform.position = eventData.position; }
+        public void OnBeginDrag(PointerEventData eventData)
+        {
+            _cg.alpha = 0.6f;
+            _cg.blocksRaycasts = false;
+            // 记录原位后脱离列表父级（防 GridLayout 布局重建拉回 + Viewport Mask 裁剪 + 被兄弟卡遮挡）
+            _originParent = transform.parent;
+            _originLocalPos = transform.localPosition;
+            var canvas = GetComponentInParent<Canvas>();
+            if (canvas != null) transform.SetParent(canvas.transform, true);
+        }
+
+        public void OnDrag(PointerEventData eventData)
+        {
+            // 已脱离 Content：世界坐标直接跟随鼠标（不再被 GridLayout 覆盖）
+            transform.position = eventData.position;
+        }
+
         public void OnEndDrag(PointerEventData eventData)
         {
             _cg.alpha = 1f;
             _cg.blocksRaycasts = true;
-            transform.localPosition = Vector3.zero; // 放回列表原位（放置成功与否由槽位 OnDrop 处理）
+            if (_originParent != null)
+            {
+                transform.SetParent(_originParent, false); // 放回程序库 Content
+                transform.localPosition = _originLocalPos; // 恢复拖前位置（视觉无跳变）
+            }
+            // 显式触发父级布局重建：GridLayoutGroup 只在脏标记时重排——不触发则卡停在原位
+            if (_originParent is RectTransform parentRt)
+            {
+                UnityEngine.UI.LayoutRebuilder.MarkLayoutForRebuild(parentRt);
+            }
+            _originParent = null;
         }
     }
 

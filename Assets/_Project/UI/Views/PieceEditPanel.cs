@@ -239,25 +239,40 @@ namespace TheLaw.UI
             // GridLayout 与视口不匹配（2×550+15=1115 > 视口 550）→ 重配为单列（2026-08-11 排查：列宽超视口被 Mask 裁掉半边）
             FitGridToViewport(_programContent);
             foreach (Transform child in _programContent) Destroy(child.gameObject);
+            // 程序库卡 = Program_Card 预制体（李毕编排：Img_ProgramType 类型图标 + Txt_ProgramCount + Txt_ProgramDesc）——异步加载后填充
+            StartCoroutine(BuildProgramList());
+        }
+
+        System.Collections.IEnumerator BuildProgramList()
+        {
+            var handle = UnityEngine.AddressableAssets.Addressables.LoadAssetAsync<GameObject>("Program_Card");
+            yield return handle;
+            if (handle.Status != UnityEngine.ResourceManagement.AsyncOperations.AsyncOperationStatus.Succeeded || handle.Result == null)
+            {
+                Debug.LogWarning("[PieceEdit] Program_Card 加载失败——程序库为空");
+                yield break;
+            }
+            var template = handle.Result;
             foreach (var slot in _programLibrary)
             {
-                var go = new GameObject($"Prog_{SlotDescTable.FeatureOf(slot)}", typeof(RectTransform), typeof(Image));
-                go.transform.SetParent(_programContent, false);
-                var rt = (RectTransform)go.transform;
-                rt.sizeDelta = new Vector2(200, 60);
-                go.GetComponent<Image>().color = new Color(0.75f, 0.75f, 0.75f, 1f);
-                var txtGo = new GameObject("Desc", typeof(RectTransform), typeof(TextMeshProUGUI));
-                txtGo.transform.SetParent(go.transform, false);
-                var txt = txtGo.GetComponent<TextMeshProUGUI>();
-                txt.text = SlotDetailDescStatic(slot);
-                txt.fontSize = 20;
-                txt.alignment = TextAlignmentOptions.Left;
-                ((RectTransform)txtGo.transform).sizeDelta = new Vector2(190, 50);
-                ((RectTransform)txtGo.transform).anchoredPosition = Vector2.zero;
+                var go = Instantiate(template, _programContent);
+                go.name = $"Prog_{SlotDescTable.FeatureOf(slot)}";
+                FillProgramCard(go, slot);
                 // 拖拽源：程序块 → 槽位
                 var drag = go.AddComponent<EditorProgramDrag>();
                 drag.Init(this, slot);
             }
+        }
+
+        /// <summary>填充程序库卡（Program_Card 预制体）：类型图标字 + 计数 + 描述。</summary>
+        static void FillProgramCard(GameObject go, Template slot)
+        {
+            var desc = FindDeep(go.transform, "Txt_ProgramDesc")?.GetComponent<TMP_Text>();
+            if (desc != null) desc.text = SlotDetailDescStatic(slot);
+            var typeTxt = FindDeep(go.transform, "Img_ProgramType")?.GetComponentInChildren<TMP_Text>();
+            if (typeTxt != null) typeTxt.text = SlotTypeChar(slot);
+            var count = FindDeep(go.transform, "Txt_ProgramCount")?.GetComponent<TMP_Text>();
+            if (count != null) count.text = ""; // 程序库无计数（模板去重后唯一）——留空占位
         }
 
         /// <summary>程序库 GridLayout 列宽适配：cellSize.x×列数+spacing 超出 Content 宽 → 缩 cellSize 到能放 2 列（保持网格布局语义）。</summary>
@@ -424,8 +439,7 @@ namespace TheLaw.UI
         private PieceEditPanel _panel;
         private Template _template;
         private CanvasGroup _cg;
-        private Transform _originParent;   // 拖前父级（放回用——程序库 Content）
-        private Vector3 _originLocalPos;   // 拖前局部位置（无布局组件时恢复用）
+        private GameObject _ghost;        // 拖拽幽灵（视觉跟随副本）——原卡留原位，GridLayout 不重排
 
         public Template Template => _template;
 
@@ -439,36 +453,31 @@ namespace TheLaw.UI
 
         public void OnBeginDrag(PointerEventData eventData)
         {
-            _cg.alpha = 0.6f;
-            _cg.blocksRaycasts = false;
-            // 记录原位后脱离列表父级（防 GridLayout 布局重建拉回 + Viewport Mask 裁剪 + 被兄弟卡遮挡）
-            _originParent = transform.parent;
-            _originLocalPos = transform.localPosition;
+            _cg.alpha = 0.3f; // 原卡半透明留原位（库卡不消耗——拖拽语义=复制放置）
+            // 幽灵副本挂 Canvas 根跟随鼠标：原卡不脱离 Content → GridLayout 不重排（其他卡不跳动）
             var canvas = GetComponentInParent<Canvas>();
-            if (canvas != null) transform.SetParent(canvas.transform, true);
+            if (canvas == null) return;
+            _ghost = Instantiate(gameObject, canvas.transform);
+            _ghost.name = "ProgDragGhost";
+            // 幽灵只做视觉跟随：移除复制来的拖拽组件（防 ghost 自身响应拖拽事件/引用错乱）
+            var ghostDrag = _ghost.GetComponent<EditorProgramDrag>();
+            if (ghostDrag != null) Destroy(ghostDrag);
+            var ghostCg = _ghost.GetComponent<CanvasGroup>();
+            if (ghostCg == null) ghostCg = _ghost.AddComponent<CanvasGroup>();
+            ghostCg.blocksRaycasts = false; // 幽灵不挡槽位 raycast
         }
 
         public void OnDrag(PointerEventData eventData)
         {
-            // 已脱离 Content：世界坐标直接跟随鼠标（不再被 GridLayout 覆盖）
-            transform.position = eventData.position;
+            if (_ghost != null) _ghost.transform.position = eventData.position;
         }
 
         public void OnEndDrag(PointerEventData eventData)
         {
             _cg.alpha = 1f;
-            _cg.blocksRaycasts = true;
-            if (_originParent != null)
-            {
-                transform.SetParent(_originParent, false); // 放回程序库 Content
-                transform.localPosition = _originLocalPos; // 恢复拖前位置（视觉无跳变）
-            }
-            // 显式触发父级布局重建：GridLayoutGroup 只在脏标记时重排——不触发则卡停在原位
-            if (_originParent is RectTransform parentRt)
-            {
-                UnityEngine.UI.LayoutRebuilder.MarkLayoutForRebuild(parentRt);
-            }
-            _originParent = null;
+            if (_ghost != null) Destroy(_ghost);
+            _ghost = null;
+            // 原卡从未离开 Content——放置成功与否由槽位 OnDrop 处理（pointerDrag=原卡，EditorProgramDrag 可查）
         }
     }
 

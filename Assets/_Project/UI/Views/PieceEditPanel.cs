@@ -209,6 +209,10 @@ namespace TheLaw.UI
                     var p = Instantiate(progTemplate, progRoot);
                     var t = p.GetComponentInChildren<TMP_Text>();
                     if (t != null) t.text = SlotTypeChar(slots[i]);
+                    // 卡面槽位放置目标：拖程序块到棋子卡上对应程序块位置 → 替换该棋子的该槽（策划内容：拖拽修改棋子行动逻辑）
+                    var drop = p.GetComponent<PieceCardSlotDrop>();
+                    if (drop == null) drop = p.gameObject.AddComponent<PieceCardSlotDrop>();
+                    drop.Init(this, def.Id, i);
                 }
             }
             // Toggle 单选：选中 → SelectPiece
@@ -221,8 +225,44 @@ namespace TheLaw.UI
             }
         }
 
-        /// <summary>深层按名查找（容错 prefab 复制 (1) 后缀）。</summary>
-        static Transform FindDeep(Transform root, string name)
+        /// <summary>棋子卡面槽位放置（拖程序块到卡上程序块图标 → 替换该槽——与信息区槽位同语义，直接改棋子行动逻辑）。</summary>
+        public void ReplacePieceCardSlot(int defId, int slotIndex, Template template)
+        {
+            if (_selectedDefId != defId)
+            {
+                SelectPiece(defId); // 未选中该棋子：先切编辑会话（BeginEdit 记录快照）
+            }
+            ReplaceSlot(slotIndex, template);
+            RefreshPieceCardProgram(defId); // 卡面程序图标文字同步（移/攻/跳）
+        }
+
+        /// <summary>刷新棋子卡面程序图标（Grp_PieceProgramInfo 内 Piece_ProgramInfo 文本——编辑后与当前程序一致）。</summary>
+        void RefreshPieceCardProgram(int defId)
+        {
+            if (_pieceContent == null) return;
+            foreach (Transform card in _pieceContent)
+            {
+                if (card.name != $"PieceCard_{ConfigTable.Find<PieceDef>(defId)?.name}") continue;
+                var progRoot = FindDeep(card, "Grp_PieceProgramInfo");
+                if (progRoot == null) return;
+                _state.TryGetCurrentProgram(defId, out var edited);
+                var slots = edited ?? (ConfigTable.Find<PieceDef>(defId)?.programSet?[0].slots);
+                int i = 0;
+                foreach (Transform p in progRoot)
+                {
+                    var t = p.GetComponentInChildren<TMP_Text>();
+                    if (t != null && slots != null && i < slots.Count)
+                    {
+                        t.text = SlotTypeChar(slots[i]);
+                    }
+                    i++;
+                }
+                return;
+            }
+        }
+
+        /// <summary>深层按名查找（容错 prefab 复制 (1) 后缀）。EditorProgramDrag 幽灵构建也用它。</summary>
+        internal static Transform FindDeep(Transform root, string name)
         {
             foreach (var t in root.GetComponentsInChildren<Transform>(true))
             {
@@ -264,15 +304,41 @@ namespace TheLaw.UI
             }
         }
 
-        /// <summary>填充程序库卡（Program_Card 预制体）：类型图标字 + 计数 + 描述。</summary>
-        static void FillProgramCard(GameObject go, Template slot)
+        /// <summary>填充程序库卡（Program_Card 预制体）：类型图标字 + 数量 + 描述。
+        /// 数量 = 该模板 id 在全部棋子程序中的出现次数（库存数；模板库独有=0；单张不显示）。</summary>
+        void FillProgramCard(GameObject go, Template slot)
         {
             var desc = FindDeep(go.transform, "Txt_ProgramDesc")?.GetComponent<TMP_Text>();
             if (desc != null) desc.text = SlotDetailDescStatic(slot);
             var typeTxt = FindDeep(go.transform, "Img_ProgramType")?.GetComponentInChildren<TMP_Text>();
             if (typeTxt != null) typeTxt.text = SlotTypeChar(slot);
             var count = FindDeep(go.transform, "Txt_ProgramCount")?.GetComponent<TMP_Text>();
-            if (count != null) count.text = ""; // 程序库无计数（模板去重后唯一）——留空占位
+            if (count != null)
+            {
+                int n = CountInPieces(slot);
+                // 优化显示：仅多张（≥2）显示 ×N——单张/无库存不占位
+                count.text = n >= 2 ? $"×{n}" : "";
+            }
+        }
+
+        /// <summary>统计模板 id 在全部棋子程序中的出现次数（id=0 未编号不计——同 id=同结构）。</summary>
+        static int CountInPieces(Template slot)
+        {
+            if (slot.id <= 0) return 0;
+            int n = 0;
+            foreach (var def in ConfigTable.All<PieceDef>())
+            {
+                if (def.programSet == null) continue;
+                foreach (var prog in def.programSet)
+                {
+                    if (prog.slots == null) continue;
+                    foreach (var s in prog.slots)
+                    {
+                        if (s != null && s.id == slot.id) n++;
+                    }
+                }
+            }
+            return n;
         }
 
         /// <summary>程序库 GridLayout 列宽适配：cellSize.x×列数+spacing 超出 Content 宽 → 缩 cellSize 到能放 2 列（保持网格布局语义）。</summary>
@@ -454,17 +520,20 @@ namespace TheLaw.UI
         public void OnBeginDrag(PointerEventData eventData)
         {
             _cg.alpha = 0.3f; // 原卡半透明留原位（库卡不消耗——拖拽语义=复制放置）
-            // 幽灵副本挂 Canvas 根跟随鼠标：原卡不脱离 Content → GridLayout 不重排（其他卡不跳动）
+            // 幽灵 = 仅类型图标（Img_ProgramType 副本）挂 Canvas 根跟随鼠标——半透明，不挡 raycast
             var canvas = GetComponentInParent<Canvas>();
             if (canvas == null) return;
-            _ghost = Instantiate(gameObject, canvas.transform);
+            var typeNode = PieceEditPanel.FindDeep(transform, "Img_ProgramType");
+            if (typeNode == null) return;
+            _ghost = Instantiate(typeNode.gameObject, canvas.transform);
             _ghost.name = "ProgDragGhost";
             // 幽灵只做视觉跟随：移除复制来的拖拽组件（防 ghost 自身响应拖拽事件/引用错乱）
             var ghostDrag = _ghost.GetComponent<EditorProgramDrag>();
             if (ghostDrag != null) Destroy(ghostDrag);
             var ghostCg = _ghost.GetComponent<CanvasGroup>();
             if (ghostCg == null) ghostCg = _ghost.AddComponent<CanvasGroup>();
-            ghostCg.blocksRaycasts = false; // 幽灵不挡槽位 raycast
+            ghostCg.alpha = 0.6f;             // 半透明跟随
+            ghostCg.blocksRaycasts = false;   // 幽灵不挡槽位 raycast
         }
 
         public void OnDrag(PointerEventData eventData)
@@ -498,6 +567,31 @@ namespace TheLaw.UI
             var drag = eventData.pointerDrag != null ? eventData.pointerDrag.GetComponent<EditorProgramDrag>() : null;
             if (drag == null) return;
             _panel.ReplaceSlot(_slotIndex, drag.Template);
+        }
+    }
+
+    /// <summary>
+    /// 棋子卡面槽位放置目标（Piece_Card 上 Grp_PieceProgramInfo 内每个 Piece_ProgramInfo 挂载）。
+    /// 策划内容：拖程序块到棋子卡上对应程序块位置 → 直接修改该棋子的行动逻辑（与信息区槽位同语义）。
+    /// </summary>
+    public class PieceCardSlotDrop : MonoBehaviour, IDropHandler
+    {
+        private PieceEditPanel _panel;
+        private int _defId;
+        private int _slotIndex;
+
+        public void Init(PieceEditPanel panel, int defId, int slotIndex)
+        {
+            _panel = panel;
+            _defId = defId;
+            _slotIndex = slotIndex;
+        }
+
+        public void OnDrop(PointerEventData eventData)
+        {
+            var drag = eventData.pointerDrag != null ? eventData.pointerDrag.GetComponent<EditorProgramDrag>() : null;
+            if (drag == null) return;
+            _panel.ReplacePieceCardSlot(_defId, _slotIndex, drag.Template);
         }
     }
 }

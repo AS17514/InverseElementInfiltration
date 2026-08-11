@@ -335,6 +335,50 @@ namespace TheLaw.Gameplay
             EventCenter.Instance.EventTrigger(GameEvent.HandChanged, _state.Hand);
         }
 
+        /// <summary>
+        /// 牌组构筑落账（DeckBuild 事件——整组替换手牌，含牌数/总价值校验）。
+        /// 限制来自当前事件定义（EventDefinition.deckSizeLimit/totalValueLimit；0 = 不限制）。
+        /// 校验失败返回 false 且不改状态（UI 提示后保持面板编辑态）。
+        /// </summary>
+        public bool BuildDeck(List<int> defIds)
+        {
+            // 去重校验（同种棋子一张——手牌按 defId 唯一）
+            var seen = new HashSet<int>();
+            foreach (var id in defIds)
+            {
+                if (!seen.Add(id))
+                {
+                    return false;
+                }
+            }
+
+            // 当前事件限制（CurrentEventId 查 EventDefinition；查不到 = 无限制）
+            var ev = string.IsNullOrEmpty(_state.CurrentEventId)
+                ? null
+                : ConfigTable.FindByName<EventDefinition>(_state.CurrentEventId);
+            int sizeLimit = ev != null ? ev.deckSizeLimit : 0;
+            int valueLimit = ev != null ? ev.totalValueLimit : 0;
+
+            int totalValue = 0;
+            foreach (var id in seen)
+            {
+                var def = ConfigTable.Find<PieceDef>(id);
+                if (def == null)
+                {
+                    return false; // 牌组含未知棋子——配置缺失当场拒绝
+                }
+                totalValue += def.value;
+            }
+            if (sizeLimit > 0 && seen.Count > sizeLimit) return false;
+            if (valueLimit > 0 && totalValue > valueLimit) return false;
+
+            // 通过校验：整组替换手牌（落账纪律——唯一写入口）
+            _state.Hand.Clear();
+            _state.Hand.AddRange(seen);
+            EventCenter.Instance.EventTrigger(GameEvent.HandChanged, _state.Hand);
+            return true;
+        }
+
         /// <summary>敌方波次池增强（加牌落点：敌方无手牌——增强未来波次阵容）。</summary>
         public void AddToEnemyWavePool(int defId)
         {

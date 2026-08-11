@@ -10,5 +10,9 @@ namespace TheLaw.Data
         public string title;             // UI 标题（JSON title 导入；空 = 资产名兜底）
         [TextArea] public string description; // UI 剧情文案（JSON description 导入；空 = 标题兜底）
         public List<EventOption> options = new List<EventOption>();
+
+        // ====== 牌组构筑限制（DeckBuild 事件用；0 = 无限制）======
+        public int deckSizeLimit;        // 牌组牌数上限（0 = 不限制）
+        public int totalValueLimit;      // 牌组总价值上限（0 = 不限制）
     }
 }

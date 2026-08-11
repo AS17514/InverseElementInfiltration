@@ -183,6 +183,8 @@ namespace TheLaw.EditorTools
                     var def = LoadOrCreate<EventDefinition>(assetPath, $"Event_{e.eventId}"); // 增量：已存在更新不删建
                     def.title = e.title;
                     def.description = e.description;
+                    def.deckSizeLimit = e.deckSizeLimit;
+                    def.totalValueLimit = e.totalValueLimit;
                     def.options = new List<EventOption>();
                     foreach (var o in e.options ?? new List<OptionJson>())
                     {
@@ -600,7 +602,7 @@ namespace TheLaw.EditorTools
         private class EventsJson { public List<PoolJson> pools; public List<EventJson> events; }
         private class PoolJson { public string poolName; public List<EntryJson> entries; }
         private class EntryJson { public string eventId; public float weight; }
-        private class EventJson { public string eventId; public string title; public string description; public List<OptionJson> options; }
+        private class EventJson { public string eventId; public string title; public string description; public int deckSizeLimit; public int totalValueLimit; public List<OptionJson> options; }
         private class OptionJson { public string optionId; public string label; public List<EffectJson> effects; }
         private class EffectJson { public string effectType; public int targetDefId; public int amount; public int abilityId; public string relicName; }
         private class AbilityJson

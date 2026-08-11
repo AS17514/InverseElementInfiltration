@@ -14,9 +14,6 @@ namespace TheLaw.Gameplay
     {
         private readonly GameState _state;
         private readonly BoardRules _boardRules;
-        private readonly Queue<ConcreteAction> _pendingActions = new Queue<ConcreteAction>();
-        private readonly List<int> _pendingExtraExecutes = new List<int>(); // 触发"额外行动一次"的棋子
-        private const int MaxFlushDepth = 32; // 防连杀无限循环（有限棋盘链条自然终止，上限兜底）
 
         public Resolver(GameState state, BoardRules boardRules)
         {
@@ -244,6 +241,10 @@ namespace TheLaw.Gameplay
             {
                 int absorbed = Mathf.Min(piece.shieldCount, -delta); // 护盾抵挡（一次性，不恢复）
                 piece.shieldCount -= absorbed;
+                if (absorbed > 0)
+                {
+                    EventCenter.Instance.EventTrigger(GameEvent.BuffsChanged, piece.Id); // buff 变化 → UI 刷新护盾标记
+                }
                 delta += absorbed;
                 if (delta >= 0)
                 {
@@ -289,7 +290,8 @@ namespace TheLaw.Gameplay
 
         private void OnKillTriggers(PieceInstance victim, PieceInstance killer)
         {
-            // 特殊能力（OnKill + ExtraAction）：【击杀者】额外行动一次——登记待执行
+            // 特殊能力（OnKill + ExtraAction）：【击杀者】获得免费执行资格（方案 B——不立即执行，
+            // 玩家点击该棋子执行时免费；同一棋子只登记一次；有效期待策划拍板——当前保留到使用为止）
             if (killer != null)
             {
                 foreach (var ability in killer.GetAllAbilities())
@@ -297,7 +299,11 @@ namespace TheLaw.Gameplay
                     if (ability.type == SpecialAbilityType.Trigger && ability.triggerPoint == TriggerPoint.OnKill
                         && ability.triggerEffect == TriggerEffect.ExtraAction)
                     {
-                        RequestExtraExecute(killer.Id);
+                        if (_state.FreeExecutes.Add(killer.Id))
+                        {
+                            EventCenter.Instance.EventTrigger(GameEvent.ExtraActionGranted, killer.Id);
+                            EventCenter.Instance.EventTrigger(GameEvent.BuffsChanged, killer.Id);
+                        }
                     }
                 }
             }
@@ -412,6 +418,7 @@ namespace TheLaw.Gameplay
                 {
                     piece.shieldCount += ability.amount; // 获得护盾能力 = 获得对应抵挡次数
                 }
+                EventCenter.Instance.EventTrigger(GameEvent.BuffsChanged, pieceId); // buff 变化 → UI 刷新
             }
         }
 
@@ -428,41 +435,11 @@ namespace TheLaw.Gameplay
             }
         }
 
-        // ========== 待执行队列（防重入）==========
-
-        /// <summary>登记"免费额外行动一次"（Trigger/OnKill → ExtraAction）。BattleFlow 守卫退出后取走执行。</summary>
-        public void RequestExtraExecute(int pieceId)
-        {
-            if (!_pendingExtraExecutes.Contains(pieceId))
-            {
-                _pendingExtraExecutes.Add(pieceId);
-            }
-        }
-
-        /// <summary>登记落账级待执行动作（如 HealDurability）。守卫退出后由 BattleFlow 取走。</summary>
-        public void EnqueuePending(ConcreteAction action)
-        {
-            _pendingActions.Enqueue(action);
-        }
-
-        /// <summary>取出挂起的落账级动作并全部落账（守卫退出后调用；防连杀循环上限兜底）。</summary>
-        public void FlushPendingActions()
-        {
-            int depth = 0;
-            while (_pendingActions.Count > 0 && depth < MaxFlushDepth)
-            {
-                depth++;
-                Resolve(_pendingActions.Dequeue());
-            }
-        }
-
-        /// <summary>取走挂起的"额外执行"棋子（流程级——由 BattleFlow 守卫退出后执行）。</summary>
-        public List<int> TakePendingExtraExecutes()
-        {
-            var result = new List<int>(_pendingExtraExecutes);
-            _pendingExtraExecutes.Clear();
-            return result;
-        }
+        // ========== 待执行（已并入免费资格机制——2026-08-11 方案 B）==========
+        // 额外行动 = FreeExecutes 资格（GameState）——玩家点击该棋子执行时免费；
+        // 旧的 RequestExtraExecute/_pendingExtraExecutes 立即执行机制已删除；
+        // EnqueuePending/_pendingActions 从未被使用（死代码）一并删除。
+        // 若未来需要"延迟落账"（真实需求出现时）再按需加回（git 历史可恢复）。
 
         // ========== 日志 / 回放 ==========
 

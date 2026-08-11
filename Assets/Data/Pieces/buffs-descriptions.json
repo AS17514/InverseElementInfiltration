@@ -1,0 +1,12 @@
+{
+  "shield": {
+    "name": "护盾",
+    "desc": "抵挡一次伤害（一次性，不恢复）",
+    "format": "count"
+  },
+  "free_execute": {
+    "name": "免费行动",
+    "desc": "下次执行不消耗行动点（击杀触发，用掉消失）",
+    "format": "count"
+  }
+}

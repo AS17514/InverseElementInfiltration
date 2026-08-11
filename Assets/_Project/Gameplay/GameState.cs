@@ -45,6 +45,7 @@ namespace TheLaw.Gameplay
         public int WaveEndCountdown { get; internal set; } = -1;                  // 末波强制判定倒计时（-1=未启用）
         public string CurrentEventId { get; internal set; }
         public List<string> DrawnEventIds { get; internal set; } = new List<string>();
+        public HashSet<int> FreeExecutes { get; internal set; } = new HashSet<int>(); // 免费执行资格（额外行动：击杀触发——下次执行该棋子不扣 AP，用掉移除；有效期待策划拍板——当前保留到使用为止）
 
         // ========== 爬塔 ==========
         public int CurrentFloor { get; internal set; }
@@ -106,6 +107,7 @@ namespace TheLaw.Gameplay
             WaveEndCountdown = -1;
             CurrentEventId = null;
             DrawnEventIds.Clear();
+            FreeExecutes.Clear();
             CurrentFloor = 0;
             CurrentNodeIndex = 0;
             NodeStates.Clear();
@@ -147,6 +149,7 @@ namespace TheLaw.Gameplay
                 WaveEndCountdown = WaveEndCountdown,
                 CurrentEventId = CurrentEventId,
                 DrawnEventIds = new List<string>(DrawnEventIds),
+                FreeExecutes = new List<int>(FreeExecutes),
                 CurrentFloor = CurrentFloor,
                 CurrentNodeIndex = CurrentNodeIndex,
                 NodeStates = new List<NodeState>(NodeStates),
@@ -208,6 +211,7 @@ namespace TheLaw.Gameplay
             WaveEndCountdown = dto.WaveEndCountdown;
             CurrentEventId = dto.CurrentEventId;
             DrawnEventIds = dto.DrawnEventIds ?? new List<string>();
+            FreeExecutes = dto.FreeExecutes != null ? new HashSet<int>(dto.FreeExecutes) : new HashSet<int>();
             CurrentFloor = dto.CurrentFloor;
             CurrentNodeIndex = dto.CurrentNodeIndex;
             NodeStates = dto.NodeStates ?? new List<NodeState>();
@@ -276,6 +280,7 @@ namespace TheLaw.Gameplay
         public int WaveEndCountdown;
         public string CurrentEventId;
         public List<string> DrawnEventIds;
+        public List<int> FreeExecutes;
         public int CurrentFloor;
         public int CurrentNodeIndex;
         public List<NodeState> NodeStates;

@@ -601,25 +601,25 @@ namespace TheLaw.UI
         // ====== 程序编排（锁定块在前绝对固定 + 替换/插入语义——整组提交） ======
 
         /// <summary>
-        /// 拖入到槽 to（2026-08-11 需求对齐）：
-        /// - 目标锁定槽 → 拒绝（锁定块绝对固定，不可动）
-        /// - 目标非锁定有块槽 → 替换（原块回程序库——无限复制语义下无额外动作）
-        /// - 目标空槽位点（to ≥ Count）→ 插入末尾（紧凑重排，空位按顺序补齐）
-        /// 满 4 槽时无空槽 → 只有替换路径（不再顶出）。
+        /// 拖入到槽 to（2026-08-11 需求对齐 v2）：
+        /// - 目标锁定槽 → 拒绝（锁定块绝对固定）
+        /// - 程序有空缺（Count &lt; 4）→ **插入 to 位置**（原 to 及之后顺移，空位补齐——如 [锁a 锁b c 空] 拖 x 到 c → [锁a 锁b x c]）
+        /// - 程序满 4 槽 → 替换 to 槽（原块回程序库——无限复制语义下无额外动作）
         /// </summary>
         public bool InsertProgram(int to, Template template)
         {
             if (_selectedDefId < 0 || template == null) return false;
             to = Mathf.Clamp(to, 0, 4);
             if (to < _slotLocked.Count && _slotLocked[to]) return false; // 目标锁定槽：拒绝
-            if (to < _slotTemplates.Count)
+            if (_slotTemplates.Count >= 4)
             {
-                // 非锁定有块槽：替换（锁定标记不变——原块本就非锁定）
+                // 满 4 槽：替换目标槽（锁定标记不变——原块本就非锁定）
                 _slotTemplates[to] = template;
             }
             else
             {
-                // 空槽位点（to ≥ Count）：插入末尾（紧凑重排；Count==4 时无空槽不会走到这）
+                // 有空缺：插入 to（顺移——原 to 及之后后移，空缺补齐）
+                to = Mathf.Clamp(to, 0, _slotTemplates.Count);
                 _slotTemplates.Insert(to, template);
                 _slotLocked.Insert(to, false); // 新块不锁定
             }

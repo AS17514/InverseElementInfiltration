@@ -71,7 +71,7 @@ namespace TheLaw.UI
         private void Awake()
         {
             ResolveNodes();
-            LoadLimits();
+            // LoadLimits 不在此调用——Awake 先于 Init（_state 为 null）会 NRE；改到 OnShow（显示时必已 Init）
             StartCoroutine(LoadCardTemplate());
             // 确认按钮：构筑完成 → 落账 + 推进（失败保持编辑态）
             _nextBtn = transform.Find("Grp/Grp_R/Grp_Low/Btn_Next")?.GetComponent<Button>();
@@ -86,6 +86,7 @@ namespace TheLaw.UI
         {
             // 每次打开：出战清空（从零构筑——事件发生前手牌为全量，构筑 = 选新的出战）
             _deck.Clear();
+            LoadLimits(); // 显示时 _state 必已 Init（Awake 时序问题：CreateAsync 回调后才 Init）
             RebuildPool();
             RebuildDeck();
             RefreshLimits();
@@ -134,11 +135,12 @@ namespace TheLaw.UI
             _infoPortrait = portrait != null ? portrait.GetComponent<Image>() : null;
         }
 
-        /// <summary>构筑限制：当前事件 EventDefinition 的 deckSizeLimit/totalValueLimit（0=无限制）。</summary>
+        /// <summary>构筑限制：当前事件 EventDefinition 的 deckSizeLimit/totalValueLimit（0=无限制）。判空防御（Init 前不应调用）。</summary>
         void LoadLimits()
         {
             _deckSizeLimit = 0;
             _valueLimit = 0;
+            if (_state == null) return; // Init 未注入（Awake 时序）——跳过，OnShow 时再调
             var ev = string.IsNullOrEmpty(_state.CurrentEventId)
                 ? null
                 : ConfigTable.FindByName<EventDefinition>(_state.CurrentEventId);

@@ -21,7 +21,8 @@ namespace TheLaw.UI
         public override string Key => "PieceEdit";
 
         [Header("拖拽吸附")]
-        [SerializeField] private float _snapRadius = 30f; // 吸附热区半径（逻辑像素——槽位 20×20 图标半宽 10 + 裕量 20）
+        [Tooltip("吸附判定：槽位矩形外扩量（区域吸附——指针进入外扩矩形即命中，多矩形重叠取中心最近）")]
+        [SerializeField] private float _snapExpand = 10f;
         [Header("程序插入规则（策划可调）")]
         [Tooltip("满 4 槽时插入是否顶出末尾块（false=拒绝插入）")]
         [SerializeField] private bool _dropWhenFull = true;
@@ -227,8 +228,8 @@ namespace TheLaw.UI
             }
         }
 
-        /// <summary>吸附热区半径（逻辑像素——EditorProgramDrag 吸附判定用）。</summary>
-        public float SnapRadius => _snapRadius;
+        /// <summary>吸附判定外扩量（区域吸附——EditorProgramDrag 用）。</summary>
+        public float SnapExpand => _snapExpand;
 
         /// <summary>
         /// 收集吸附候选：信息区 4 槽位（Img_InfoProgram1~4 + Txt_InfoProgram1~4Desc 双节点判定，高亮作用于 Img）。
@@ -442,34 +443,42 @@ namespace TheLaw.UI
             }
             for (int i = 0; i < 4; i++)
             {
+                // 槽位节点常显（未拥有的空槽也可作为吸附位点——2026-08-11 需求：空位也可拖入插入）
                 bool has = i < _slotTemplates.Count;
                 if (_slotImages[i] != null)
                 {
-                    _slotImages[i].gameObject.SetActive(has);
-                    // 拖拽源（槽位块拖出：重排/移除——InfoSlot 模式；锁定块不可拖出）
+                    _slotImages[i].gameObject.SetActive(true); // 空槽也保留位点（半透明空态）
+                    // 拖拽源（槽位块拖出：重排/移除——InfoSlot 模式；锁定块/空槽不可拖出）
                     var slotDrag = _slotImages[i].GetComponent<EditorProgramDrag>();
-                    if (slotDrag != null && _slotLocked[i]) Destroy(slotDrag);
+                    if (slotDrag != null && (_slotLocked[i] || !has)) Destroy(slotDrag);
                     if (has && !_slotLocked[i])
                     {
                         if (slotDrag == null) slotDrag = _slotImages[i].gameObject.AddComponent<EditorProgramDrag>();
                         slotDrag.Init(this, _slotTemplates[i], EditorProgramDrag.DragSource.InfoSlot, i);
                     }
-                    // 精确 drop 目标（拖入：插入语义——吸附路径 HandledBySnap 防重；锁定槽也可插入其位置（顺移受 _allowShiftLocked 约束））
+                    // 精确 drop 目标（拖入：插入语义——吸附路径 HandledBySnap 防重；空槽也可拖入）
                     var drop = _slotImages[i].GetComponent<EditorSlotDrop>();
                     if (drop == null) drop = _slotImages[i].gameObject.AddComponent<EditorSlotDrop>();
                     drop.Init(this, i);
                 }
-                if (_slotDescs[i] != null) _slotDescs[i].gameObject.SetActive(has);
+                if (_slotDescs[i] != null) _slotDescs[i].gameObject.SetActive(true); // 描述位点同样常显（空文本）
                 if (has)
                 {
                     var t = _slotTemplates[i];
                     if (_slotTexts[i] != null) _slotTexts[i].text = SlotTypeChar(t);
                     if (_slotDescs[i] != null) _slotDescs[i].text = SlotDetailDescStatic(t);
-                    // 状态颜色：锁定=灰
+                    // 状态颜色：锁定=灰（一版全部可编辑）
                     if (_slotImages[i] != null)
                     {
                         _slotImages[i].color = _slotLocked[i] ? new Color(0.5f, 0.5f, 0.5f, 1f) : Color.white;
                     }
+                }
+                else
+                {
+                    // 空槽位点：无字 + 半透明浅灰（可吸附——拖入即插入该位置）
+                    if (_slotTexts[i] != null) _slotTexts[i].text = "";
+                    if (_slotDescs[i] != null) _slotDescs[i].text = "";
+                    if (_slotImages[i] != null) _slotImages[i].color = new Color(1f, 1f, 1f, 0.15f);
                 }
             }
             // 右侧信息区底色按种类标识（半透明——不盖子级内容）
@@ -490,18 +499,18 @@ namespace TheLaw.UI
         /// <summary>
         /// 拖入到槽 to（插入点）：模板插到 to，原 to 及之后顺移。
         /// 满 4 槽：_dropWhenFull=true 顶出末尾 / false 拒绝。顺移区间含锁定块且 !_allowShiftLocked → 拒绝。
+        /// to 可超过当前长度（空槽位点）——clamp 到末尾 = 追加。
         /// </summary>
         public bool InsertProgram(int to, Template template)
         {
             if (_selectedDefId < 0 || template == null) return false;
-            to = Mathf.Clamp(to, 0, 4);
+            to = Mathf.Clamp(to, 0, _slotTemplates.Count); // 空槽位点（to ≥ Count）= 末尾追加；程序紧凑无 null 占位
             if (!CanShiftFrom(to)) return false; // 顺移区间锁定检查
             if (_slotTemplates.Count >= 4)
             {
                 if (!_dropWhenFull) return false;      // 拒绝
                 _slotTemplates.RemoveAt(_slotTemplates.Count - 1); // 顶出末尾
             }
-            while (_slotTemplates.Count < to) _slotTemplates.Add(null); // 补齐空槽（插入点前）
             _slotTemplates.Insert(to, template);
             CommitProgram();
             return true;
@@ -516,7 +525,7 @@ namespace TheLaw.UI
             var template = _slotTemplates[from];
             _slotTemplates.RemoveAt(from);
             if (to > from) to--;
-            to = Mathf.Clamp(to, 0, _slotTemplates.Count);
+            to = Mathf.Clamp(to, 0, _slotTemplates.Count); // 空槽位点 = 末尾追加
             if (!CanShiftFrom(to)) return false; // 顺移区间锁定检查（失败要还原移除）
             _slotTemplates.Insert(to, template);
             CommitProgram();
@@ -705,25 +714,34 @@ namespace TheLaw.UI
 
         // ====== 吸附状态机 ======
 
-        /// <summary>每帧吸附判定：指针距信息区槽位（Img/Desc 节点）中心 ≤ SnapRadius → 取最近者高亮。</summary>
+        /// <summary>
+        /// 每帧吸附判定（区域吸附）：指针在槽位矩形（Img/Desc 节点，外扩 SnapExpand）内即命中；
+        /// 多矩形重叠（Img 与其 Desc）→ 取中心距离最近。空槽位点（常显）同样可命中——拖入=插入该位置。
+        /// </summary>
         void UpdateSnap(PointerEventData eventData)
         {
             if (_panel == null || _slotTargets == null) return;
-            float radius = _panel.SnapRadius;
+            float expand = _panel.SnapExpand;
+            var offset = new Vector4(expand, expand, expand, expand);
             InfoSlotTarget best = null;
             float bestDist = float.MaxValue;
             foreach (var target in _slotTargets)
             {
                 if (target == null || target.Rect == null) continue;
-                if (!RectTransformUtility.ScreenPointToLocalPointInRectangle(target.Rect, eventData.position, _cam, out var local))
+                // 矩形区域包含（外扩）判定
+                if (!RectTransformUtility.RectangleContainsScreenPoint(target.Rect, eventData.position, _cam, offset))
                 {
                     continue;
                 }
-                float dist = local.magnitude; // 相对 pivot（槽中心）距离
-                if (dist <= radius && dist < bestDist)
+                // 多矩形重叠：取中心距离最近
+                if (RectTransformUtility.ScreenPointToLocalPointInRectangle(target.Rect, eventData.position, _cam, out var local))
                 {
-                    best = target;
-                    bestDist = dist;
+                    float dist = local.magnitude;
+                    if (dist < bestDist)
+                    {
+                        best = target;
+                        bestDist = dist;
+                    }
                 }
             }
             if (best != _snapTarget)

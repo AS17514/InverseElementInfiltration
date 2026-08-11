@@ -258,14 +258,32 @@ namespace TheLaw.UI
             _towerFlow.OnBattleEnded(winner);
         }
 
-        /// <summary>回主菜单：重置状态 + 清档 + 显示主菜单（面板实例常驻，HidePanel 过直接恢复）。</summary>
+        /// <summary>
+        /// 回主菜单（收尾链）：延后一帧执行——Reset 移出事件回调栈（收尾是"流程结束后的事"，
+        /// 不在 EndBattle/RunEnded 的同步回调栈内执行——防御永不被打断，_battleEnded 补丁已退休）。
+        /// 顺序：Destroy 战斗会话 → Reset（清档）→ SaveAll（存空=清档）→ 显示主菜单。
+        /// </summary>
         private void BackToMainMenu()
         {
+            StartCoroutine(FinalizeRun());
+        }
+
+        private bool _finalizing; // 收尾防重：执行中不再排队（完成后复位——下一局收尾可用）
+
+        private System.Collections.IEnumerator FinalizeRun()
+        {
+            if (_finalizing)
+            {
+                yield break; // 收尾进行中——防重复执行（UI 审阅②：完成后复位）
+            }
+            _finalizing = true;
+            yield return null; // 等一帧：当前事件回调栈必然已退出（Unity 单线程，帧末栈空）
             DestroyBattleController();
             _gameState.ResetForNewRun();
             SaveManager.Instance.SaveAll();
             _uiManager.ShowPanel("MainMenu");
-            Debug.Log("[Bootstrap] 返回主菜单");
+            _finalizing = false; // 复位——下一局收尾可用
+            Debug.Log("[Bootstrap] 返回主菜单（收尾链完成）");
         }
 
         /// <summary>销毁战斗会话（BattleController 连带销毁战斗面板——防多局累积实例）。</summary>

@@ -38,7 +38,8 @@ namespace TheLaw.Gameplay
         private ExecContext _ctx;
         private bool _waitingCellSelect;     // 等玩家选格（落点/目标）
         private bool _waitingPresentation;   // 表现等待（等 UI 播完发"表现完成"）
-        private bool _battleEnded;           // 战斗已结束标志（EndBattle 置 true / StartBattle 清）——防 ResetForNewRun 破坏 GameOver 防御后误判
+        // _battleEnded 已删除（2026-08-11 收尾链）：Reset 移出事件回调栈后
+        // Phase==GameOver 防御不会被破坏——补丁退休
         private bool _enemyTurnEndPending;   // 敌方回合结束待定——本阶段表现全部播完才切回玩家回合（动画优先）
         private bool _hadEnemyPresentation;  // 本轮敌方回合是否有表现（有→表现完即切；无→等阶段展示信号）
         private bool _deployedThisRound;     // 本轮波次是否部署（部署动画挂起点）
@@ -67,7 +68,6 @@ namespace TheLaw.Gameplay
             _floorRules = FloorRulesFactory.Create(floor.Id);
             _deployedWaveIndex = 0;
             _waveEnded = false;
-            _battleEnded = false;
             _state.EnemyAPMax = floor.enemyMaxAP;
             _state.WaveEndCountdown = -1;
             _floorRules.OnBattleStart(_state, _resolver);
@@ -128,7 +128,7 @@ namespace TheLaw.Gameplay
             var requests = _enemyAI.DecideTurn(_state);
             foreach (var request in requests)
             {
-                if (_state.Phase == BattlePhase.GameOver || _battleEnded)
+                if (_state.Phase == BattlePhase.GameOver)
                 {
                     break; // 战斗已结束——不再处理剩余请求（防御：防失败后误判胜利）
                 }
@@ -628,9 +628,8 @@ namespace TheLaw.Gameplay
 
         public void CheckVictory(bool force)
         {
-            // _battleEnded：即使 GameState 被外部重置（ResetForNewRun 回调内执行）也不再次判定——
-            // 根因修复（防"失败后又判胜利"：Phase 防御可被重置绕过，标志位不可绕过）
-            if (_battleEnded || _state.Phase == BattlePhase.GameOver)
+            // 防御：GameOver 后不再判定（收尾链后 Reset 在栈外执行——Phase 防御不会被破坏）
+            if (_state.Phase == BattlePhase.GameOver)
             {
                 return;
             }
@@ -690,11 +689,11 @@ namespace TheLaw.Gameplay
 
         public void EndBattle(Side winner)
         {
-            if (_battleEnded || _state.Phase == BattlePhase.GameOver)
+            // 幂等：已 GameOver 不再发（收尾链后 Reset 栈外执行——防御不会被破坏）
+            if (_state.Phase == BattlePhase.GameOver)
             {
                 return;
             }
-            _battleEnded = true; // 战斗结束标志（StartBattle 重置）——防 GameOver 防御被 ResetForNewRun 绕过
             ChangePhase(BattlePhase.GameOver);
             EventCenter.Instance.EventTrigger(GameEvent.StateChanged, winner);
         }

@@ -48,6 +48,7 @@ namespace TheLaw.UI
         private EditorSession _editorSession;
         private PieceEditPanel _pieceEditPanel; // 棋子编辑面板（新局入口——编辑完成进战斗）
         private EventPanel _eventPanel;         // 事件关面板（EventOpened 显示）
+        private DeckBuildPanel _deckBuildPanel; // 牌组构筑面板（StateChanged("deck") 显示）
         private EventNodeSystem _eventNodeSystem;
         private TowerFlow _towerFlow;
 
@@ -246,8 +247,7 @@ namespace TheLaw.UI
                 }
                 else if (s == "deck")
                 {
-                    // 构筑面板未拼——一版跳过直接推进（固定链第 2 步）
-                    EventCenter.Instance.EventTrigger(GameEvent.EventCompleted);
+                    OpenDeckBuild(); // 事件关：牌组构筑（固定链第 2 步）
                 }
                 return;
             }
@@ -350,6 +350,32 @@ namespace TheLaw.UI
             panel.Init(_editorSession, _gameState);
             _uiManager.ShowPanel("PieceEdit");
             Debug.Log("[Bootstrap] 棋子编辑界面已显示（事件模式）");
+        }
+
+        /// <summary>打开牌组构筑面板（事件关模式——StateChanged("deck") 驱动；Btn_Next 经 Resolver.BuildDeck 落账后发 EventCompleted 推进）。</summary>
+        private void OpenDeckBuild()
+        {
+            if (_deckBuildPanel == null)
+            {
+                StartCoroutine(LoadDeckBuildPanel());
+            }
+            else
+            {
+                _uiManager.ShowPanel("DeckBuild");
+            }
+        }
+
+        private System.Collections.IEnumerator LoadDeckBuildPanel()
+        {
+            bool done = false;
+            DeckBuildPanel panel = null;
+            PanelBase.CreateAsync<DeckBuildPanel>(p => { panel = p; done = true; });
+            yield return new WaitUntil(() => done);
+            _deckBuildPanel = panel;
+            _uiManager.RegisterPanel(panel);
+            panel.Init(_resolver, _gameState);
+            _uiManager.ShowPanel("DeckBuild");
+            Debug.Log("[Bootstrap] 牌组构筑界面已显示（事件模式）");
         }
 
         private void CreateBattleController()

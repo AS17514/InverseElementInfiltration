@@ -47,10 +47,11 @@ namespace TheLaw.UI
         private GameState _state;
         private int _selectedDefId = -1;
         private List<Template> _slotTemplates = new List<Template>(); // 当前选中棋子的程序（编辑副本）
-        private bool[] _slotLocked = new bool[4];                       // 槽位锁定标记（模板原始程序块）
+        private List<bool> _slotLocked = new List<bool>();            // 槽位锁定标记（与 _slotTemplates 同步位移——模板原始程序块）
 
         // ====== 程序库（全局模板去重） ======
         private List<Template> _programLibrary = new List<Template>();
+        private GameObject _progTemplate; // Piece_ProgramInfo prefab（卡面缩略图模板——Addressables）
 
         public void Init(EditorSession editor, GameState state)
         {
@@ -76,7 +77,11 @@ namespace TheLaw.UI
 
         void OnNext()
         {
-            // 编辑完成 → 通知 TowerFlow 推进（面板关闭——下一节点 EventOpened 会再激活）
+            // 编辑完成 → 结束编辑会话（清 EditingDefs 标记）+ 通知 TowerFlow 推进（面板关闭——下一节点 EventOpened 会再激活）
+            if (_selectedDefId >= 0 && _editor != null)
+            {
+                _editor.EndEdit(_selectedDefId);
+            }
             gameObject.SetActive(false);
             EventCenter.Instance.EventTrigger(GameEvent.EventCompleted);
         }
@@ -182,6 +187,10 @@ namespace TheLaw.UI
             var group = _pieceContent.GetComponent<ToggleGroup>();
             if (group == null) group = _pieceContent.gameObject.AddComponent<ToggleGroup>();
             group.allowSwitchOff = false;
+            if (progHandle.Status == UnityEngine.ResourceManagement.AsyncOperations.AsyncOperationStatus.Succeeded && progHandle.Result != null)
+            {
+                _progTemplate = progHandle.Result; // 缓存模板（RefreshPieceCardProgram 动态增删用）
+            }
             foreach (Transform child in _pieceContent) Destroy(child.gameObject);
             foreach (var def in ConfigTable.All<PieceDef>())
             {
@@ -232,24 +241,50 @@ namespace TheLaw.UI
         public float SnapExpand => _snapExpand;
 
         /// <summary>
-        /// 收集吸附候选：信息区 4 槽位（Img_InfoProgram1~4 + Txt_InfoProgram1~4Desc 双节点判定，高亮作用于 Img）。
-        /// 拖拽期间列表不重建，OnBeginDrag 调用一次。
+        /// 收集吸附候选：信息区 4 槽位——每槽吸附区域 = Img_InfoProgram 与 Txt_InfoProgramDesc 的
+        /// 屏幕包围盒并集（两列之间的空隙自动补齐，无需美术拼空组）。OnBeginDrag 调用一次（拖拽期间布局不变）。
         /// </summary>
-        public List<InfoSlotTarget> CollectInfoSlotTargets()
+        public List<InfoSlotTarget> CollectInfoSlotTargets(Camera uiCam)
         {
             var list = new List<InfoSlotTarget>();
             for (int i = 0; i < 4; i++)
             {
-                if (_slotImages[i] != null)
-                {
-                    list.Add(new InfoSlotTarget { SlotIndex = i, Rect = _slotImages[i].rectTransform });
-                }
-                if (_slotDescs[i] != null)
-                {
-                    list.Add(new InfoSlotTarget { SlotIndex = i, Rect = _slotDescs[i].rectTransform });
-                }
+                if (_slotImages[i] == null && _slotDescs[i] == null) continue;
+                var rect = ScreenUnion(_slotImages[i] != null ? _slotImages[i].rectTransform : null,
+                                       _slotDescs[i] != null ? _slotDescs[i].rectTransform : null, uiCam);
+                list.Add(new InfoSlotTarget { SlotIndex = i, ScreenRect = rect });
             }
             return list;
+        }
+
+        /// <summary>两个节点的屏幕矩形并集（世界角点 → 屏幕 → AABB 合并；单节点=自身矩形）。</summary>
+        static Rect ScreenUnion(RectTransform a, RectTransform b, Camera cam)
+        {
+            var rect = ScreenRectOf(a, cam);
+            if (b != null)
+            {
+                var rb = ScreenRectOf(b, cam);
+                rect = Rect.MinMaxRect(Mathf.Min(rect.xMin, rb.xMin), Mathf.Min(rect.yMin, rb.yMin),
+                                       Mathf.Max(rect.xMax, rb.xMax), Mathf.Max(rect.yMax, rb.yMax));
+            }
+            return rect;
+        }
+
+        /// <summary>节点世界角点 → 屏幕 AABB（ScreenSpaceCamera 用 uiCam；Overlay 传 null）。</summary>
+        static Rect ScreenRectOf(RectTransform rt, Camera cam)
+        {
+            if (rt == null) return new Rect();
+            var corners = new Vector3[4];
+            rt.GetWorldCorners(corners);
+            float minX = float.MaxValue, minY = float.MaxValue, maxX = float.MinValue, maxY = float.MinValue;
+            for (int i = 0; i < 4; i++)
+            {
+                var sp = cam != null ? RectTransformUtility.WorldToScreenPoint(cam, corners[i])
+                                     : (Vector2)corners[i];
+                minX = Mathf.Min(minX, sp.x); maxX = Mathf.Max(maxX, sp.x);
+                minY = Mathf.Min(minY, sp.y); maxY = Mathf.Max(maxY, sp.y);
+            }
+            return Rect.MinMaxRect(minX, minY, maxX, maxY);
         }
 
         /// <summary>槽位高亮组件（按槽索引——吸附判定命中 Img 或 Desc 都作用于对应 Img 的高亮）。</summary>
@@ -261,7 +296,16 @@ namespace TheLaw.UI
             return hl;
         }
 
-        /// <summary>刷新棋子卡面程序图标（Grp_PieceProgramInfo 内 Piece_ProgramInfo 文本——编辑后与当前程序一致）。</summary>
+        /// <summary>该槽是否锁定块（不可拖入覆盖——UpdateSnap 命中时不高亮，防"拖入必失败无反馈"）。</summary>
+        public bool IsSlotLocked(int slotIndex)
+        {
+            return slotIndex >= 0 && slotIndex < _slotLocked.Count && _slotLocked[slotIndex];
+        }
+
+        /// <summary>是否允许顺移锁定块（吸附判定用——不允许时锁定槽直接排除）。</summary>
+        public bool AllowShiftLocked => _allowShiftLocked;
+
+        /// <summary>刷新棋子卡面程序图标（Grp_PieceProgramInfo 内 Piece_ProgramInfo）——编辑后按当前程序数动态增删缩略图。</summary>
         void RefreshPieceCardProgram(int defId)
         {
             if (_pieceContent == null) return;
@@ -272,13 +316,26 @@ namespace TheLaw.UI
                 if (progRoot == null) return;
                 _state.TryGetCurrentProgram(defId, out var edited);
                 var slots = edited ?? (ConfigTable.Find<PieceDef>(defId)?.programSet?[0].slots);
+                int count = slots != null ? Mathf.Min(slots.Count, 4) : 0;
+                // 增：当前程序多于已有缩略图 → 补建（模板未就绪则只更新已有部分）
+                int existing = progRoot.childCount;
+                if (_progTemplate != null)
+                {
+                    for (int k = existing; k < count; k++)
+                    {
+                        Instantiate(_progTemplate, progRoot);
+                    }
+                }
+                // 删：多于程序数的多余缩略图隐藏（不 Destroy——防与模板异步加载竞态）
                 int i = 0;
                 foreach (Transform p in progRoot)
                 {
-                    var t = p.GetComponentInChildren<TMP_Text>();
-                    if (t != null && slots != null && i < slots.Count)
+                    bool show = i < count;
+                    if (p.gameObject.activeSelf != show) p.gameObject.SetActive(show);
+                    if (show)
                     {
-                        t.text = SlotTypeChar(slots[i]);
+                        var t = p.GetComponentInChildren<TMP_Text>();
+                        if (t != null && slots != null) t.text = SlotTypeChar(slots[i]);
                     }
                     i++;
                 }
@@ -422,14 +479,14 @@ namespace TheLaw.UI
             return new List<Template>();
         }
 
-        /// <summary>锁定标记：模板原始程序块 = 前 N 槽锁定（不可拖出/移除；顺移规则由 _allowShiftLocked 控制）。</summary>
+        /// <summary>锁定标记：模板原始程序块（def 默认模组前 N 槽）锁定——不可拖出/移除；顺移规则由 _allowShiftLocked 控制。</summary>
         void InitLockedFlags(PieceDef def)
         {
-            for (int i = 0; i < 4; i++)
+            _slotLocked.Clear();
+            int templateCount = def.programSet != null && def.programSet.Count > 0 ? def.programSet[0].slots.Count : 0;
+            for (int i = 0; i < _slotTemplates.Count; i++)
             {
-                // 一版：def 默认模组的槽位视为模板原始块（锁定）；编辑新增（超出默认模组槽数）不锁
-                bool isTemplateSlot = def.programSet != null && def.programSet.Count > 0 && i < def.programSet[0].slots.Count;
-                _slotLocked[i] = isTemplateSlot;
+                _slotLocked.Add(i < templateCount); // 前 N 槽 = 模板原始块
             }
         }
 
@@ -448,15 +505,17 @@ namespace TheLaw.UI
                 if (_slotImages[i] != null)
                 {
                     _slotImages[i].gameObject.SetActive(true); // 空槽也保留位点（半透明空态）
-                    // 拖拽源（槽位块拖出：重排/移除——InfoSlot 模式；锁定块/空槽不可拖出）
+                    // 拖拽源（槽位块拖出：重排/移除——InfoSlot 模式）。组件复用不销毁（防同帧 Destroy+GetComponent 竞态）：
+                    // 锁定/空槽时禁拖（OnBeginDrag 拦截），有块非锁定时重新 Init（刷新 template/sourceSlot）
                     var slotDrag = _slotImages[i].GetComponent<EditorProgramDrag>();
-                    if (slotDrag != null && (_slotLocked[i] || !has)) Destroy(slotDrag);
-                    if (has && !_slotLocked[i])
+                    if (slotDrag == null) slotDrag = _slotImages[i].gameObject.AddComponent<EditorProgramDrag>();
+                    bool draggable = has && !_slotLocked[i];
+                    slotDrag.SetDraggable(draggable);
+                    if (draggable)
                     {
-                        if (slotDrag == null) slotDrag = _slotImages[i].gameObject.AddComponent<EditorProgramDrag>();
                         slotDrag.Init(this, _slotTemplates[i], EditorProgramDrag.DragSource.InfoSlot, i);
                     }
-                    // 精确 drop 目标（拖入：插入语义——吸附路径 HandledBySnap 防重；空槽也可拖入）
+                    // 槽位标记组件（OnEndDrag 精确命中识别用；落账不在此）
                     var drop = _slotImages[i].GetComponent<EditorSlotDrop>();
                     if (drop == null) drop = _slotImages[i].gameObject.AddComponent<EditorSlotDrop>();
                     drop.Init(this, i);
@@ -497,8 +556,8 @@ namespace TheLaw.UI
         // ====== 程序编排（插入排序语义——整组提交） ======
 
         /// <summary>
-        /// 拖入到槽 to（插入点）：模板插到 to，原 to 及之后顺移。
-        /// 满 4 槽：_dropWhenFull=true 顶出末尾 / false 拒绝。顺移区间含锁定块且 !_allowShiftLocked → 拒绝。
+        /// 拖入到槽 to（插入点）：模板插到 to，原 to 及之后顺移（锁定标记同步位移）。
+        /// 满 4 槽：_dropWhenFull=true 顶出末尾（末尾锁定块不可顶） / false 拒绝。顺移区间含锁定块且 !_allowShiftLocked → 拒绝。
         /// to 可超过当前长度（空槽位点）——clamp 到末尾 = 追加。
         /// </summary>
         public bool InsertProgram(int to, Template template)
@@ -509,25 +568,37 @@ namespace TheLaw.UI
             if (_slotTemplates.Count >= 4)
             {
                 if (!_dropWhenFull) return false;      // 拒绝
+                if (_slotLocked[_slotTemplates.Count - 1] && !_allowShiftLocked) return false; // 末尾锁定块不可顶出
                 _slotTemplates.RemoveAt(_slotTemplates.Count - 1); // 顶出末尾
+                _slotLocked.RemoveAt(_slotLocked.Count - 1);       // 锁定标记同步
             }
             _slotTemplates.Insert(to, template);
+            _slotLocked.Insert(to, false); // 新块不锁定
             CommitProgram();
             return true;
         }
 
-        /// <summary>槽间重排：从 from 移到 to（移除源后插入目标位——from&lt;to 时目标位前移一）。</summary>
+        /// <summary>槽间重排：从 from 移到 to（移除源后插入目标位——from&lt;to 时目标位前移一；锁定标记同步位移）。</summary>
         public bool MoveProgram(int from, int to)
         {
             if (_selectedDefId < 0 || from < 0 || from >= _slotTemplates.Count) return false;
             if (_slotLocked[from]) return false; // 锁定块不可拖出
             if (from == to) return false;
             var template = _slotTemplates[from];
+            var locked = _slotLocked[from];
             _slotTemplates.RemoveAt(from);
+            _slotLocked.RemoveAt(from);
             if (to > from) to--;
             to = Mathf.Clamp(to, 0, _slotTemplates.Count); // 空槽位点 = 末尾追加
-            if (!CanShiftFrom(to)) return false; // 顺移区间锁定检查（失败要还原移除）
+            if (!CanShiftFrom(to))
+            {
+                // 顺移区间含锁定块且不允许顺移 → 还原移除（防丢块）
+                _slotTemplates.Insert(Mathf.Min(from, _slotTemplates.Count), template);
+                _slotLocked.Insert(Mathf.Min(from, _slotLocked.Count), locked);
+                return false;
+            }
             _slotTemplates.Insert(to, template);
+            _slotLocked.Insert(to, locked);
             CommitProgram();
             return true;
         }
@@ -538,6 +609,7 @@ namespace TheLaw.UI
             if (_selectedDefId < 0 || index < 0 || index >= _slotTemplates.Count) return false;
             if (_slotLocked[index]) return false;
             _slotTemplates.RemoveAt(index);
+            _slotLocked.RemoveAt(index); // 锁定标记同步
             CommitProgram();
             return true;
         }
@@ -595,11 +667,11 @@ namespace TheLaw.UI
         }
     }
 
-    /// <summary>吸附候选（信息区槽位——Img 或 Desc 节点命中，高亮作用于 Img）。</summary>
+    /// <summary>吸附候选（信息区槽位——Img∪Desc 屏幕包围盒，命中高亮作用于 Img）。</summary>
     public class InfoSlotTarget
     {
         public int SlotIndex;
-        public RectTransform Rect;
+        public Rect ScreenRect;   // 屏幕坐标吸附区域（含 Img+Desc 并集——空隙自动补齐）
     }
 
     /// <summary>
@@ -617,6 +689,7 @@ namespace TheLaw.UI
         private Template _template;
         private DragSource _source;
         private int _sourceSlot = -1;     // InfoSlot 模式：源槽索引
+        private bool _draggable = true;   // 禁拖开关（锁定块/空槽——组件复用不销毁）
         private CanvasGroup _cg;
         private GameObject _ghost;        // 拖拽幽灵（类型图标/槽位块副本）——原对象留原位
 
@@ -643,8 +716,15 @@ namespace TheLaw.UI
             if (_cg == null) _cg = gameObject.AddComponent<CanvasGroup>();
         }
 
+        /// <summary>可拖拽开关（锁定块/空槽禁拖——组件复用不销毁，OnBeginDrag 拦截）。</summary>
+        public void SetDraggable(bool draggable)
+        {
+            _draggable = draggable;
+        }
+
         public void OnBeginDrag(PointerEventData eventData)
         {
+            if (!_draggable) return; // 锁定块/空槽：禁拖（组件复用——不销毁）
             _cg.alpha = 0.3f; // 原对象半透明留原位
             HandledBySnap = false;
             var canvas = GetComponentInParent<Canvas>();
@@ -664,15 +744,20 @@ namespace TheLaw.UI
             if (ghostSource == null) return;
             _ghost = Instantiate(ghostSource.gameObject, canvas.transform);
             _ghost.name = _source == DragSource.Library ? "ProgDragGhost" : "SlotDragGhost";
-            // 幽灵只做视觉跟随：移除复制来的拖拽组件（防 ghost 自身响应拖拽事件/引用错乱）
+            // 幽灵只做视觉跟随：置顶（防被其他面板盖住）+ 移除拖拽/drop/高亮组件（防自身响应事件/引用错乱）
+            _ghost.transform.SetAsLastSibling();
             var ghostDrag = _ghost.GetComponent<EditorProgramDrag>();
             if (ghostDrag != null) Destroy(ghostDrag);
+            var ghostDrop = _ghost.GetComponent<EditorSlotDrop>();
+            if (ghostDrop != null) Destroy(ghostDrop);
+            var ghostHl = _ghost.GetComponent<SlotSnapHighlight>();
+            if (ghostHl != null) Destroy(ghostHl);
             var ghostCg = _ghost.GetComponent<CanvasGroup>();
             if (ghostCg == null) ghostCg = _ghost.AddComponent<CanvasGroup>();
             ghostCg.alpha = 0.6f;             // 半透明跟随
             ghostCg.blocksRaycasts = false;   // 幽灵不挡槽位 raycast
-            // 吸附候选：信息区 4 槽位（拖拽期间列表不重建）
-            if (_panel != null) _slotTargets = _panel.CollectInfoSlotTargets();
+            // 吸附候选：信息区 4 槽位（Img∪Desc 屏幕包围盒——空隙自动补齐；拖拽期间布局不重建）
+            if (_panel != null) _slotTargets = _panel.CollectInfoSlotTargets(_cam);
         }
 
         public void OnDrag(PointerEventData eventData)
@@ -694,14 +779,33 @@ namespace TheLaw.UI
             _cg.alpha = 1f;
             if (_ghost != null) Destroy(_ghost);
             _ghost = null;
-            // 落账语义（插入排序）：
+            // 落账语义（插入排序）——职责只在 OnEndDrag（Unity ReleaseMouse 顺序：OnDrop 先于 OnEndDrag，
+            // 若在 OnDrop 落账会与吸附落账双触发；故 OnDrop 不落账，此处统一处理）：
             //  Library+吸附 = 插入；InfoSlot+吸附 = 重排；InfoSlot+空白 = 移除；Library+空白 = 无操作
+            // 吸附优先；无吸附时用 EventSystem 精确命中（pointerCurrentRaycast → 槽位 EditorSlotDrop）
+            int dropSlot = -1;
             if (_snapTarget != null)
             {
-                bool ok = _source == DragSource.Library
-                    ? _panel.InsertProgram(_snapTarget.SlotIndex, _template)
-                    : _panel.MoveProgram(_sourceSlot, _snapTarget.SlotIndex);
-                if (ok) HandledBySnap = true; // 落账成功才标记（失败回退保持原样——EventSystem OnDrop 也不该再触发）
+                dropSlot = _snapTarget.SlotIndex;
+            }
+            else if (eventData.pointerCurrentRaycast.gameObject != null)
+            {
+                var drop = eventData.pointerCurrentRaycast.gameObject.GetComponentInParent<EditorSlotDrop>();
+                if (drop != null) dropSlot = drop.SlotIndex;
+            }
+
+            if (dropSlot >= 0)
+            {
+                // 落账（成功/失败都标记 HandledBySnap——本帧拖拽已处理，OnDrop 不再落账无双触发路径）
+                if (_source == DragSource.Library)
+                {
+                    _panel.InsertProgram(dropSlot, _template);
+                }
+                else
+                {
+                    _panel.MoveProgram(_sourceSlot, dropSlot);
+                }
+                HandledBySnap = true;
             }
             else if (_source == DragSource.InfoSlot)
             {
@@ -715,33 +819,34 @@ namespace TheLaw.UI
         // ====== 吸附状态机 ======
 
         /// <summary>
-        /// 每帧吸附判定（区域吸附）：指针在槽位矩形（Img/Desc 节点，外扩 SnapExpand）内即命中；
-        /// 多矩形重叠（Img 与其 Desc）→ 取中心距离最近。空槽位点（常显）同样可命中——拖入=插入该位置。
+        /// 每帧吸附判定（区域吸附）：指针屏幕点 ∈ 槽位包围盒（Img∪Desc 并集，外扩 SnapExpand）即命中；
+        /// 多矩形重叠 → 取中心距离最近。空槽位点（常显）同样可命中——拖入=插入该位置。
+        /// 锁定槽（且不允许顺移）直接排除——拖入必失败，不高亮误导。
         /// </summary>
         void UpdateSnap(PointerEventData eventData)
         {
             if (_panel == null || _slotTargets == null) return;
             float expand = _panel.SnapExpand;
-            var offset = new Vector4(expand, expand, expand, expand);
+            bool allowShiftLocked = _panel.AllowShiftLocked;
+            Vector2 pos = eventData.position;
             InfoSlotTarget best = null;
             float bestDist = float.MaxValue;
             foreach (var target in _slotTargets)
             {
-                if (target == null || target.Rect == null) continue;
-                // 矩形区域包含（外扩）判定
-                if (!RectTransformUtility.RectangleContainsScreenPoint(target.Rect, eventData.position, _cam, offset))
+                if (target == null) continue;
+                if (!allowShiftLocked && _panel.IsSlotLocked(target.SlotIndex)) continue; // 锁定槽不可拖入
+                var r = target.ScreenRect;
+                // 外扩矩形包含判定（区域吸附——包围盒自动覆盖 Img↔Desc 空隙）
+                if (pos.x < r.xMin - expand || pos.x > r.xMax + expand || pos.y < r.yMin - expand || pos.y > r.yMax + expand)
                 {
                     continue;
                 }
                 // 多矩形重叠：取中心距离最近
-                if (RectTransformUtility.ScreenPointToLocalPointInRectangle(target.Rect, eventData.position, _cam, out var local))
+                float dist = (pos - r.center).magnitude;
+                if (dist < bestDist)
                 {
-                    float dist = local.magnitude;
-                    if (dist < bestDist)
-                    {
-                        best = target;
-                        bestDist = dist;
-                    }
+                    best = target;
+                    bestDist = dist;
                 }
             }
             if (best != _snapTarget)
@@ -778,31 +883,22 @@ namespace TheLaw.UI
         }
     }
 
-    /// <summary>信息区槽位放置目标（Img_InfoProgram1~4 挂载——拖入插入语义；吸附路径 HandledBySnap 防重）。</summary>
-    public class EditorSlotDrop : MonoBehaviour, IDropHandler
+    /// <summary>
+    /// 信息区槽位标记组件（Img_InfoProgram1~4 挂载）。
+    /// 落账职责在 EditorProgramDrag.OnEndDrag（Unity ReleaseMouse 顺序 OnDrop 先于 OnEndDrag——此处落账会双触发）。
+    /// 本组件只用于：OnEndDrag 精确命中识别（pointerCurrentRaycast → GetComponentInParent&lt;EditorSlotDrop&gt; → SlotIndex）。
+    /// </summary>
+    public class EditorSlotDrop : MonoBehaviour
     {
         private PieceEditPanel _panel;
         private int _slotIndex;
+
+        public int SlotIndex => _slotIndex;
 
         public void Init(PieceEditPanel panel, int slotIndex)
         {
             _panel = panel;
             _slotIndex = slotIndex;
-        }
-
-        public void OnDrop(PointerEventData eventData)
-        {
-            var drag = eventData.pointerDrag != null ? eventData.pointerDrag.GetComponent<EditorProgramDrag>() : null;
-            if (drag == null || drag.HandledBySnap) return; // 吸附已落账 → 跳过（防双触发）
-            // 精确落在槽上（无吸附路径）：Library=插入 / InfoSlot=重排
-            if (drag.Source == EditorProgramDrag.DragSource.Library)
-            {
-                _panel.InsertProgram(_slotIndex, drag.Template);
-            }
-            else
-            {
-                _panel.MoveProgram(drag.SourceSlot, _slotIndex);
-            }
         }
     }
 }

@@ -40,13 +40,12 @@ namespace TheLaw.UI
                 .Join(DOTween.To(() => _img.color, c => _img.color = c, new Color(1f, 0.84f, 0.2f, 1f), 0.08f)); // 金色 #FFD75C
         }
 
-        /// <summary>吸附解除：恢复原始颜色/缩放（幂等）。</summary>
+        /// <summary>吸附解除：Kill tween + 恢复缩放。颜色不恢复——由 FillPieceInfo 状态色统一控制（防覆盖落账后的新状态色）。</summary>
         public void Deactivate()
         {
             Kill();
-            if (_img != null && _rt != null && _origRecorded)
+            if (_rt != null && _origRecorded)
             {
-                _img.color = _origColor;
                 _rt.localScale = _origScale;
             }
         }

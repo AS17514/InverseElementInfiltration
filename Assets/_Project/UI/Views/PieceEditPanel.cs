@@ -823,7 +823,7 @@ namespace TheLaw.UI
 
         public void OnEndDrag(PointerEventData eventData)
         {
-            _cg.alpha = 1f;
+            if (_cg != null) _cg.alpha = 1f;
             if (_ghost != null) Destroy(_ghost);
             _ghost = null;
             if (_cancelled) { _cancelled = false; ClearSnap(true); _slotTargets = null; return; } // Esc 已取消：只清理不落账
@@ -927,11 +927,12 @@ namespace TheLaw.UI
             _snapTarget = null;
         }
 
-        /// <summary>取消拖拽（Esc 兜底——InputSystem 的 cancel 不会路由到拖拽源；恢复 alpha/幽灵/高亮，不落账）。</summary>
+        /// <summary>取消拖拽（Esc 兜底——InputSystem 的 cancel 不会路由到拖拽源；恢复 alpha/幽灵/高亮，不落账）。
+        /// ⚠️ 幽灵副本组件被 Destroy 时也会触发本方法——Instantiate 不复制 private 字段，副本的 _cg 为 null，必须判空。</summary>
         void CancelDrag()
         {
             _cancelled = true;
-            _cg.alpha = 1f;
+            if (_cg != null) _cg.alpha = 1f;
             if (_ghost != null) Destroy(_ghost);
             _ghost = null;
             ClearSnap(true);

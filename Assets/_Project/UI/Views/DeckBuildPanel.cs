@@ -14,9 +14,9 @@ namespace TheLaw.UI
     /// 牌组构筑面板（DeckBuild 事件——"整备营地"）：从牌池选牌组成出战牌组，确认后经 Resolver.BuildDeck 落账。
     /// 布局（场景拼接，脚本只对接）：
     ///   Grp/Grp_PieceInfo                      —— 右侧信息区（选中棋子详情，同 PieceEditPanel）
-    ///   Grp/Grp_BuildAndLimit/Grp_PieceDisplay/Viewport/Content —— 牌池列表（脚本动态生成 Piece_Card）
+    ///   Grp/Grp_BuildAndLimit/Grp_Build/Viewport/Content —— 出战列表（当前手牌；cell 180×212）
     ///   Grp/Grp_BuildAndLimit/Grp_DeckLimit    —— 构筑限制 tag 容器（数量/价值）
-    ///   Grp/Grp_R/Grp_Pieces/Grp_PieceDisplay/Viewport/Content  —— 出战列表（脚本动态生成）
+    ///   Grp/Grp_R/Grp_Pieces/Grp_PieceDisplay/Viewport/Content  —— 牌池列表（所有棋子；cell 150×150）
     ///   Grp/Grp_R/Grp_Low/Btn_Next             —— 确认按钮
     /// 交互：
     ///   点牌池卡 = 入队（Toggle isOn 切换）；点出战卡 = 出队（Button 点击）
@@ -32,8 +32,8 @@ namespace TheLaw.UI
         private GameState _state;
 
         // ====== 节点引用 ======
-        private Transform _poolContent;   // 牌池列表 Content（Grp_BuildAndLimit/Grp_PieceDisplay/Viewport/Content）
-        private Transform _deckContent;   // 出战列表 Content（Grp_R/Grp_Pieces/Grp_PieceDisplay/Viewport/Content）
+        private Transform _poolContent;   // 牌池列表 Content（Grp_R/Grp_Pieces/Grp_PieceDisplay/Viewport/Content——所有棋子）
+        private Transform _deckContent;   // 出战列表 Content（Grp_BuildAndLimit/Grp_Build/Viewport/Content——当前手牌）
         private Transform _limitRoot;     // 构筑限制 tag 容器（Grp_BuildAndLimit/Grp_DeckLimit）
         private TMP_Text _tagSize;        // 数量 tag（"数量 x/y"）
         private TMP_Text _tagValue;       // 价值 tag（"价值 x/y"）
@@ -96,8 +96,8 @@ namespace TheLaw.UI
 
         void ResolveNodes()
         {
-            _poolContent = transform.Find("Grp/Grp_BuildAndLimit/Grp_PieceDisplay/Viewport/Content");
-            _deckContent = transform.Find("Grp/Grp_R/Grp_Pieces/Grp_PieceDisplay/Viewport/Content");
+            _poolContent = transform.Find("Grp/Grp_R/Grp_Pieces/Grp_PieceDisplay/Viewport/Content"); // 牌池（所有棋子）
+            _deckContent = transform.Find("Grp/Grp_BuildAndLimit/Grp_Build/Viewport/Content");       // 出战（当前手牌）
             _limitRoot = transform.Find("Grp/Grp_BuildAndLimit/Grp_DeckLimit");
 
             _pieceInfo = transform.Find("Grp/Grp_PieceInfo");

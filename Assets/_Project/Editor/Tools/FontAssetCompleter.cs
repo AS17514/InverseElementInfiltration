@@ -55,59 +55,6 @@ namespace TheLaw.EditorTools
             Debug.Log($"[Font] 完成：{before} → {after} 字符 / {asset.atlasTextures.Length} 页 Atlas / 模式 Dynamic");
         }
 
-        /// <summary>高清晰度重建：72pt + 4096 atlas + padding 12（更清晰——适合大字号 UI）。新建资产不动旧资产（引用不断）。</summary>
-        [MenuItem("Tools/Font/Rebuild Font (72pt HighRes)")]
-        public static void Rebuild72()
-        {
-            const string newPath = "Assets/Fonts/TMP/AlibabaFangYuan_SDF_72.asset";
-            var font = AssetDatabase.LoadAssetAtPath<Font>(FontPath);
-            if (font == null)
-            {
-                Debug.LogError($"[Font] 未找到字体: {FontPath}");
-                return;
-            }
-            var asset = TMP_FontAsset.CreateFontAsset(font, 72, 12, GlyphRenderMode.SDFAA, 4096, 4096, AtlasPopulationMode.Dynamic, true);
-            asset.name = "AlibabaFangYuan_SDF_72";
-            var _ = asset.atlasTexture; // m_AtlasTexture 懒加载 workaround
-            bool ok = asset.TryAddCharacters(BuildSubset());
-
-            AssetDatabase.CreateAsset(asset, newPath);
-            AssetDatabase.AddObjectToAsset(asset.material, asset);
-            foreach (var atlas in asset.atlasTextures)
-            {
-                if (atlas != null) AssetDatabase.AddObjectToAsset(atlas, asset);
-            }
-            AssetDatabase.SaveAssets();
-            AssetDatabase.Refresh();
-
-            Debug.Log($"[Font] 72pt 重建完成：{asset.characterTable.Count} 字符 / {asset.atlasTextures.Length} 页 / 体积 {new System.IO.FileInfo(newPath).Length / 1024 / 1024}MB");
-        }
-
-        /// <summary>把 TMP Settings 默认字体切到 72pt 高清资产（全局 UI 生效；显式引用 48 资产的 3D 文本不受影响）。</summary>
-        [MenuItem("Tools/Font/Set Default Font (72pt HighRes)")]
-        public static void SetDefault72()
-        {
-            const string newPath = "Assets/Fonts/TMP/AlibabaFangYuan_SDF_72.asset";
-            var asset = AssetDatabase.LoadAssetAtPath<TMP_FontAsset>(newPath);
-            if (asset == null)
-            {
-                Debug.LogError($"[Font] 未找到资产: {newPath}（先跑 Rebuild Font (72pt HighRes)）");
-                return;
-            }
-            var settingsAsset = AssetDatabase.LoadMainAssetAtPath("Assets/TextMesh Pro/Resources/TMP Settings.asset");
-            if (settingsAsset == null)
-            {
-                Debug.LogError("[Font] 未找到 TMP Settings.asset");
-                return;
-            }
-            var so = new SerializedObject(settingsAsset);
-            so.FindProperty("m_defaultFontAsset").objectReferenceValue = asset;
-            so.ApplyModifiedProperties();
-            EditorUtility.SetDirty(settingsAsset);
-            AssetDatabase.SaveAssets();
-            Debug.Log("[Font] 默认字体已切到 AlibabaFangYuan_SDF_72");
-        }
-
         /// <summary>重建：字号 48 动态子集（替代 90pt 的 81.5MB 版本，体积 ~12MB）。</summary>
         [MenuItem("Tools/Font/Rebuild Font (48pt Dynamic Subset)")]
         public static void Rebuild48()

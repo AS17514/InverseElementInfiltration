@@ -258,7 +258,13 @@ namespace TheLaw.Gameplay
                     case ExecuteRequest execute:
                         if (_state.GetPiece(execute.pieceId)?.side == side)
                         {
-                            ExecutePiece(execute.pieceId, request.free, side); // 玩家逐槽选择 / AI 自动选（内部按 side 分流）
+                            // 免费执行资格（额外行动——方案 B）：有资格 → 本次免费 + 资格用掉（保留到使用为止，有效期待策划拍板）
+                            bool free = request.free || _state.FreeExecutes.Contains(execute.pieceId);
+                            if (free && _state.FreeExecutes.Remove(execute.pieceId))
+                            {
+                                EventCenter.Instance.EventTrigger(GameEvent.BuffsChanged, execute.pieceId);
+                            }
+                            ExecutePiece(execute.pieceId, free, side); // 玩家逐槽选择 / AI 自动选（内部按 side 分流）
                         }
                         break;
                 }
@@ -266,13 +272,6 @@ namespace TheLaw.Gameplay
             finally
             {
                 _guard.Exit();
-            }
-            // 守卫退出后：落账级挂起 + 流程级额外执行（防重入的"待执行队列"出口）
-            _resolver.FlushPendingActions();
-            var extraExecutes = _resolver.TakePendingExtraExecutes();
-            foreach (var pieceId in extraExecutes)
-            {
-                ExecutePiece(pieceId, true, side);
             }
             CheckVictory(false);
             CheckActionPoints();

@@ -21,6 +21,8 @@ namespace TheLaw.Data
         WaveAnnounced,         // 波次预告（波次号, 阵容）
         PromoteAnnounced,      // 敌方升变预告（pieceId, newDefId, 倒计时）
         EventOpened,           // 事件关打开（携带 CurrentEventId——UI 打开事件界面）
+        ExtraActionGranted,    // 免费行动资格授予（携带棋子 Id——UI 显示"免费行动"标记）
+        BuffsChanged,          // 棋子 buff 变化（携带棋子 Id——UI 刷新该棋子的 buff 标记；查询 BuffDisplay.GetBuffs）
 
         // ---- UI → 规则层（玩家输入/表现完成）----
         PlayerCellSelected,    // 玩家选格（落点/目标）

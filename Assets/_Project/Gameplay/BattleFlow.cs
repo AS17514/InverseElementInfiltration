@@ -262,7 +262,6 @@ namespace TheLaw.Gameplay
                             bool free = request.free || _state.FreeExecutes.Contains(execute.pieceId);
                             if (free && _state.FreeExecutes.Remove(execute.pieceId))
                             {
-                                Debug.Log($"[BattleFlow] 免费行动资格消耗：棋子 {execute.pieceId}（本次执行不扣 AP）");
                                 EventCenter.Instance.EventTrigger(GameEvent.BuffsChanged, execute.pieceId);
                             }
                             ExecutePiece(execute.pieceId, free, side); // 玩家逐槽选择 / AI 自动选（内部按 side 分流）

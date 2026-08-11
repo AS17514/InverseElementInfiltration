@@ -301,7 +301,6 @@ namespace TheLaw.Gameplay
                     {
                         if (_state.FreeExecutes.Add(killer.Id))
                         {
-                            Debug.Log($"[Resolver] 免费行动资格授予：棋子 {killer.Id}（击杀触发——下次执行免费）");
                             EventCenter.Instance.EventTrigger(GameEvent.ExtraActionGranted, killer.Id);
                             EventCenter.Instance.EventTrigger(GameEvent.BuffsChanged, killer.Id);
                         }

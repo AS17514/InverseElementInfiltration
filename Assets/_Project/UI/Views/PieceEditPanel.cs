@@ -15,7 +15,7 @@ namespace TheLaw.UI
     /// 编辑语义：按 defId（种类级）整组替换 4 槽程序（EditorSession.EditProgram，经 Resolver 写种类级表）。
     /// 排序 = 插入语义（网页列表拖拽）：拖入 = 插入该位置（原块及之后顺移）；槽间拖 = 重排；拖出空白 = 移除。
     /// 吸附位点 = 信息区 Grp_InfoProgram 的 Img_InfoProgram1~4（+ Grp_ProgramDesc 的 Txt_InfoProgram1~4Desc 双节点判定）。
-    /// 锁定块（模板原始程序块）：不可拖出/移除；插入顺移是否允许移动锁定块由 _allowShiftLocked 控制（策划可调）。
+    /// 锁定块（模板原始程序块）：绝对固定——不可拖出/移除/作为吸附目标（拖入锁定槽直接拒绝）。
     /// </summary>
     public class PieceEditPanel : PanelBase
     {
@@ -25,9 +25,7 @@ namespace TheLaw.UI
         [Tooltip("吸附判定：槽位矩形外扩量（区域吸附——指针进入外扩矩形即命中，多矩形重叠取中心最近）")]
         [SerializeField] private float _snapExpand = 10f;
         [Header("程序插入规则（策划可调）")]
-        [Tooltip("满 4 槽时插入是否顶出末尾块（false=拒绝插入）")]
-        [SerializeField] private bool _dropWhenFull = true;
-        [Tooltip("插入/重排是否允许顺移锁定块（模板原始程序块=locked；false=插入点之后含锁定块则拒绝）")]
+        [Tooltip("锁定块是否允许被顺移（当前绝对固定——false 锁定槽直接拒绝；true 时 Insert/Move 目标为锁定槽仍拒绝，仅解锁顺移区间）")]
         [SerializeField] private bool _allowShiftLocked = false;
 
         // ====== 节点引用 ======
@@ -310,9 +308,6 @@ namespace TheLaw.UI
             return slotIndex >= 0 && slotIndex < _slotLocked.Count && _slotLocked[slotIndex];
         }
 
-        /// <summary>是否允许顺移锁定块（吸附判定用——不允许时锁定槽直接排除）。</summary>
-        public bool AllowShiftLocked => _allowShiftLocked;
-
         /// <summary>刷新棋子卡面程序图标（Grp_PieceProgramInfo 内 Piece_ProgramInfo）——编辑后按当前程序数动态增删缩略图。</summary>
         void RefreshPieceCardProgram(int defId)
         {
@@ -529,7 +524,7 @@ namespace TheLaw.UI
             return new List<Template>();
         }
 
-        /// <summary>锁定标记：模板原始程序块（def 默认模组前 N 槽）锁定——不可拖出/移除；顺移规则由 _allowShiftLocked 控制。</summary>
+        /// <summary>锁定标记：模板原始程序块（def 默认模组前 N 槽）锁定——绝对固定（当前 _allowShiftLocked=false）。</summary>
         void InitLockedFlags(PieceDef def)
         {
             _slotLocked.Clear();
@@ -603,50 +598,49 @@ namespace TheLaw.UI
             }
         }
 
-        // ====== 程序编排（插入排序语义——整组提交） ======
+        // ====== 程序编排（锁定块在前绝对固定 + 替换/插入语义——整组提交） ======
 
         /// <summary>
-        /// 拖入到槽 to（插入点）：模板插到 to，原 to 及之后顺移（锁定标记同步位移）。
-        /// 满 4 槽：_dropWhenFull=true 顶出末尾（末尾锁定块不可顶） / false 拒绝。顺移区间含锁定块且 !_allowShiftLocked → 拒绝。
-        /// to 可超过当前长度（空槽位点）——clamp 到末尾 = 追加。
+        /// 拖入到槽 to（2026-08-11 需求对齐）：
+        /// - 目标锁定槽 → 拒绝（锁定块绝对固定，不可动）
+        /// - 目标非锁定有块槽 → 替换（原块回程序库——无限复制语义下无额外动作）
+        /// - 目标空槽位点（to ≥ Count）→ 插入末尾（紧凑重排，空位按顺序补齐）
+        /// 满 4 槽时无空槽 → 只有替换路径（不再顶出）。
         /// </summary>
         public bool InsertProgram(int to, Template template)
         {
             if (_selectedDefId < 0 || template == null) return false;
-            to = Mathf.Clamp(to, 0, _slotTemplates.Count); // 空槽位点（to ≥ Count）= 末尾追加；程序紧凑无 null 占位
-            if (!CanShiftFrom(to)) return false; // 顺移区间锁定检查
-            if (_slotTemplates.Count >= 4)
+            to = Mathf.Clamp(to, 0, 4);
+            if (to < _slotLocked.Count && _slotLocked[to]) return false; // 目标锁定槽：拒绝
+            if (to < _slotTemplates.Count)
             {
-                if (!_dropWhenFull) return false;      // 拒绝
-                if (_slotLocked[_slotTemplates.Count - 1] && !_allowShiftLocked) return false; // 末尾锁定块不可顶出
-                _slotTemplates.RemoveAt(_slotTemplates.Count - 1); // 顶出末尾
-                _slotLocked.RemoveAt(_slotLocked.Count - 1);       // 锁定标记同步
+                // 非锁定有块槽：替换（锁定标记不变——原块本就非锁定）
+                _slotTemplates[to] = template;
             }
-            _slotTemplates.Insert(to, template);
-            _slotLocked.Insert(to, false); // 新块不锁定
+            else
+            {
+                // 空槽位点（to ≥ Count）：插入末尾（紧凑重排；Count==4 时无空槽不会走到这）
+                _slotTemplates.Insert(to, template);
+                _slotLocked.Insert(to, false); // 新块不锁定
+            }
             CommitProgram();
             return true;
         }
 
-        /// <summary>槽间重排：从 from 移到 to（移除源后插入目标位——from&lt;to 时目标位前移一；锁定标记同步位移）。</summary>
+        /// <summary>槽间重排：从 from 移到 to（2026-08-11 需求对齐：目标锁定槽 → 拒绝；否则插入语义——移除源后插到目标位，其他块顺移重排）。</summary>
         public bool MoveProgram(int from, int to)
         {
             if (_selectedDefId < 0 || from < 0 || from >= _slotTemplates.Count) return false;
             if (_slotLocked[from]) return false; // 锁定块不可拖出
             if (from == to) return false;
+            to = Mathf.Clamp(to, 0, 4);
+            if (to < _slotLocked.Count && _slotLocked[to]) return false; // 目标锁定槽：拒绝（锁定块绝对固定）
             var template = _slotTemplates[from];
             var locked = _slotLocked[from];
             _slotTemplates.RemoveAt(from);
             _slotLocked.RemoveAt(from);
             if (to > from) to--;
             to = Mathf.Clamp(to, 0, _slotTemplates.Count); // 空槽位点 = 末尾追加
-            if (!CanShiftFrom(to))
-            {
-                // 顺移区间含锁定块且不允许顺移 → 还原移除（防丢块）
-                _slotTemplates.Insert(Mathf.Min(from, _slotTemplates.Count), template);
-                _slotLocked.Insert(Mathf.Min(from, _slotLocked.Count), locked);
-                return false;
-            }
             _slotTemplates.Insert(to, template);
             _slotLocked.Insert(to, locked);
             CommitProgram();
@@ -661,17 +655,6 @@ namespace TheLaw.UI
             _slotTemplates.RemoveAt(index);
             _slotLocked.RemoveAt(index); // 锁定标记同步
             CommitProgram();
-            return true;
-        }
-
-        /// <summary>顺移区间检查：插入点 to 之后（含 to）的块若含锁定块且不允许顺移 → 拒绝。</summary>
-        bool CanShiftFrom(int to)
-        {
-            if (_allowShiftLocked) return true;
-            for (int i = to; i < _slotTemplates.Count; i++)
-            {
-                if (_slotLocked[i]) return false;
-            }
             return true;
         }
 
@@ -893,13 +876,12 @@ namespace TheLaw.UI
         /// <summary>
         /// 每帧吸附判定（区域吸附）：指针屏幕点 ∈ 槽位包围盒（Img∪Desc 并集，外扩 SnapExpand）即命中；
         /// 多矩形重叠 → 取中心距离最近。空槽位点（常显）同样可命中——拖入=插入该位置。
-        /// 锁定槽（且不允许顺移）与自身源槽直接排除。
+        /// 锁定槽（绝对固定不可拖入）与自身源槽直接排除——拖入必失败，不高亮误导。
         /// </summary>
         void UpdateSnap(PointerEventData eventData)
         {
             if (_panel == null || _slotTargets == null) return;
             float expand = _panel.SnapExpand;
-            bool allowShiftLocked = _panel.AllowShiftLocked;
             Vector2 pos = eventData.position;
             InfoSlotTarget best = null;
             float bestDist = float.MaxValue;
@@ -907,7 +889,7 @@ namespace TheLaw.UI
             {
                 if (target == null) continue;
                 if (target.SlotIndex == _sourceSlot) continue; // 自身源槽：不吸附不高亮（Library 模式 _sourceSlot=-1 永不匹配）
-                if (!allowShiftLocked && _panel.IsSlotLocked(target.SlotIndex)) continue; // 锁定槽不可拖入
+                if (_panel.IsSlotLocked(target.SlotIndex)) continue; // 锁定槽不可拖入（绝对固定——恒排除）
                 var r = target.ScreenRect;
                 // 外扩矩形包含判定（区域吸附——包围盒自动覆盖 Img↔Desc 空隙）
                 if (pos.x < r.xMin - expand || pos.x > r.xMax + expand || pos.y < r.yMin - expand || pos.y > r.yMax + expand)

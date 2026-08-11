@@ -358,12 +358,17 @@ namespace TheLaw.Gameplay
                 }
             }
 
-            // 当前事件限制（CurrentEventId 查 EventDefinition；查不到 = 无限制）
+            // 当前事件限制（CurrentEventId 查 EventDefinition；查不到 = 拒绝——构筑必须处于事件上下文，防超限绕过）
             var ev = string.IsNullOrEmpty(_state.CurrentEventId)
                 ? null
                 : ConfigTable.FindByName<EventDefinition>(_state.CurrentEventId);
-            int sizeLimit = ev != null ? ev.deckSizeLimit : 0;
-            int valueLimit = ev != null ? ev.totalValueLimit : 0;
+            if (ev == null)
+            {
+                Core.Assert.Fail($"BuildDeck: 无活动事件（CurrentEventId='{_state.CurrentEventId}'）——构筑拒绝（2026-08-11 加固）");
+                return false;
+            }
+            int sizeLimit = ev.deckSizeLimit;
+            int valueLimit = ev.totalValueLimit;
 
             int totalValue = 0;
             foreach (var id in seen)

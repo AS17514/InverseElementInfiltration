@@ -147,7 +147,12 @@ namespace TheLaw.UI
             var ev = string.IsNullOrEmpty(_state.CurrentEventId)
                 ? null
                 : ConfigTable.FindByName<EventDefinition>(_state.CurrentEventId);
-            if (ev != null)
+            if (ev == null)
+            {
+                // 2026-08-11 排查：无活动事件（CurrentEventId 空）→ 限制降级 0——不再静默，打日志暴露
+                Debug.LogWarning($"[DeckBuild] 无活动事件（CurrentEventId='{_state.CurrentEventId}'）——构筑限制降级为 0；需从事件关进入构筑");
+            }
+            else
             {
                 _deckSizeLimit = ev.deckSizeLimit;
                 _valueLimit = ev.totalValueLimit;

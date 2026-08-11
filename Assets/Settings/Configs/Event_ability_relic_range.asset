@@ -26,3 +26,5 @@ MonoBehaviour:
       amount: 0
       abilityId: 0
       relicName: Relic_relic_range
+  deckSizeLimit: 0
+  totalValueLimit: 0

@@ -84,17 +84,17 @@ namespace TheLaw.UI
                 Complete(); // 找不到定义直接推进（防卡关）
                 return;
             }
-            if (_title != null) _title.text = _currentEvent.name.Replace("Event_", ""); // 资产名兜底（文案字段待后端）
+            if (_title != null) _title.text = string.IsNullOrEmpty(_currentEvent.title) ? _currentEvent.name.Replace("Event_", "") : _currentEvent.title;
             if (_desc != null) _desc.text = Describe(_currentEvent);
             BuildOptions();
             gameObject.SetActive(true);
         }
 
-        /// <summary>描述：优先资产内字段（无描述字段时用资产名——测试数据描述在 JSON 未导入描述字段时的兜底）。</summary>
+        /// <summary>描述：优先资产内 description 字段（JSON 导入）；空则回退标题/资产名（历史资产未重导入时兜底）。</summary>
         static string Describe(EventDefinition ev)
         {
-            // EventDefinition 无 description 字段——测试数据 JSON 有但未导入；先用名称
-            return ev.name;
+            if (!string.IsNullOrEmpty(ev.description)) return ev.description;
+            return ev.title;
         }
 
         void BuildOptions()

@@ -13,6 +13,8 @@ MonoBehaviour:
   m_Name: Event_deck_standard
   m_EditorClassIdentifier: 
   _id: 1170600691
+  title: "\u6574\u5907\u8425\u5730"
+  description: "\u6218\u6597\u524D\u6700\u540E\u7684\u6574\u5907\u70B9\u3002\u4F60\u53EF\u4EE5\u8C03\u6574\u968F\u8EAB\u7684\u68CB\u5B50\u724C\u7EC4\uFF0C\u4E3A\u63A5\u4E0B\u6765\u7684\u6218\u6597\u505A\u51C6\u5907\u3002"
   options:
   - optionId: start_deck
     label: "\u6784\u7B51\u724C\u7EC4\uFF08\u8FDB\u5165\u6218\u6597\uFF09"

@@ -181,6 +181,8 @@ namespace TheLaw.EditorTools
                 {
                     string assetPath = $"{ConfigAssetsDir}/Event_{e.eventId}.asset";
                     var def = LoadOrCreate<EventDefinition>(assetPath, $"Event_{e.eventId}"); // 增量：已存在更新不删建
+                    def.title = e.title;
+                    def.description = e.description;
                     def.options = new List<EventOption>();
                     foreach (var o in e.options ?? new List<OptionJson>())
                     {

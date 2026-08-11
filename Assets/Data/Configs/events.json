@@ -72,6 +72,8 @@
       "eventId": "deck_standard",
       "title": "整备营地",
       "description": "战斗前最后的整备点。你可以调整随身的棋子牌组，为接下来的战斗做准备。",
+      "deckSizeLimit": 12,
+      "totalValueLimit": 30,
       "options": [
         {
           "optionId": "start_deck",

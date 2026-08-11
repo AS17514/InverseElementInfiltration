@@ -1142,7 +1142,15 @@ namespace TheLaw.UI
             var reused = new bool[oldCards.Count];
             var layout = _panel.HandRoot.GetComponent<HandLayoutController>();
             if (layout == null) layout = _panel.HandRoot.gameObject.AddComponent<HandLayoutController>();
-            var hand = _state.Hand;
+            // 手牌显示排序：类型优先（初始→部署→升变）+ 同类型价值升序（全场景统一——CardTypeColors.SortPieces）
+            var handDefs = new List<PieceDef>();
+            foreach (var id in _state.Hand)
+            {
+                var d = ConfigTable.Find<PieceDef>(id);
+                if (d != null) handDefs.Add(d);
+            }
+            CardTypeColors.SortPieces(handDefs);
+            var hand = handDefs.ConvertAll(d => d.Id);
             for (int i = 0; i < hand.Count; i++)
             {
                 var def = ConfigTable.Get<PieceDef>(hand[i]);
@@ -1211,13 +1219,12 @@ namespace TheLaw.UI
             var typeText = FindCardNode(card.transform, "Img_InfoType")?.GetComponentInChildren<TMP_Text>();
             if (typeText != null) typeText.text = def.pieceType == PieceType.Initial ? "始" : def.pieceType == PieceType.Deployable ? "部" : "升";
             // 程序描述 + 槽位显隐（未配置的块/解释隐藏；每个槽填各自的单槽描述）
+            // 程序 = 编辑差异优先（CurrentPrograms——编辑结果在此），回退 Def 默认模组（2026-08-11 数据链修复）
             int slotCount = 0;
             List<Template> slots = null;
-            if (def.programSet != null && def.programSet.Count > 0 && def.programSet[0].slots != null)
-            {
-                slots = def.programSet[0].slots;
-                slotCount = Mathf.Min(slots.Count, 4);
-            }
+            if (_state != null && _state.TryGetCurrentProgram(def.Id, out var edited)) slots = edited;
+            else if (def.programSet != null && def.programSet.Count > 0 && def.programSet[0].slots != null) slots = def.programSet[0].slots;
+            if (slots != null) slotCount = Mathf.Min(slots.Count, 4);
             for (int s = 0; s < 4; s++)
             {
                 bool show = s < slotCount;

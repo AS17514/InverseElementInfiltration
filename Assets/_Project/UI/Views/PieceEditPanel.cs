@@ -80,10 +80,13 @@ namespace TheLaw.UI
 
         void OnNext()
         {
-            // 编辑完成 → 结束编辑会话（清 EditingDefs 标记）+ 通知 TowerFlow 推进（面板关闭——下一节点 EventOpened 会再激活）
-            if (_selectedDefId >= 0 && _editor != null)
+            // 编辑完成 → 结束编辑会话（清全部 EditingDefs 标记——防残留进存档）+ 通知 TowerFlow 推进
+            if (_editor != null)
             {
-                _editor.EndEdit(_selectedDefId);
+                foreach (var defId in new List<int>(_state.EditingDefs))
+                {
+                    _editor.EndEdit(defId);
+                }
             }
             gameObject.SetActive(false);
             EventCenter.Instance.EventTrigger(GameEvent.EventCompleted);
@@ -164,6 +167,13 @@ namespace TheLaw.UI
                     }
                 }
             }
+            // 程序块排序：类型优先（Move→Attack→Skip），同类型保持原顺序（2026-08-11 需求）
+            _programLibrary.Sort((a, b) =>
+            {
+                int ta = a is MoveTemplate ? 0 : a is AttackTemplate ? 1 : 2;
+                int tb = b is MoveTemplate ? 0 : b is AttackTemplate ? 1 : 2;
+                return ta.CompareTo(tb);
+            });
         }
 
         // ====== 左列：棋子列表（Piece_Card prefab + ToggleGroup 单选 + 程序图标区） ======
@@ -195,7 +205,10 @@ namespace TheLaw.UI
                 _progTemplate = progHandle.Result; // 缓存模板（RefreshPieceCardProgram 动态增删用）
             }
             foreach (Transform child in _pieceContent) Destroy(child.gameObject);
-            foreach (var def in ConfigTable.All<PieceDef>())
+            // 类型优先（初始→部署→升变）+ 同类型价值升序（全场景统一排序——CardTypeColors.SortPieces）
+            var defs = new List<PieceDef>(ConfigTable.All<PieceDef>());
+            CardTypeColors.SortPieces(defs);
+            foreach (var def in defs)
             {
                 var go = Instantiate(cardHandle.Result, _pieceContent);
                 go.name = $"PieceCard_{def.name}";

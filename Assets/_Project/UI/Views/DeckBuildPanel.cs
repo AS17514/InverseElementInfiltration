@@ -57,6 +57,7 @@ namespace TheLaw.UI
         private readonly List<GameObject> _deckCards = new List<GameObject>(); // 出战卡实例（按 _deck 同步）
         private readonly List<Toggle> _poolToggles = new List<Toggle>(); // 牌池卡 Toggle（索引 = _sortedDefs 索引）
         private GameObject _cardTemplate; // Piece_Card prefab（Addressables——牌池/出战共用）
+        private GameObject _progTemplate; // Piece_ProgramInfo prefab（卡面程序槽图标——Addressables）
 
         // 当前事件限制（0 = 无限制）
         private int _deckSizeLimit;
@@ -155,11 +156,11 @@ namespace TheLaw.UI
 
         // ====== 牌池 ======
 
-        /// <summary>牌池数据：全部棋子按 Id 排序（卡片顺序稳定，与摆放顺序无关）。</summary>
+        /// <summary>牌池数据：类型优先（初始→部署→升变）+ 同类型价值升序（全场景统一排序——CardTypeColors.SortPieces）。</summary>
         List<PieceDef> GetSortedDefs()
         {
             var list = new List<PieceDef>(ConfigTable.All<PieceDef>());
-            list.Sort((a, b) => a.Id.CompareTo(b.Id));
+            CardTypeColors.SortPieces(list);
             return list;
         }
 
@@ -381,7 +382,8 @@ namespace TheLaw.UI
 
         // ====== 卡片数据填充（Piece_Card：Bg/Portrait/BaseInfo(类型·足迹·价值)/ProgramInfo）======
 
-        static void FillCardData(GameObject card, PieceDef def)
+        /// <summary>填充牌池/出战卡数据。程序 = 编辑差异优先（CurrentPrograms），回退 Def 默认模组。</summary>
+        void FillCardData(GameObject card, PieceDef def)
         {
             var bg = card.GetComponent<Image>();
             if (bg != null) bg.color = CardTypeColors.For(def.pieceType);
@@ -392,7 +394,30 @@ namespace TheLaw.UI
             {
                 typeText.text = def.pieceType == PieceType.Initial ? "始" : def.pieceType == PieceType.Deployable ? "部" : "升";
             }
-            // 立绘/足迹/程序块图标：资源与结构后续补充（先占位——不填不报错）
+            // 程序槽图标（Grp_PieceProgramInfo 内 Piece_ProgramInfo——编辑差异优先，2026-08-11 数据链修复）
+            var progRoot = FindDeep(card.transform, "Grp_PieceProgramInfo");
+            if (progRoot != null && _progTemplate != null)
+            {
+                List<Template> slots = null;
+                if (_state != null && _state.TryGetCurrentProgram(def.Id, out var edited)) slots = edited;
+                else if (def.programSet != null && def.programSet.Count > 0) slots = def.programSet[0].slots;
+                int count = slots != null ? Mathf.Min(slots.Count, 4) : 0;
+                // 复用已有图标，超出补建（卡片重建时已清空子物体——此处幂等）
+                int existing = progRoot.childCount;
+                for (int k = existing; k < count; k++) Instantiate(_progTemplate, progRoot);
+                int i = 0;
+                foreach (Transform p in progRoot)
+                {
+                    bool show = i < count;
+                    if (p.gameObject.activeSelf != show) p.gameObject.SetActive(show);
+                    if (show && slots != null)
+                    {
+                        var t = p.GetComponentInChildren<TMP_Text>();
+                        if (t != null) t.text = SlotTypeChar(slots[i]);
+                    }
+                    i++;
+                }
+            }
         }
 
         static Transform FindDeep(Transform root, string name)
@@ -415,7 +440,10 @@ namespace TheLaw.UI
             {
                 _infoTypeText.text = def.pieceType == PieceType.Initial ? "始" : def.pieceType == PieceType.Deployable ? "部" : "升";
             }
-            var slots = def.programSet != null && def.programSet.Count > 0 ? def.programSet[0].slots : null;
+            // 程序 = 编辑差异优先（CurrentPrograms——编辑结果在此），回退 Def 默认模组（2026-08-11 数据链修复）
+            List<Template> slots = null;
+            if (_state != null && _state.TryGetCurrentProgram(def.Id, out var edited)) slots = edited;
+            else if (def.programSet != null && def.programSet.Count > 0) slots = def.programSet[0].slots;
             int slotCount = slots != null ? Mathf.Min(slots.Count, 4) : 0;
             for (int i = 0; i < 4; i++)
             {
@@ -484,7 +512,9 @@ namespace TheLaw.UI
         System.Collections.IEnumerator LoadCardTemplate()
         {
             var handle = Addressables.LoadAssetAsync<GameObject>("Piece_Card");
+            var progHandle = Addressables.LoadAssetAsync<GameObject>("Piece_ProgramInfo"); // 卡面程序槽图标模板
             yield return handle;
+            yield return progHandle;
             if (handle.Status == UnityEngine.ResourceManagement.AsyncOperations.AsyncOperationStatus.Succeeded && handle.Result != null)
             {
                 _cardTemplate = handle.Result;
@@ -492,6 +522,10 @@ namespace TheLaw.UI
             else
             {
                 Debug.LogWarning("[DeckBuild] Piece_Card 加载失败——牌池/出战列表为空");
+            }
+            if (progHandle.Status == UnityEngine.ResourceManagement.AsyncOperations.AsyncOperationStatus.Succeeded && progHandle.Result != null)
+            {
+                _progTemplate = progHandle.Result;
             }
             // 重建统一由 OnShow（模板未就绪时 RebuildPoolWhenReady 等待）驱动——此处不重复触发
         }

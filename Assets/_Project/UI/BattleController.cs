@@ -7,6 +7,7 @@ using TheLaw.Gameplay;
 using TMPro;
 using UnityEngine;
 using UnityEngine.EventSystems;
+using UnityEngine.InputSystem;
 using UnityEngine.UI;
 
 namespace TheLaw.UI
@@ -282,11 +283,13 @@ namespace TheLaw.UI
                 RefreshTurnProgress();
             }
 
-            if (!Input.GetMouseButtonDown(0)) return;
+            // 2026-08-12：activeInputHandler=2（纯 Input System）——旧 Input.GetMouseButtonDown 失效（恒 false/抛异常）
+            // → 迁移 InputSystem API（与 BattleResultPanel/PieceEditPanel 一致）
+            if (Mouse.current == null || !Mouse.current.leftButton.wasPressedThisFrame) return;
             if (EventSystem.current != null && EventSystem.current.IsPointerOverGameObject()) return;
 
             // 射线打 Tile（棋子无碰撞，Tile 有 BoxCollider）
-            var ray = Camera.main != null ? Camera.main.ScreenPointToRay(Input.mousePosition) : default;
+            var ray = Camera.main != null ? Camera.main.ScreenPointToRay(Mouse.current.position.ReadValue()) : default;
             if (ray.origin == default || !Physics.Raycast(ray, out var hit, 200f)) return;
             var cell = PieceViewFactory.CellFromWorld(hit.point);
             HandleBoardClick(cell);

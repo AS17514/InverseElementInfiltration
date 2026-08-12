@@ -1,5 +1,6 @@
 using System.Collections.Generic;
 using UnityEngine;
+using UnityEngine.InputSystem;
 
 namespace TheLaw.UI
 {
@@ -100,7 +101,8 @@ namespace TheLaw.UI
                 SetHover(-1);
                 return;
             }
-            if (RectTransformUtility.ScreenPointToLocalPointInRectangle(_root, Input.mousePosition, uiCam, out Vector2 local))
+            // 2026-08-12：activeInputHandler=2（纯 Input System）——旧 Input.mousePosition 失效 → 迁移 InputSystem
+            if (RectTransformUtility.ScreenPointToLocalPointInRectangle(_root, Mouse.current != null ? Mouse.current.position.ReadValue() : Vector2.zero, uiCam, out Vector2 local))
             {
                 float halfW = _root.rect.width * 0.5f;
                 // 光标必须完整在手牌区矩形内（x + y）

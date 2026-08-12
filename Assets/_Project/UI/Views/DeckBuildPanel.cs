@@ -196,7 +196,7 @@ namespace TheLaw.UI
                 {
                     var defId = def.Id;
                     toggle.onValueChanged.RemoveAllListeners();
-                    toggle.onValueChanged.AddListener(on => OnPoolToggle(defId, on));
+                    toggle.onValueChanged.AddListener(on => OnPoolToggle(defId, on, toggle));
                     _poolToggles.Add(toggle);
                 }
             }
@@ -216,11 +216,16 @@ namespace TheLaw.UI
         }
 
         /// <summary>牌池卡点击：on=true 入队（超限拒绝回弹）；on=false 出队。信息显示由悬停（CardHover）负责——点击不显示。</summary>
-        void OnPoolToggle(int defId, bool on)
+        void OnPoolToggle(int defId, bool on, Toggle toggle)
         {
             if (on)
             {
-                if (!CanAdd(defId)) return; // 超限：Toggle 已置 true——手动回弹
+                if (!CanAdd(defId))
+                {
+                    // ⚠️ 第 8 条（后端发现）：超限时 Toggle 已置 true——必须回弹（防"灰色+勾选残留"双重误导）
+                    toggle.SetIsOnWithoutNotify(false); // 不回触发 onValueChanged（避免多余的出队刷新）
+                    return;
+                }
                 _deck.Add(defId);
             }
             else

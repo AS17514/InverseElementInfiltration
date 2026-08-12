@@ -138,6 +138,7 @@ namespace TheLaw.UI
         }
 
         // ========== 状态 ==========
+        HashSet<int> _batchFlashAttackers; // 表现组内攻击者闪白去重（#6 前端部分：AOE 多目标只闪攻击者一次——架构 §四.7 组内并行）
         bool _executing;             // 执行镜像进行中
         int _execPieceId = -1;
         List<Template> _execProgram;
@@ -555,16 +556,37 @@ namespace TheLaw.UI
         IEnumerator PresentationLoop()
         {
             _presentationPlaying = true;
-            yield return null; // 帧缓冲：合并同槽伴随事件（DamageDealt+PieceDied）
+            yield return null; // 帧缓冲：合并同槽伴随事件（DamageDealt+PieceDied）→ 同批为一组
             while (_presentations.Count > 0)
             {
-                var play = _presentations[0];
-                _presentations.RemoveAt(0);
-                yield return play();
+                // 组内并行（架构 §四.7：同槽表现并行、槽间串行——AOE 多目标同时闪白）
+                var batch = new List<System.Func<IEnumerator>>(_presentations);
+                _presentations.Clear();
+                _batchFlashAttackers = new HashSet<int>(); // 组内攻击者只闪一次
+                int pending = batch.Count;
+                foreach (var play in batch)
+                {
+                    StartCoroutine(PlayWithCount(play, () => pending--));
+                }
+                while (pending > 0) yield return null; // 组内全部完成 → 下一组（组间串行）
+                _batchFlashAttackers = null;
             }
             _presentationPlaying = false;
             EventCenter.Instance.EventTrigger(GameEvent.PresentationFinished);
             if (_executing) AdvanceAfterPresentation();
+        }
+
+        /// <summary>组内并行子协程：播完计数（finally 保证异常/中断也计数——防组等待卡死）。</summary>
+        System.Collections.IEnumerator PlayWithCount(System.Func<IEnumerator> play, System.Action onDone)
+        {
+            try
+            {
+                yield return play();
+            }
+            finally
+            {
+                onDone();
+            }
         }
 
         void OnPieceMoved(object data)
@@ -639,16 +661,20 @@ namespace TheLaw.UI
         {
             // 攻击者挥动闪白（动作反馈——2026-08-12 恢复：dacb39b 改闪目标时攻击者动作被整体删除；
             // 含空挥 TargetId=-1（AttackerId 所有攻击路径均有效））
-            var attacker = GameObject.Find($"Piece_{info.AttackerId}");
-            if (attacker != null)
+            // ⚠️ 组内去重（#6 前端部分）：AOE 多目标同组并行——同一攻击者只闪一次（HashSet.Add 首次 true）
+            if (_batchFlashAttackers == null || _batchFlashAttackers.Add(info.AttackerId))
             {
-                var asr = attacker.transform.Find("Portrait")?.GetComponent<SpriteRenderer>();
-                if (asr != null)
+                var attacker = GameObject.Find($"Piece_{info.AttackerId}");
+                if (attacker != null)
                 {
-                    var aOrig = asr.color;
-                    asr.color = Color.white;
-                    yield return new WaitForSeconds(AttackFlash); // 攻击者动作短闪
-                    asr.color = aOrig;
+                    var asr = attacker.transform.Find("Portrait")?.GetComponent<SpriteRenderer>();
+                    if (asr != null)
+                    {
+                        var aOrig = asr.color;
+                        asr.color = Color.white;
+                        yield return new WaitForSeconds(AttackFlash); // 攻击者动作短闪
+                        asr.color = aOrig;
+                    }
                 }
             }
             // 目标受击闪烁（被攻击方；空挥 TargetId=-1 跳过）

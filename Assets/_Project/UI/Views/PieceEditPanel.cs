@@ -637,22 +637,37 @@ namespace TheLaw.UI
             return true;
         }
 
-        /// <summary>槽间重排：从 from 移到 to（2026-08-11 需求对齐：目标锁定槽 → 拒绝；否则插入语义——移除源后插到目标位，其他块顺移重排）。</summary>
+        /// <summary>
+        /// 槽间重排（2026-08-12 需求修正：用户实测发现插入语义方向不对称——紧邻上拖下=原位无变化）。
+        /// 现语义：目标槽有块 → **交换（对调）**；目标空缺（末尾）→ 插入追加；锁定块不可拖出/不可作目标。
+        /// </summary>
         public bool MoveProgram(int from, int to)
         {
             if (_selectedDefId < 0 || from < 0 || from >= _slotTemplates.Count) return false;
             if (_slotLocked[from]) return false; // 锁定块不可拖出
             if (from == to) return false;
-            to = Mathf.Clamp(to, 0, 4);
+            to = Mathf.Clamp(to, 0, _slotTemplates.Count); // 允许 == Count（空缺末尾）
             if (to < _slotLocked.Count && _slotLocked[to]) return false; // 目标锁定槽：拒绝（锁定块绝对固定）
-            var template = _slotTemplates[from];
-            var locked = _slotLocked[from];
-            _slotTemplates.RemoveAt(from);
-            _slotLocked.RemoveAt(from);
-            if (to > from) to--;
-            to = Mathf.Clamp(to, 0, _slotTemplates.Count); // 空槽位点 = 末尾追加
-            _slotTemplates.Insert(to, template);
-            _slotLocked.Insert(to, locked);
+            if (to == _slotTemplates.Count)
+            {
+                // 空缺末尾：插入追加（顺移——原 from 移除，其余不动）
+                var t = _slotTemplates[from];
+                var l = _slotLocked[from];
+                _slotTemplates.RemoveAt(from);
+                _slotLocked.RemoveAt(from);
+                _slotTemplates.Add(t);
+                _slotLocked.Add(l);
+            }
+            else
+            {
+                // 目标槽有块：交换（对调——方向对称：上拖下/下拖上都交换）
+                var t = _slotTemplates[from];
+                var l = _slotLocked[from];
+                _slotTemplates[from] = _slotTemplates[to];
+                _slotLocked[from] = _slotLocked[to];
+                _slotTemplates[to] = t;
+                _slotLocked[to] = l;
+            }
             CommitProgram();
             return true;
         }

@@ -33,7 +33,9 @@ namespace TheLaw.Core
             {
                 if (map.TryGetValue(Convert.ToInt32(eventType), out var list))
                 {
+                    // ⚠️ 委托不可变：-= 产生新链，必须写回 map（否则移除从未生效——旧实例监听残留）
                     list -= handler;
+                    map[Convert.ToInt32(eventType)] = list;
                 }
             }
         }

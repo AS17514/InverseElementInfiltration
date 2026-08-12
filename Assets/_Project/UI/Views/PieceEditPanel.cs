@@ -94,10 +94,13 @@ namespace TheLaw.UI
 
         protected override void OnShow()
         {
-            // 新局重置：清选中 + 隐藏信息区
+            // 新局重置：清选中 + 隐藏信息区 + 重建棋子列表（卡面程序缩略图随当前数据刷新——
+            // ⚠️ 2026-08-12：RefreshPieceList 原只在 Awake 跑一次，面板常驻跨局复用 → 卡面显示旧局编辑结果）
             _selectedDefId = -1;
             _slotTemplates.Clear();
+            _slotLocked.Clear(); // 锁定标记与槽同步清（选中后 ShowPieceInfo 重建）
             if (_pieceInfo != null) _pieceInfo.gameObject.SetActive(false);
+            RefreshPieceList();
         }
 
         void ResolveNodes()
@@ -177,14 +180,18 @@ namespace TheLaw.UI
         }
 
         // ====== 左列：棋子列表（Piece_Card prefab + ToggleGroup 单选 + 程序图标区） ======
+        bool _buildingList; // 防重入：Awake 与 OnShow 都会触发构建（Addressables 异步）——并发会双份卡面闪现
+
         void RefreshPieceList()
         {
+            if (_buildingList) return; // 构建中：跳过（上一次构建会重建全部卡面，结果一致）
             StartCoroutine(BuildPieceList());
         }
 
         System.Collections.IEnumerator BuildPieceList()
         {
             if (_pieceContent == null) yield break;
+            _buildingList = true;
             EnsureScrollContent(_pieceContent);
             // 加载 Piece_Card / Piece_ProgramInfo 模板（Addressables）
             var cardHandle = UnityEngine.AddressableAssets.Addressables.LoadAssetAsync<GameObject>("Piece_Card");
@@ -214,6 +221,10 @@ namespace TheLaw.UI
                 go.name = $"PieceCard_{def.name}";
                 FillPieceCard(go, def, progHandle.Result, group);
             }
+            // 滚动位置归零（跨局打开不残留旧滚动）
+            var scroll = _pieceContent.GetComponentInParent<ScrollRect>();
+            if (scroll != null) scroll.normalizedPosition = Vector2.zero;
+            _buildingList = false;
         }
 
         void FillPieceCard(GameObject go, PieceDef def, GameObject progTemplate, ToggleGroup group)

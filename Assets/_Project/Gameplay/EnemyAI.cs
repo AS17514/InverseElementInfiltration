@@ -55,8 +55,11 @@ namespace TheLaw.Gameplay
                 }
                 if (canAttack || canMove)
                 {
-                    requests.Add(new ExecuteRequest(piece.Id));
-                    budget--;
+                    // 免费资格消费（2026-08-12）：该棋子有免费资格 → 本次执行免费（不扣 AP）
+                    // ⚠️ 只有"确有资格"才设 free=true——否则 ProcessRequest 的 free 分支会白嫖（无资格也免费）
+                    bool free = state.FreeExecutes.Contains(piece.Id);
+                    requests.Add(new ExecuteRequest(piece.Id) { free = free });
+                    budget--; // 免费也占一次行动次数预算（enemyAPMax=行动次数上限）
                 }
             }
             return requests;

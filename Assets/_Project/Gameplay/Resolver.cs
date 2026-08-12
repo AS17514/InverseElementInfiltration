@@ -365,6 +365,11 @@ namespace TheLaw.Gameplay
         /// </summary>
         public bool BuildDeck(List<int> defIds)
         {
+            // ⚠️ 2026-08-12：空牌组校验（下限型——原校验全是上限型，空列表通过 → 手牌清空 → 无棋无牌开局即败）
+            if (defIds == null || defIds.Count == 0)
+            {
+                return false; // 至少 1 张——规则层兜底，不依赖 UI
+            }
             // 去重校验（同种棋子一张——手牌按 defId 唯一）
             var seen = new HashSet<int>();
             foreach (var id in defIds)

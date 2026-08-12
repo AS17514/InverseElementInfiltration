@@ -312,9 +312,12 @@ namespace TheLaw.UI
         {
             bool victory = data is bool b && b;
             Debug.Log($"[Bootstrap] 整局结束 victory={victory}");
-            // 失败/通关 → 清档 + 回主菜单（单局制）
-            BackToMainMenu();
+            // 2026-08-12：挂起收尾——结算面板确认前保持战斗场景（玩家看结算时下层仍是战斗界面）
+            // 确认后（BattleResultPanel.OnConfirmed）才 BackToMainMenu：销毁战斗 → Reset → 主界面
+            _pendingFinalize = true;
         }
+
+        private bool _pendingFinalize; // 结算确认后待执行的收尾（失败/通关——确认前保持战斗场景）
 
         // ========== ⑥ 主菜单 / 测试直进战斗 ==========
 
@@ -429,6 +432,15 @@ namespace TheLaw.UI
             _battleResultPanel = panel;
             _uiManager.RegisterPanel(panel);
             panel.Init(_gameState, _uiManager);
+            // 结算确认 → 若收尾挂起（失败/通关）则执行：销毁战斗 → Reset → 主界面（确认前保持战斗场景）
+            panel.OnConfirmed += () =>
+            {
+                if (_pendingFinalize)
+                {
+                    _pendingFinalize = false;
+                    BackToMainMenu();
+                }
+            };
             panel.gameObject.SetActive(false); // prefab 根 active——必须显式隐藏（常驻但不可见；首次 StateChanged 才 PushOverlay）
             Debug.Log("[Bootstrap] 结算面板已就绪（常驻）");
         }

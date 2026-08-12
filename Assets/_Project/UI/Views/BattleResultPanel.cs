@@ -37,6 +37,9 @@ namespace TheLaw.UI
 
         private Tween _tipTween; // 提示闪动
 
+        /// <summary>玩家确认结算（PopOverlay 后触发）——Bootstrap 订阅：失败/通关时执行挂起的收尾（保持战斗场景直到确认）。</summary>
+        public event System.Action OnConfirmed;
+
         public void Init(GameState state, UIManager uiManager)
         {
             _state = state;
@@ -153,7 +156,8 @@ namespace TheLaw.UI
             if (keyDown || mouseDown)
             {
                 _hasResult = false; // 先置 false 防同帧重复 Pop
-                _uiManager?.PopOverlay(); // 恢复下层（胜利=下一节点 / 失败=MainMenu——FinalizeRun 已改 _current）
+                _uiManager?.PopOverlay(); // 恢复下层（胜利=下一节点 / 失败=战斗场景——收尾在确认后才执行）
+                OnConfirmed?.Invoke(); // 通知 Bootstrap：失败/通关时执行挂起的收尾（确认前保持战斗场景）
             }
         }
     }

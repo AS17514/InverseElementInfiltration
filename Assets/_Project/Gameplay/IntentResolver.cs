@@ -113,6 +113,8 @@ namespace TheLaw.Gameplay
                     return attacker != null
                         ? -(Mathf.Abs(cell.x - attacker.position.x) + Mathf.Abs(cell.y - attacker.position.y))
                         : 0;
+                default:
+                    return 0; // 未知规则兜底（防枚举扩展漏分支）
             }
         }
     }

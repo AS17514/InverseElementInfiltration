@@ -20,7 +20,12 @@ namespace TheLaw.Gameplay
             _aiParams = aiParams;
         }
 
-        /// <summary>按 AP 预算产出请求：优先吃子（攻击范围内价值最高目标），否则靠近敌人。</summary>
+        /// <summary>
+        /// 按 AP 预算产出请求：每个棋子至多 1 个请求（2026-08-12 修复——原实现按"槽"产请求：
+        /// 同棋子多攻击槽 → 多请求 → 每请求执行完整程序 = 行动放大；且单棋子可耗尽全部预算。
+        /// 现语义与玩家一致：能攻击（任一攻击槽有目标）→ 执行一次棋子（完整程序内自动攻击）；
+        /// 否则能移动（任一移动槽有候选）→ 执行一次（完整程序内自动移动；攻击槽无目标自动 Skip）。
+        /// </summary>
         public List<Request> DecideTurn(GameState state)
         {
             var requests = new List<Request>();
@@ -38,34 +43,20 @@ namespace TheLaw.Gameplay
                 }
 
                 var program = piece.GetProgram(state);
-                if (program == null)
+                if (program == null || program.Count == 0)
                 {
                     continue;
                 }
-                foreach (var slot in program)
+                bool canAttack = CanAttackNow(state, piece, program);
+                bool canMove = false;
+                if (!canAttack)
                 {
-                    if (budget <= 0)
-                    {
-                        break;
-                    }
-                    if (slot is AttackTemplate attackTemplate)
-                    {
-                        var options = _intentResolver.GetAttackOptions(state, piece, attackTemplate);
-                        if (HasEnemyTarget(state, options))
-                        {
-                            requests.Add(new ExecuteRequest(piece.Id));
-                            budget--;
-                        }
-                    }
-                    else if (slot is MoveTemplate moveTemplate && !CanAttackNow(state, piece, program))
-                    {
-                        var options = _intentResolver.GetMoveOptions(state, piece, moveTemplate);
-                        if (options.Count > 0)
-                        {
-                            requests.Add(new ExecuteRequest(piece.Id));
-                            budget--;
-                        }
-                    }
+                    canMove = CanMoveNow(state, piece, program);
+                }
+                if (canAttack || canMove)
+                {
+                    requests.Add(new ExecuteRequest(piece.Id));
+                    budget--;
                 }
             }
             return requests;
@@ -91,6 +82,21 @@ namespace TheLaw.Gameplay
                 if (slot is AttackTemplate attack)
                 {
                     if (HasEnemyTarget(state, _intentResolver.GetAttackOptions(state, piece, attack)))
+                    {
+                        return true;
+                    }
+                }
+            }
+            return false;
+        }
+
+        private bool CanMoveNow(GameState state, PieceInstance piece, List<Template> program)
+        {
+            foreach (var slot in program)
+            {
+                if (slot is MoveTemplate move)
+                {
+                    if (_intentResolver.GetMoveOptions(state, piece, move).Count > 0)
                     {
                         return true;
                     }

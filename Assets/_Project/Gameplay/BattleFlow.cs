@@ -43,6 +43,7 @@ namespace TheLaw.Gameplay
         private bool _enemyTurnEndPending;   // 敌方回合结束待定——本阶段表现全部播完才切回玩家回合（动画优先）
         private bool _hadEnemyPresentation;  // 本轮敌方回合是否有表现（有→表现完即切；无→等阶段展示信号）
         private bool _deployedThisRound;     // 本轮波次是否部署（部署动画挂起点）
+        private readonly Queue<Request> _enemyRequests = new Queue<Request>(); // 敌方回合请求队列（串行处理——2026-08-12：防 _ctx 覆盖）
 
         public BattleFlow(GameState state, BoardRules boardRules, IntentResolver intentResolver,
             Resolver resolver, EnemyAI enemyAI, RelicSystem relicSystem)
@@ -91,6 +92,7 @@ namespace TheLaw.Gameplay
             _enemyTurnEndPending = false;
             _hadEnemyPresentation = false;
             _deployedThisRound = false;
+            _enemyRequests.Clear(); // 敌方请求队列（新字段必须进重置清单——防跨局残留）
         }
 
         private void OnPlacementFinished(object data)
@@ -139,17 +141,43 @@ namespace TheLaw.Gameplay
             ResolveEnemyTurn();
         }
 
+        /// <summary>
+        /// 敌方回合：AI 请求入队后逐个串行处理（2026-08-12 修复——原循环直接 ProcessRequest：
+        /// 每个请求第一槽落账后 WaitPresentation 挂起返回，循环继续会覆盖 _ctx——
+        /// 前序请求剩余槽位丢失且不扣 AP。串行化：当前请求完整执行完（FinishExecute）才处理下一个）。
+        /// </summary>
         private void ResolveEnemyTurn()
         {
-            var requests = _enemyAI.DecideTurn(_state);
-            foreach (var request in requests)
+            _enemyRequests.Clear();
+            foreach (var request in _enemyAI.DecideTurn(_state))
             {
-                if (_state.Phase == BattlePhase.GameOver)
-                {
-                    break; // 战斗已结束——不再处理剩余请求（防御：防失败后误判胜利）
-                }
-                ProcessRequest(request, Side.Enemy);
+                _enemyRequests.Enqueue(request);
             }
+            TryProcessNextEnemyRequest();
+        }
+
+        /// <summary>
+        /// 串行处理下一个敌方请求（FinishExecute 后调用——side==Enemy 时）。
+        /// 队列空 → 敌方回合收尾（原 ResolveEnemyTurn 后半段）；战斗已结束 → 丢弃剩余请求。
+        /// </summary>
+        private void TryProcessNextEnemyRequest()
+        {
+            if (_state.Phase == BattlePhase.GameOver)
+            {
+                _enemyRequests.Clear(); // 战斗已结束——不再处理剩余请求（防御：防失败后误判胜利）
+                return;
+            }
+            if (_enemyRequests.Count == 0)
+            {
+                EndEnemyTurn();
+                return;
+            }
+            ProcessRequest(_enemyRequests.Dequeue(), Side.Enemy);
+        }
+
+        /// <summary>敌方回合收尾（全部请求处理完后）：AP 清零/回合计数/胜负判定/回合切换挂起（动画优先）。</summary>
+        private void EndEnemyTurn()
+        {
             _state.EnemyAP = 0;
             _state.TurnCount++;
             CheckVictory(false);
@@ -481,6 +509,11 @@ namespace TheLaw.Gameplay
             if (side == Side.Player)
             {
                 CheckActionPoints();
+            }
+            // 敌方请求串行化（2026-08-12）：当前请求完整执行完（扣费后）→ 处理下一个；队列空 → 敌方回合收尾
+            if (side == Side.Enemy)
+            {
+                TryProcessNextEnemyRequest();
             }
         }
 

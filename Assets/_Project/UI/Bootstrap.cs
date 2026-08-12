@@ -256,46 +256,11 @@ namespace TheLaw.UI
                 }
                 return;
             }
-            // 战斗结算：GameOver 携带胜方 → 快照结算数据 + TowerFlow 收尾（胜利推进/失败结束——RunEnded 驱动回主菜单）
+            // 战斗结算：GameOver 携带胜方 → TowerFlow 收尾（胜利推进/失败结束——RunEnded 驱动回主菜单）
             if (_gameState.Phase != BattlePhase.GameOver) return;
             if (!(data is Side winner)) return;
-            Debug.Log($"[Bootstrap] 战斗结束（{(winner == Side.Player ? "胜利" : "失败")}）→ 结算 + TowerFlow 收尾");
-            // 快照结算数据（同步——Reset 1 帧后清空 GameState，面板异步加载完成时再读会丢）
-            _pendingResultVictory = winner == Side.Player;
-            _pendingResultScore = _gameState.PlayerScore;
-            _pendingResultTurn = _gameState.TurnCount;
-            ShowBattleResult();
+            Debug.Log($"[Bootstrap] 战斗结束（{(winner == Side.Player ? "胜利" : "失败")}）→ TowerFlow 收尾");
             _towerFlow.OnBattleEnded(winner);
-        }
-
-        // ====== 结算面板（overlay：前端展示，确认只关面板） ======
-        private BattleResultPanel _battleResultPanel;
-        private bool _pendingResultVictory;
-        private int _pendingResultScore;
-        private int _pendingResultTurn;
-
-        private void ShowBattleResult()
-        {
-            if (_battleResultPanel == null)
-            {
-                StartCoroutine(LoadBattleResult());
-            }
-            else
-            {
-                _battleResultPanel.ShowResult(_pendingResultVictory, _pendingResultScore, _pendingResultTurn);
-            }
-        }
-
-        private System.Collections.IEnumerator LoadBattleResult()
-        {
-            bool done = false;
-            BattleResultPanel panel = null;
-            PanelBase.CreateAsync<BattleResultPanel>(p => { panel = p; done = true; });
-            yield return new WaitUntil(() => done);
-            _battleResultPanel = panel;
-            _uiManager.RegisterPanel(panel);
-            panel.ShowResult(_pendingResultVictory, _pendingResultScore, _pendingResultTurn); // 用同步快照数据
-            Debug.Log($"[Bootstrap] 结算面板已显示（{(_pendingResultVictory ? "胜利" : "失败")}）");
         }
 
         /// <summary>

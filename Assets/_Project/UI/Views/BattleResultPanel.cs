@@ -5,6 +5,7 @@ using TheLaw.Data;
 using TheLaw.Gameplay;
 using TMPro;
 using UnityEngine;
+using UnityEngine.InputSystem;
 
 namespace TheLaw.UI
 {
@@ -129,7 +130,18 @@ namespace TheLaw.UI
         {
             // 按任意键：键盘任意键 + 鼠标点击 → 关闭（确认只关面板——不触发后端逻辑；下层界面本来就 active）
             if (!_hasResult || !gameObject.activeSelf) return;
-            if (Input.anyKeyDown || Input.GetMouseButtonDown(0))
+            // Input System 原生检测（项目 activeInputHandler=2——旧 UnityEngine.Input 可能不可用）
+            bool keyDown = false;
+            bool mouseDown = false;
+            if (UnityEngine.InputSystem.Keyboard.current != null)
+            {
+                keyDown = Keyboard.current.anyKey.wasPressedThisFrame;
+            }
+            if (UnityEngine.InputSystem.Mouse.current != null)
+            {
+                mouseDown = Mouse.current.leftButton.wasPressedThisFrame;
+            }
+            if (keyDown || mouseDown)
             {
                 gameObject.SetActive(false); // 关闭露出下层（胜利=战斗/事件界面 / 失败=MainMenu）
                 _hasResult = false; // 防重复触发（同帧多次输入）

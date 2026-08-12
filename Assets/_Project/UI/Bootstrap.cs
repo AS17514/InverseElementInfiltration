@@ -307,6 +307,7 @@ namespace TheLaw.UI
             yield return null; // 等一帧：当前事件回调栈必然已退出（Unity 单线程，帧末栈空）
             DestroyBattleController();
             _gameState.ResetForNewRun();
+            _editorSession.ResetSession(); // 编辑会话跨局清空（后端待办 #7——退出→新局路径）
             SaveManager.Instance.SaveAll();
             // 2026-08-12：回主菜单前强制隐藏会话面板（防 _current==null 时编辑/构筑面板残留显示）
             HideSessionPanels();
@@ -373,6 +374,7 @@ namespace TheLaw.UI
             DestroyBattleController(); // 清理旧战斗会话（重开/结算重开路径）
             HideSessionPanels();
             _gameState.ResetForNewRun(); // 基础牌组填手牌（协作者实现）；敌方由波次调度产出（数据集 floor1 回合 1/4/7）
+            _editorSession.ResetSession(); // 编辑会话跨局清空（后端待办 #7——快照/撤销栈残留会让"恢复原样"恢复错局）
             EnterTower();
         }
 

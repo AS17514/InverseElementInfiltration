@@ -21,6 +21,13 @@ namespace TheLaw.Gameplay
             _resolver = resolver;
         }
 
+        /// <summary>重置会话（新局必清——快照/撤销栈为会话级不入存档，跨局残留会让"恢复原样"恢复到上一局，后端待办 #7）。</summary>
+        public void ResetSession()
+        {
+            _initialSnapshots.Clear();
+            _undoStacks.Clear();
+        }
+
         /// <summary>进入编辑（记录初始快照 + 编辑态标记）。</summary>
         public void BeginEdit(int defId)
         {

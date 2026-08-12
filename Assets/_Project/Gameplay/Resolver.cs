@@ -109,30 +109,47 @@ namespace TheLaw.Gameplay
             });
         }
 
-        /// <summary>近战群攻结算：范围内全部格子（有棋子的都扣承伤，友伤按模板）。</summary>
+        /// <summary>
+        /// 近战群攻结算：范围内全部格子（有棋子的都扣承伤，友伤按模板）。
+        /// 逐目标发 DamageDealt（后端待办 #6）：每个命中目标带自己的 TargetId——UI 按 TargetId 闪白
+        /// （与 ResolveAttack 单目标同契约）；多目标并行表现由 UI"组内并行"落实（见 docs/前端协作事项-表现层组内并行.md）。
+        /// ⚠️ 空放（范围有格但无命中）：必须补发空放事件（TargetId=-1）——否则 UI 无表现、规则层永远等表现完成卡死。
+        /// </summary>
         private void ResolveMeleeAOE(PieceInstance attacker, AttackAction action, int damage)
         {
             var cells = _boardRules.GetAttackableCells(_state, attacker, action.template);
-            bool anyDied = false;
+            bool anyHit = false;
             foreach (var cell in cells)
             {
                 var victim = _state.GetPieceAt(cell);
                 if (victim != null && (victim.side != attacker.side || action.template.friendlyFire))
                 {
-                    if (ModifyDurability(victim, -damage, attacker))
+                    bool died = ModifyDurability(victim, -damage, attacker);
+                    anyHit = true;
+                    EventCenter.Instance.EventTrigger(GameEvent.DamageDealt, new DamageInfo
                     {
-                        anyDied = true;
-                    }
+                        AttackerId = attacker.Id,
+                        TargetId = victim.Id,
+                        TargetCell = cell,
+                        Damage = damage,
+                        TargetDied = died,
+                        FriendlyFire = action.template.friendlyFire,
+                    });
                 }
             }
-            EventCenter.Instance.EventTrigger(GameEvent.DamageDealt, new DamageInfo
+            if (!anyHit)
             {
-                AttackerId = attacker.Id,
-                TargetCell = action.targetCell,
-                Damage = damage,
-                TargetDied = anyDied,
-                FriendlyFire = action.template.friendlyFire,
-            });
+                // 空放（无命中）：与单目标空放同语义（TargetId=-1——UI 播放攻击者挥空动画 → 表现完成）
+                EventCenter.Instance.EventTrigger(GameEvent.DamageDealt, new DamageInfo
+                {
+                    AttackerId = attacker.Id,
+                    TargetId = -1,
+                    TargetCell = action.targetCell,
+                    Damage = damage,
+                    TargetDied = false,
+                    FriendlyFire = action.template.friendlyFire,
+                });
+            }
         }
 
         private void ResolveAttachOnAttack(PieceInstance attacker, Vector2Int targetCell, AttackTemplate template, int mainDamage)

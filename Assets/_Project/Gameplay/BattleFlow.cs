@@ -63,6 +63,7 @@ namespace TheLaw.Gameplay
 
         public void StartBattle(FloorConfig floor, AIParams aiParams)
         {
+            ResetState(); // 新局统一清瞬态执行状态（防跨局残留——后端待办 #5：多次重开卡死根因）
             _floor = floor;
             _aiParams = aiParams;
             _floorRules = FloorRulesFactory.Create(floor.Id);
@@ -75,6 +76,21 @@ namespace TheLaw.Gameplay
             // 开局部署首波（startTurn=1 的波——玩家摆位需要看到敌方位置参照）
             HandleWaveAndPromotions();
             // Placement：玩家布置 Hand 中 Initial 棋子（起始标记自由摆）→ UI 摆完发 PlacementFinished
+        }
+
+        /// <summary>
+        /// 重置瞬态执行状态（新局必清——重置清单集中一处，防再漏）。
+        /// 泄漏实例（后端待办 #5）：波次部署动画 WaitPresentation 在 _ctx==null 时置 _waitingPresentation=true，
+        /// ChangePhase(GameOver) 清理分支要求 _ctx!=null 才清 → 漏清进新局 → 敌方回合 TryEndEnemyTurn 永远等表现卡死。
+        /// </summary>
+        private void ResetState()
+        {
+            _ctx = null;
+            _waitingCellSelect = false;
+            _waitingPresentation = false;
+            _enemyTurnEndPending = false;
+            _hadEnemyPresentation = false;
+            _deployedThisRound = false;
         }
 
         private void OnPlacementFinished(object data)

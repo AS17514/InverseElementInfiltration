@@ -185,7 +185,9 @@ namespace TheLaw.Gameplay
             {
                 // 动画优先：敌方回合展示到本阶段表现全部播完（含波次部署/AI 行动动画）再切回玩家回合
                 _enemyTurnEndPending = true;
-                _hadEnemyPresentation = _waitingPresentation || _deployedThisRound;
+                // ⚠️ 2026-08-12：_hadEnemyPresentation 不在此采样（串行化后采样时表现已完成、_waitingPresentation 已清，
+                // 且 PhaseDisplayed 在回合开始 1 帧后发出早已被丢弃——无波次回合两条收尾路径均不满足软锁）
+                // 改为 WaitPresentation 表现发生时锁存（有表现即标记，不依赖采样时机）
                 TryEndEnemyTurn();
             }
         }
@@ -461,6 +463,9 @@ namespace TheLaw.Gameplay
             var piece = _state.GetPiece(_ctx.pieceId);
             if (piece == null)
             {
+                // ⚠️ 2026-08-12：选格时棋子死亡（防御分支）——原直接 return 残留 _ctx（不落账不扣 AP）；
+                // 改 FinishExecute 完整结算（补扣 AP + 清 _ctx——发起过执行就该结账）
+                FinishExecute();
                 return;
             }
             if (_ctx.slotIndex >= _ctx.program.Count)
@@ -473,9 +478,11 @@ namespace TheLaw.Gameplay
             switch (slot)
             {
                 case MoveTemplate move:
-                    if (!_boardRules.IsCellPassable(_state, cell))
+                    // ⚠️ 2026-08-12：原只查 IsCellPassable（界内/非障碍/非占用）——不查移动候选内，
+                    // UI 镜像分叉时棋子可瞬移到模板范围外；改候选内校验（与攻击槽对称——规则层不依赖 UI）
+                    if (!_intentResolver.GetMoveOptions(_state, piece, move).Contains(cell))
                     {
-                        _waitingCellSelect = true; // 非法落点——重新选
+                        _waitingCellSelect = true; // 不在移动候选内——重新选
                         return;
                     }
                     _resolver.Resolve(_intentResolver.ResolveMove(piece, cell));
@@ -522,6 +529,12 @@ namespace TheLaw.Gameplay
         private void WaitPresentation()
         {
             _waitingPresentation = true;
+            // 敌方回合表现发生时即锁存"本回合有表现"（2026-08-12：供 EndEnemyTurn 判定动画路径——
+            // 串行化后收尾采样时机已过（表现完成、PhaseDisplayed 丢弃），锁存不依赖采样时机；玩家回合不受影响）
+            if (_state.Phase == BattlePhase.EnemyTurn)
+            {
+                _hadEnemyPresentation = true;
+            }
             // 等待日志（卡住时定位：谁在等、等哪个表现组）
             Debug.Log($"[BattleFlow] 表现等待开始 piece={_ctx?.pieceId} slot={_ctx?.slotIndex}（等'表现完成'事件）");
         }

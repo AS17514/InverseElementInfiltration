@@ -12,6 +12,7 @@ namespace TheLaw.Gameplay
     {
         private readonly GameState _state;
         private readonly Resolver _resolver;
+        private string _consumedEventId; // 已消费选项的事件 id（每个 OpenEvent 只允许一次选项消费——2026-08-12 防重复点选双落账）
 
         public EventNodeSystem(GameState state, Resolver resolver)
         {
@@ -48,13 +49,22 @@ namespace TheLaw.Gameplay
             var picked = RandomManager.Instance.NextWeighted(candidates, e => e.weight);
             _state.CurrentEventId = picked.eventId;
             _state.DrawnEventIds.Add(picked.eventId);
+            _consumedEventId = null; // 新事件 = 新消费机会（2026-08-12：事件级只允许一次选项消费）
             // 通知 UI：事件关打开（携带当前事件 id——UI 据此打开事件界面）
             EventCenter.Instance.EventTrigger(GameEvent.EventOpened, _state.CurrentEventId);
         }
 
-        /// <summary>选择选项（availability 校验 + 防重入——执行效果）。</summary>
+        /// <summary>
+        /// 选择选项（availability 校验 + 事件级消费守卫——每个事件只允许一次选项消费）。
+        /// ⚠️ 2026-08-12 防重：UI 延迟完成窗口内重复点选 → 效果二次落账（双遗物/双卡）+ 迟到推进跳节点——
+        /// 守卫拒绝非当前事件/已消费事件的选项。
+        /// </summary>
         public void OnOptionSelected(string eventId, int optionIndex)
         {
+            if (eventId != _state.CurrentEventId || eventId == _consumedEventId)
+            {
+                return; // 非当前事件 / 已消费过——拒绝（防重复点选）
+            }
             var ev = FindEvent(eventId);
             if (ev == null || optionIndex < 0 || optionIndex >= ev.options.Count)
             {
@@ -66,6 +76,7 @@ namespace TheLaw.Gameplay
                 return; // 二次校验（UI 已灰显）
             }
             ExecuteEffects(option.effects);
+            _consumedEventId = eventId; // 消费标记——本事件后续选项调用一律拒绝
         }
 
         /// <summary>目标选择（targetRule 空时走这步——玩家手动选目标棋子）。</summary>

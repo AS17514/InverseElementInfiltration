@@ -227,13 +227,25 @@ namespace TheLaw.UI
             OpenEventPanel();
         }
 
-        /// <summary>公共懒加载：CreateAsync → WaitUntil → onReady（大审查 R2：5 个面板加载协程合并——模式统一、防漂移）。</summary>
+        /// <summary>
+        /// 公共懒加载：CreateAsync → WaitUntil → onReady（大审查 R2：5 个面板加载协程合并——模式统一、防漂移）。
+        /// ⚠️ 2026-08-12 in-flight 锁：加载期间字段仍为 null——第二次请求会再启动加载（双实例双监听）；
+        /// 按类型记录"加载中"，重复请求直接忽略（5 个面板统一受益）。
+        /// </summary>
+        private readonly HashSet<string> _loadingPanels = new HashSet<string>(); // 加载中的面板（防重入）
+
         private System.Collections.IEnumerator LoadPanelAsync<T>(System.Action<T> onReady) where T : PanelBase
         {
+            string key = typeof(T).Name;
+            if (!_loadingPanels.Add(key))
+            {
+                yield break; // 已在加载中——忽略重复请求
+            }
             bool done = false;
             T panel = null;
             PanelBase.CreateAsync<T>(p => { panel = p; done = true; });
             yield return new WaitUntil(() => done);
+            _loadingPanels.Remove(key);
             if (onReady != null) onReady(panel);
         }
 

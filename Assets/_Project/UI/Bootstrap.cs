@@ -415,7 +415,7 @@ namespace TheLaw.UI
         {
             var battleGo = new GameObject("BattleController");
             var controller = battleGo.AddComponent<BattleController>();
-            controller.Init(_battleFlow, _gameState);
+            controller.Init(_battleFlow, _gameState, _uiManager); // 2026-08-12：注入 UIManager（BattlePanel 注册/切换）
             controller.OnExitRequested += BackToMainMenu; // 战斗面板退出按钮 → 回主菜单
         }
 
@@ -428,9 +428,8 @@ namespace TheLaw.UI
             yield return new WaitUntil(() => done);
             _battleResultPanel = panel;
             _uiManager.RegisterPanel(panel);
-            panel.Init(_gameState);
-            panel.gameObject.SetActive(false); // prefab 根 active——必须显式隐藏（常驻但不可见；首次 StateChanged 才 FillAndShow）
-            // 不 Show——首次 StateChanged(GameOver) 时 FillAndShow 显示
+            panel.Init(_gameState, _uiManager);
+            panel.gameObject.SetActive(false); // prefab 根 active——必须显式隐藏（常驻但不可见；首次 StateChanged 才 PushOverlay）
             Debug.Log("[Bootstrap] 结算面板已就绪（常驻）");
         }
 

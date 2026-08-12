@@ -14,6 +14,8 @@ namespace TheLaw.UI
     {
         public abstract string Key { get; }
 
+        public bool IsVisible => gameObject != null && gameObject.activeSelf;
+
         public void Show()
         {
             gameObject.SetActive(true);

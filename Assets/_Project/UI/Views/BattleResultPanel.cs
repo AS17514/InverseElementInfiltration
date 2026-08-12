@@ -12,16 +12,16 @@ namespace TheLaw.UI
     /// <summary>
     /// 结算面板（overlay 模态——后端收尾链的 UI 层）：
     /// 监听 StateChanged(GameOver + Side winner) → 【立即快照】胜负/得分/波次（1 帧后 Reset 清空 GameState，确认时再读会丢数据）
-    /// → 自身显隐显示（遮罩覆盖下层——不走 UIManager 栈：BattlePanel/EventPanel 均直接 Show 不在栈，PushPanel/PopPanel 会错误露出 MainMenu）
-    /// → 按任意键（键盘/鼠标）→ 关闭露出下层（胜利=战斗/事件界面保持 active / 失败=MainMenu 已在其下显示）。
+    /// → PushOverlay 覆盖显示（不隐藏下层——收尾在面板下层完成）→ 按任意键（键盘/鼠标）→ PopOverlay 恢复下层。
     /// 交互：确认只关面板，不触发任何后端逻辑（推进决策权在规则层）。
-    /// 显示：Txt_BattleResult（测试通过/失败 + 颜色 00FF2A/E10000）、Txt_Stats（右对齐多行）、Txt_Tip（"按任意键继续"闪动）。
+    /// 显示：Txt_BattleResult（测试通过/失败 + 颜色 00FF2A/E10000）、Txt_Stats（右对齐多行）、Txt_Tip（“按任意键继续”闪动）。
     /// </summary>
     public class BattleResultPanel : PanelBase
     {
         public override string Key => "BattleResult";
 
         private GameState _state;
+        private UIManager _uiManager; // 2026-08-12 架构重构：PushOverlay/PopOverlay
 
         // ====== 节点引用 ======
         private TMP_Text _resultText;  // Txt_BattleResult（胜负大字）
@@ -40,9 +40,10 @@ namespace TheLaw.UI
 
         private Tween _tipTween; // 提示闪动
 
-        public void Init(GameState state)
+        public void Init(GameState state, UIManager uiManager)
         {
             _state = state;
+            _uiManager = uiManager;
         }
 
         private void Awake()
@@ -89,7 +90,7 @@ namespace TheLaw.UI
             return string.Join("\n", lines);
         }
 
-        /// <summary>战斗结算信号（EndBattle 落账完成时同步发）：立即快照（防 1 帧后 Reset 清空）+ 显示。</summary>
+        /// <summary>战斗结算信号（EndBattle 落账完成时同步发）：立即快照（防 1 帧后 Reset 清空）+ PushOverlay 显示。</summary>
         void OnStateChanged(object data)
         {
             if (_state == null || _state.Phase != BattlePhase.GameOver) return;
@@ -100,13 +101,13 @@ namespace TheLaw.UI
             _enemyScore = _state.EnemyScore;
             _waveScores = new List<int>(_state.WaveScores);
             _hasResult = true;
-            FillAndShow();
+            FillContent();
+            _uiManager?.PushOverlay(Key); // 覆盖显示（不隐藏下层——收尾/下层界面在面板之下）
         }
 
-        /// <summary>填充内容并显示（遮罩盖下层——关闭时露出）。</summary>
-        void FillAndShow()
+        /// <summary>填充内容（PushOverlay 前调用——Show 由 UIManager 负责）。</summary>
+        void FillContent()
         {
-            if (!_hasResult) return;
             if (_resultText != null)
             {
                 _resultText.text = _victory ? "测试通过" : "失败";
@@ -123,12 +124,11 @@ namespace TheLaw.UI
                     .SetLoops(-1, LoopType.Yoyo)
                     .SetEase(Ease.InOutSine);
             }
-            gameObject.SetActive(true);
         }
 
         void Update()
         {
-            // 按任意键：键盘任意键 + 鼠标点击 → 关闭（确认只关面板——不触发后端逻辑；下层界面本来就 active）
+            // 按任意键：键盘任意键 + 鼠标点击 → PopOverlay（确认只关面板——不触发后端逻辑；恢复下层）
             if (!_hasResult || !gameObject.activeSelf) return;
             // Input System 原生检测（项目 activeInputHandler=2——旧 UnityEngine.Input 可能不可用）
             bool keyDown = false;
@@ -143,9 +143,8 @@ namespace TheLaw.UI
             }
             if (keyDown || mouseDown)
             {
-                gameObject.SetActive(false); // 关闭露出下层（胜利=战斗/事件界面 / 失败=MainMenu）
-                _hasResult = false; // 防重复触发（同帧多次输入）
-                OnHide();
+                _hasResult = false; // 先置 false 防同帧重复 Pop
+                _uiManager?.PopOverlay(); // 恢复下层（胜利=下一节点 / 失败=MainMenu——FinalizeRun 已改 _current）
             }
         }
     }

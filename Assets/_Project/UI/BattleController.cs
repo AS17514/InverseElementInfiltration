@@ -24,6 +24,7 @@ namespace TheLaw.UI
         // ========== 注入 ==========
         BattleFlow _flow;
         GameState _state;
+        UIManager _uiManager; // 2026-08-12 架构重构：BattlePanel 注册/切换显示用
         BoardRules _boardRules;
         IntentResolver _intentResolver;
         BattlePanel _panel;
@@ -92,10 +93,11 @@ namespace TheLaw.UI
         /// <summary>退出战斗请求（Bootstrap 订阅——回主菜单）。</summary>
         public event System.Action OnExitRequested;
 
-        public void Init(BattleFlow flow, GameState state)
+        public void Init(BattleFlow flow, GameState state, UIManager uiManager)
         {
             _flow = flow;
             _state = state;
+            _uiManager = uiManager;
             _boardRules = new BoardRules();
             _intentResolver = new IntentResolver(_boardRules);
 
@@ -124,7 +126,9 @@ namespace TheLaw.UI
             PanelBase.CreateAsync<BattlePanel>(p =>
             {
                 _panel = p;
-                _panel.Show();
+                // 2026-08-12 架构重构：BattlePanel 注册进 UIManager（切换型）——替代直接 _panel.Show()
+                _uiManager.RegisterPanel(p);
+                _uiManager.ShowPanel("Battle");
                 if (_panel.PhaseButton != null)
                 {
                     _panel.PhaseButton.onClick.AddListener(OnPhaseButtonClicked);
@@ -732,6 +736,12 @@ namespace TheLaw.UI
         // ========== 事件监听 ==========
         void OnPhaseChanged(object data)
         {
+            // 2026-08-12 架构重构（B 审查阻塞项）：BattleController 跨战斗复用（不重建）——CreateAsync 回调只跑一次，
+            // 第 2 场起 BattlePanel 需在此重新 ShowPanel（首场回调已 Show，此处幂等）
+            if (_state.Phase == BattlePhase.Placement && _panel != null && _uiManager != null)
+            {
+                _uiManager.ShowPanel("Battle");
+            }
             RefreshAll();
             ClearSelection();
             ClearHighlights(); // 阶段切换必清高亮

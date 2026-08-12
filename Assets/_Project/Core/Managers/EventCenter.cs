@@ -1,5 +1,6 @@
 using System;
 using System.Collections.Generic;
+using UnityEngine;
 
 namespace TheLaw.Core
 {
@@ -45,9 +46,21 @@ namespace TheLaw.Core
         {
             if (_listeners.TryGetValue(typeof(T), out var map))
             {
-                if (map.TryGetValue(Convert.ToInt32(eventType), out var list))
+                if (map.TryGetValue(Convert.ToInt32(eventType), out var list) && list != null)
                 {
-                    list?.Invoke(data);
+                    // ⚠️ 2026-08-12（大审查 H1）：逐监听者异常隔离——任一监听者崩溃不中断委托链、
+                    // 不向上传播到规则层（防 Resolve* 落账半途中断=半落账）。历史"敌方未生成+WaveScores=0"即此链条。
+                    foreach (var d in list.GetInvocationList())
+                    {
+                        try
+                        {
+                            ((Action<object>)d)(data);
+                        }
+                        catch (Exception e)
+                        {
+                            Debug.LogError($"[EventCenter] 监听者异常（{d.Target?.GetType().Name}）：{e}");
+                        }
+                    }
                 }
             }
         }

@@ -535,6 +535,16 @@ namespace TheLaw.UI
             AdvanceExec();
         }
 
+        // ========== 表现时间常量（大审查 R3：魔法数字集中——调手感只改此处）==========
+        const float MoveDuration = 0.25f;  // 移动动画时长
+        const float MoveWait = 0.3f;       // 移动后等待
+        const float AttackFlash = 0.06f;   // 攻击者挥动闪白
+        const float HitFlash = 0.08f;      // 目标受击闪白
+        const float DamageWait = 0.15f;    // 伤害表现后等待
+        const float DeployWait = 0.1f;     // 部署表现等待
+        const float DeathFade = 0.2f;      // 死亡淡出/缩放
+        const float DeathWait = 0.25f;     // 死亡后销毁等待
+
         // ========== 表现协议 ==========
         void EnqueuePresentation(System.Func<IEnumerator> play)
         {
@@ -619,8 +629,8 @@ namespace TheLaw.UI
             if (go != null)
             {
                 var to = PieceViewFactory.CellToWorld(info.To);
-                go.transform.DOMove(to, 0.25f).SetEase(Ease.OutQuad);
-                yield return new WaitForSeconds(0.3f);
+                go.transform.DOMove(to, MoveDuration).SetEase(Ease.OutQuad);
+                yield return new WaitForSeconds(MoveWait);
             }
             yield return null;
         }
@@ -637,7 +647,7 @@ namespace TheLaw.UI
                 {
                     var aOrig = asr.color;
                     asr.color = Color.white;
-                    yield return new WaitForSeconds(0.06f); // 攻击者动作短闪
+                    yield return new WaitForSeconds(AttackFlash); // 攻击者动作短闪
                     asr.color = aOrig;
                 }
             }
@@ -651,11 +661,11 @@ namespace TheLaw.UI
                     // ⚠️ 恢复原色而非重算 TintFor（创建色/恢复色不一致会颜色漂移）
                     var original = sr.color;
                     sr.color = Color.white;
-                    yield return new WaitForSeconds(0.08f);
+                    yield return new WaitForSeconds(HitFlash);
                     sr.color = original;
                 }
             }
-            yield return new WaitForSeconds(0.15f);
+            yield return new WaitForSeconds(DamageWait);
         }
 
         IEnumerator PlayDeploy(DeployInfo info)
@@ -674,7 +684,7 @@ namespace TheLaw.UI
                         info.Side == Side.Player ? PieceViewFactory.TintFor(info.DefId) : PieceViewFactory.TintFor(info.DefId + 1));
                 }
             }
-            yield return new WaitForSeconds(0.1f);
+            yield return new WaitForSeconds(DeployWait);
         }
 
         IEnumerator PlayDeath(DeathInfo info)
@@ -683,9 +693,9 @@ namespace TheLaw.UI
             if (go != null)
             {
                 var sr = go.transform.Find("Portrait")?.GetComponent<SpriteRenderer>();
-                if (sr != null) sr.material.DOFade(0f, 0.2f); // material 版扩展（DOTween.dll 内）
-                go.transform.DOScale(0f, 0.2f);
-                yield return new WaitForSeconds(0.25f);
+                if (sr != null) sr.material.DOFade(0f, DeathFade); // material 版扩展（DOTween.dll 内）
+                go.transform.DOScale(0f, DeathFade);
+                yield return new WaitForSeconds(DeathWait);
                 Destroy(go);
             }
             yield return null;

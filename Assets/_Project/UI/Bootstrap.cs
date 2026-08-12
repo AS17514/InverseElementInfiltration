@@ -197,6 +197,16 @@ namespace TheLaw.UI
             // TODO: 进层/开战存档（SaveManager.SaveAll 触发时机——关键事件存档）
         }
 
+        void OnDestroy()
+        {
+            // 大审查 O1：订阅/退订对称（常驻对象仅退出时触发——防御性）
+            if (EventCenter.Instance == null) return;
+            EventCenter.Instance.RemoveEventListener(GameEvent.RunEnded, OnRunEnded);
+            EventCenter.Instance.RemoveEventListener(GameEvent.StateChanged, OnStateChanged);
+            EventCenter.Instance.RemoveEventListener(GameEvent.EventOpened, OnEventOpened);
+            EventCenter.Instance.RemoveEventListener(GameEvent.PhaseChanged, OnPhaseChanged);
+        }
+
         private void OnPhaseChanged(object data)
         {
             // 战斗开始（TowerFlow.StartBattle → Placement）→ 创建战斗控制器（幂等）

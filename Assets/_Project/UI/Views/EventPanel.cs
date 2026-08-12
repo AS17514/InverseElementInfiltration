@@ -139,7 +139,13 @@ namespace TheLaw.UI
 
         System.Collections.IEnumerator BuildOptionsWhenReady()
         {
-            while (_optionTemplate == null) yield return null;
+            int guard = 0;
+            while (_optionTemplate == null && guard++ < 300) yield return null; // 防死等（大审查 H2）
+            if (_optionTemplate == null)
+            {
+                Debug.LogWarning("[EventPanel] 选项模板加载超时——跳过本次构建");
+                yield break;
+            }
             BuildOptions();
         }
 

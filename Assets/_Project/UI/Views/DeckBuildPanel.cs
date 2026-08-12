@@ -205,7 +205,13 @@ namespace TheLaw.UI
 
         System.Collections.IEnumerator RebuildPoolWhenReady()
         {
-            while (_cardTemplate == null) yield return null;
+            int guard = 0;
+            while (_cardTemplate == null && guard++ < 300) yield return null; // 防死等（大审查 H2：加载失败不再无限空等）
+            if (_cardTemplate == null)
+            {
+                Debug.LogWarning("[DeckBuild] 卡面模板加载超时——跳过本次构建");
+                yield break;
+            }
             RebuildPool();
         }
 

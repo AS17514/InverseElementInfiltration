@@ -44,6 +44,9 @@ namespace TheLaw.UI
                 _exitBtn.onClick.AddListener(() => Exit());
             }
             EventCenter.Instance.AddEventListener(GameEvent.EventOpened, OnEventOpened);
+            // ⚠️ 2026-08-12：跨局残留修复——新局首个事件 id 恒 "event-0-0"，与上局最后事件相同时
+            // 幂等早退（ShowEvent 提前 return）→ 首事件沿用上局内容。整局结束（RunEnded）清 _currentEventId。
+            EventCenter.Instance.AddEventListener(GameEvent.RunEnded, OnRunEnded);
             // 预加载选项按钮模板（Btn_EventOption）
             StartCoroutine(LoadOptionTemplate());
         }
@@ -61,6 +64,12 @@ namespace TheLaw.UI
         void OnDestroy()
         {
             EventCenter.Instance.RemoveEventListener(GameEvent.EventOpened, OnEventOpened);
+            EventCenter.Instance.RemoveEventListener(GameEvent.RunEnded, OnRunEnded);
+        }
+
+        void OnRunEnded(object data)
+        {
+            _currentEventId = null; // 跨局重置（防新局首事件幂等早退）
         }
 
         void OnEventOpened(object data)

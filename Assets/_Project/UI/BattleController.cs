@@ -188,10 +188,11 @@ namespace TheLaw.UI
             // ⚠️ DestroyImmediate：Destroy 延迟会让旧面板在重开新局时短暂并存（滚动条/状态沿用旧实例）——同步销毁
             if (_panel != null) DestroyImmediate(_panel.gameObject);
             // 清理盘面视觉：高亮根 + 全部棋子视觉（重开会话时盘面必须清空）
+            // ⚠️ 2026-08-12：前缀同时匹配 EnemyPiece_（PlayDeploy 复用目标）——原只清 Piece_，敌方视觉跨局残留
             ClearHighlights();
             foreach (var go in FindObjectsOfType<GameObject>())
             {
-                if (go.name.StartsWith("Piece_"))
+                if (go.name.StartsWith("Piece_") || go.name.StartsWith("EnemyPiece_"))
                 {
                     DestroyImmediate(go);
                 }
@@ -633,9 +634,12 @@ namespace TheLaw.UI
                 var sr = go.transform.Find("Portrait")?.GetComponent<SpriteRenderer>();
                 if (sr != null)
                 {
+                    // ⚠️ 2026-08-12 修复：恢复原色而非重算 TintFor(DefId)——原实现敌方创建色 TintFor(DefId+1)
+                    // 与恢复色不一致（闪后颜色永久漂移），且目标死亡时 GetPiece null 兑底 TintFor(0)（变蓝）
+                    var original = sr.color;
                     sr.color = Color.white;
                     yield return new WaitForSeconds(0.08f);
-                    sr.color = PieceViewFactory.TintFor(_state.GetPiece(info.TargetId)?.DefId ?? 0);
+                    sr.color = original;
                 }
             }
             yield return new WaitForSeconds(0.15f);

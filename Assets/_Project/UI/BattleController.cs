@@ -36,7 +36,8 @@ namespace TheLaw.UI
         private readonly List<GameObject> _waveNodes = new List<GameObject>(); // 已创建的节点实例
         private int _lastTurnCount = -1; // Update 轮询：TurnCount++（敌方回合逻辑结束）→ 游标右移+节点亮黄（该点无阶段切换事件可挂）
 
-        /// <summary>回合进度：总回合 = 末波 startTurn-1 + endCountdown；进度 = (TurnCount+1)/总回合（归零回合满条，末段等距体现倒计时）。</summary>
+        /// <summary>回合进度：游标 = 敌方回合结束次数/TurnCount 总量（末波 startTurn-1+endCountdown-1）。
+        /// 开局=0（第一回合=准备+敌方，第一次敌方回合结束才走第一格）；节点 startTurn/总量 与游标同刻对齐。</summary>
         void RefreshTurnProgress()
         {
             if (_panel == null) return;
@@ -58,18 +59,18 @@ namespace TheLaw.UI
                 }
             }
             if (_floor == null) return;
-            // 总回合 = 末波 startTurn - 1 + endCountdown（TurnCount 从 0 开始；倒计时设值当回合即减 1）
-            //   → 归零回合 TurnCount = startTurn+endCountdown-2，(TurnCount+1)/total 恰为 1.0 满条
+            // 总量 = 敌方回合结束次数 = 末波 startTurn - 1 + endCountdown - 1
+            //   → 归零回合 TurnCount = startTurn+endCountdown-2 = 总量，TurnCount/总量 恰为 1.0 满条
             int totalTurns = 0;
             if (_waveDefs.Count > 0)
             {
                 var last = _waveDefs[_waveDefs.Count - 1];
-                totalTurns = last.startTurn - 1 + Mathf.Max(0, last.endCountdown);
+                totalTurns = Mathf.Max(1, last.startTurn - 1 + Mathf.Max(0, last.endCountdown) - 1);
             }
             if (totalTurns > 0)
             {
-                // 进度 = 已完成回合数 / 总回合数（末波倒计时自然体现在末段等距推进——无需额外文本）
-                _panel.SetTurnProgress(Mathf.Clamp01((float)(_state.TurnCount + 1) / totalTurns));
+                // 进度 = TurnCount/总量（TurnCount = 已完成敌方回合结束次数；开局 0；每次敌方回合结束 +1 格）
+                _panel.SetTurnProgress(Mathf.Clamp01((float)_state.TurnCount / totalTurns));
             }
             RefreshWaveNodeStates();
         }
@@ -82,7 +83,7 @@ namespace TheLaw.UI
             _waveNodes.Clear();
             if (_waveDefs.Count == 0 || _waveNodeTemplate == null) return;
             var last = _waveDefs[_waveDefs.Count - 1];
-            int totalTurns = last.startTurn - 1 + Mathf.Max(0, last.endCountdown);
+            int totalTurns = Mathf.Max(1, last.startTurn - 1 + Mathf.Max(0, last.endCountdown) - 1);
             foreach (var wave in _waveDefs)
             {
                 var node = Instantiate(_waveNodeTemplate, _panel.WaveNodesRoot);
@@ -90,7 +91,7 @@ namespace TheLaw.UI
                 // 初始波（startTurn=1，第一回合默认生成初始敌人）不显示节点
                 if (wave.startTurn <= 1) node.SetActive(false);
                 _waveNodes.Add(node);
-                // 定位：startTurn/总回合（与进度公式 (TurnCount+1)/total 对齐——节点落在该波部署瞬间的进度位置）
+                // 定位：startTurn/总量（与进度公式 TurnCount/total 对齐——敌方回合结束游标恰到节点位置）
                 var rt = node.GetComponent<RectTransform>();
                 if (rt != null && totalTurns > 0)
                 {

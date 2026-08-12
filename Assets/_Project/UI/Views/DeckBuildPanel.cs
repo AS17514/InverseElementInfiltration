@@ -92,6 +92,7 @@ namespace TheLaw.UI
             RebuildPool();
             RebuildDeck();
             RefreshLimits();
+            RefreshPoolAvailability(); // 初始刷新可选中性（空牌组时全可选——限制生效后按限制禁选）
             ClearPieceInfo(); // 初始化无选中棋子——Grp_PieceInfo 隐藏（悬停卡片才显示）
         }
 
@@ -222,7 +223,37 @@ namespace TheLaw.UI
             }
             RebuildDeck();
             RefreshLimits();
+            RefreshPoolAvailability(); // 限制变化 → 刷新剩余棋子的可选中性（超限禁选）
             // 点击不再 ShowPieceInfo/ClearPieceInfo——信息区由 CardHover 悬停驱动（2026-08-11 需求）
+        }
+
+        /// <summary>
+        /// 刷新牌池卡可选中性（2026-08-11：超限/单卡超限 → interactable=false 灰显禁选）：
+        /// - 数量满（_deckSizeLimit）→ 所有未入队卡禁选（已入队可出队保持可选）
+        /// - 单卡价值超限 → 该卡禁选（即使数量未满）
+        /// - 已入队卡自身不再可点（isOn=true 状态——点它 = 出队，需保留）
+        /// </summary>
+        void RefreshPoolAvailability()
+        {
+            if (_sortedDefs == null || _poolToggles == null) return;
+            int currentValue = 0;
+            foreach (var id in _deck) currentValue += ConfigTable.Find<PieceDef>(id)?.value ?? 0;
+            for (int i = 0; i < _sortedDefs.Count && i < _poolToggles.Count; i++)
+            {
+                var toggle = _poolToggles[i];
+                if (toggle == null) continue;
+                var def = _sortedDefs[i];
+                bool inDeck = _deck.Contains(def.Id);
+                if (inDeck)
+                {
+                    toggle.interactable = true; // 已入队：可点出队
+                    continue;
+                }
+                // 未入队：数量满 or 单卡超价值 → 禁选
+                bool sizeBlocked = _deckSizeLimit > 0 && _deck.Count >= _deckSizeLimit;
+                bool valueBlocked = _valueLimit > 0 && currentValue + def.value > _valueLimit;
+                toggle.interactable = !(sizeBlocked || valueBlocked);
+            }
         }
 
         /// <summary>限制校验（数量/总价值——与 Resolver.BuildDeck 同规则，UI 提前拦截）。</summary>
@@ -308,6 +339,7 @@ namespace TheLaw.UI
             }
             RebuildDeck();
             RefreshLimits();
+            RefreshPoolAvailability(); // 出队后恢复可选中性（数量/价值腾出空间）
             // 点击出队不碰信息区（悬停驱动）
         }
 

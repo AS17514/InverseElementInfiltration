@@ -84,7 +84,7 @@ namespace TheLaw.UI
                 Complete(); // 找不到定义直接推进（防卡关）
                 return;
             }
-            if (_title != null) _title.text = string.IsNullOrEmpty(_currentEvent.title) ? _currentEvent.name.Replace("Event_", "") : _currentEvent.title;
+            if (_title != null) _title.text = string.IsNullOrEmpty(_currentEvent.title) ? "未知事件" : _currentEvent.title; // 中文兜底（防资产名泄漏）
             if (_desc != null) _desc.text = Describe(_currentEvent);
             BuildOptions();
             gameObject.SetActive(true);

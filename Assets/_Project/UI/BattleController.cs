@@ -931,12 +931,13 @@ namespace TheLaw.UI
             Set(_infoValue, def.value.ToString());
             Set(_infoDurability, piece != null ? $"{piece.durability}/{def.durability}" : def.durability.ToString());
             var abilities = new List<string>();
-            foreach (var a in def.specialAbilities) abilities.Add(a.type.ToString());
+            foreach (var a in def.specialAbilities) abilities.Add(DisplayNames.OfAbilityType(a.type)); // 中文映射（2026-08-11：防英文枚举泄漏）
             if (piece != null)
             {
                 foreach (var a in piece.GetAllAbilities())
                 {
-                    if (!abilities.Contains(a.type.ToString())) abilities.Add(a.type.ToString());
+                    string cn = DisplayNames.OfAbilityType(a.type);
+                    if (!abilities.Contains(cn)) abilities.Add(cn);
                 }
             }
             Set(_infoAbilities, abilities.Count > 0 ? string.Join(", ", abilities) : "无");
@@ -962,6 +963,16 @@ namespace TheLaw.UI
             }
         }
 
+        /// <summary>buff key 内置中文兜底（配置表未命中时——防机器码泄漏）：shield/free_execute/ability_* → 中文。</summary>
+        static string BuffFallback(string key)
+        {
+            if (key == "shield") return "护盾";
+            if (key == "free_execute") return "免费行动";
+            if (key != null && key.StartsWith("ability_")) return "临时能力";
+            Debug.LogWarning($"[Battle] buff key 无中文兜底：{key}");
+            return "未知";
+        }
+
         /// <summary>
         /// buff 区文本（Txt_Other 多行拼接）：升变 → 护盾 → 免费行动 → 临时能力（BuffDisplay 聚合 + BuffDescTable 名称）。
         /// 无 buff → “无”；最多 6 行；升变：PromotionConfig.toDefId → 棋子名。
@@ -973,14 +984,14 @@ namespace TheLaw.UI
             if (def.promotionConfigId != 0 && ConfigTable.Find<PromotionConfig>(def.promotionConfigId) is PromotionConfig promo)
             {
                 var toDef = ConfigTable.Find<PieceDef>(promo.toDefId);
-                lines.Add(toDef != null ? $"升变：{toDef.displayName}" : $"升变：{promo.toDefId}");
+                lines.Add(toDef != null ? $"升变：{toDef.displayName}" : "升变：未知目标"); // 配置缺失时中文兜底（防数字泄漏）
             }
             // BuffDisplay 聚合（护盾/免费行动/临时能力——后端顺序）
             if (piece != null)
             {
                 foreach (var buff in BuffDisplay.GetBuffs(piece, _state))
                 {
-                    string name = BuffDescTable.GetName(buff.key) ?? buff.key; // 未命中回退 key
+                    string name = BuffDescTable.GetName(buff.key) ?? BuffFallback(buff.key); // 配置表优先，内置中文兜底（防机器码泄漏）
                     // count 格式：剩余≥2 → ×N；=1 → 只名称；plain → 只名称
                     string line = name;
                     if (BuffDescTable.IsCountFormat(buff.key) && buff.remaining >= 2)
@@ -1083,7 +1094,7 @@ namespace TheLaw.UI
                 AttackMode.DirectFire => "直射",
                 AttackMode.Arcing => "抛射",
                 AttackMode.Spell => "法术",
-                _ => a.mode.ToString(),
+                _ => "未知", // 中文兜底（防新增枚举泄漏）
             };
             string dirs = DirsNatural(a.directions);
             string target = a.mode == AttackMode.Melee || a.mode == AttackMode.MeleeAOE
@@ -1135,7 +1146,7 @@ namespace TheLaw.UI
                 case Direction.UpRight: return "右上";
                 case Direction.DownLeft: return "左下";
                 case Direction.DownRight: return "右下";
-                default: return d.ToString();
+                default: return "未知"; // 中文兜底（防新增枚举泄漏）
             }
         }
 

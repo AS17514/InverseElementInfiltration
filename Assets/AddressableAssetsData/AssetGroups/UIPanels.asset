@@ -17,6 +17,11 @@ MonoBehaviour:
     m_SerializedData: []
   m_GUID: 892f34792af6aac4ebf2853746d97501
   m_SerializeEntries:
+  - m_GUID: 1459885f645322748bb724c581742915
+    m_Address: Tag_WaveNode
+    m_ReadOnly: 0
+    m_SerializedLabels: []
+    FlaggedDuringContentUpdateRestriction: 0
   - m_GUID: 1c800e9f11fd543489c70a6725f57e7d
     m_Address: LoadingPanel
     m_ReadOnly: 0

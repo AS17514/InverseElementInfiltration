@@ -34,6 +34,7 @@ namespace TheLaw.UI
         private List<WaveDef> _waveDefs = new List<WaveDef>();
         private GameObject _waveNodeTemplate; // Tag_WaveNode prefab（Addressables）
         private readonly List<GameObject> _waveNodes = new List<GameObject>(); // 已创建的节点实例
+        private TMP_Text _countdownText; // 末波倒计时文本（代码动态创建——Txt_CurrentProgress 是关卡名不动）
 
         /// <summary>回合进度：预期总回合 = 末波 startTurn + endCountdown（推导）；进度 = TurnCount / 总回合。</summary>
         void RefreshTurnProgress()
@@ -54,6 +55,7 @@ namespace TheLaw.UI
                 {
                     _waveDefs = _floor.waveDefs ?? new List<WaveDef>();
                     BuildWaveNodes();
+                    EnsureCountdownText();
                 }
             }
             if (_floor == null) return;
@@ -66,19 +68,21 @@ namespace TheLaw.UI
             int turn = _state.TurnCount;
             if (totalTurns > 0)
             {
-                float progress = Mathf.Clamp01((float)turn / totalTurns);
-                _panel.SetTurnProgress(progress);
-                _panel.SetTurnProgressText($"第 {turn}/{totalTurns} 回合");
-                // 末波后：满条 + 倒计时
+                _panel.SetTurnProgress(Mathf.Clamp01((float)turn / totalTurns));
+                // 末波倒计时（动态文本；Txt_CurrentProgress 是关卡名不动）
                 if (_state.WaveEndCountdown >= 0)
                 {
-                    _panel.SetTurnProgressText($"第 {turn}/{totalTurns} 回合  末波倒计时 {_state.WaveEndCountdown}");
-                    _panel.SetTurnProgress(1f);
+                    _panel.SetTurnProgress(1f); // 末波：满条
+                    SetCountdown($"末波倒计时 {_state.WaveEndCountdown}");
+                }
+                else
+                {
+                    SetCountdown(null); // 非末波：隐藏倒计时
                 }
             }
             else
             {
-                _panel.SetTurnProgressText($"第 {turn} 回合");
+                SetCountdown(null);
             }
             RefreshWaveNodeStates();
         }
@@ -109,6 +113,30 @@ namespace TheLaw.UI
                 var txt = node.GetComponentInChildren<TMP_Text>();
                 if (txt != null) txt.text = wave.startTurn.ToString();
             }
+        }
+
+        /// <summary>倒计时文本：动态创建于进度条容器下（首次），SetCountdown(null) 隐藏。</summary>
+        void EnsureCountdownText()
+        {
+            if (_countdownText != null || _panel.TurnProgressSlider == null) return;
+            var go = new GameObject("Txt_WaveCountdown", typeof(RectTransform), typeof(TMP_Text));
+            go.transform.SetParent(_panel.TurnProgressSlider.transform, false);
+            var rt = (RectTransform)go.transform;
+            rt.anchorMin = new Vector2(1f, 0.5f);
+            rt.anchorMax = new Vector2(1f, 0.5f);
+            rt.anchoredPosition = new Vector2(160f, 0f); // 进度条右侧
+            rt.sizeDelta = new Vector2(200f, 40f);
+            _countdownText = go.GetComponent<TMP_Text>();
+            _countdownText.fontSize = 24;
+            _countdownText.alignment = TextAlignmentOptions.Left;
+            _countdownText.color = new Color(1f, 0.84f, 0.2f, 1f);
+        }
+
+        void SetCountdown(string text)
+        {
+            if (_countdownText == null) return;
+            _countdownText.text = text ?? "";
+            _countdownText.gameObject.SetActive(text != null);
         }
 
         /// <summary>节点状态：已过波高亮、当前波闪烁、未来波暗。</summary>

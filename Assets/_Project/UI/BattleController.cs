@@ -35,7 +35,7 @@ namespace TheLaw.UI
         private GameObject _waveNodeTemplate; // Tag_WaveNode prefab（Addressables）
         private readonly List<GameObject> _waveNodes = new List<GameObject>(); // 已创建的节点实例
 
-        /// <summary>回合进度：预期总回合 = 末波 startTurn + endCountdown（推导）；进度 = TurnCount / 总回合。</summary>
+        /// <summary>回合进度：总回合 = 末波 startTurn-1 + endCountdown；进度 = (TurnCount+1)/总回合（归零回合满条，末段等距体现倒计时）。</summary>
         void RefreshTurnProgress()
         {
             if (_panel == null) return;

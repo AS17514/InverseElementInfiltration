@@ -47,6 +47,8 @@ namespace TheLaw.UI
             // ⚠️ 2026-08-12：跨局残留修复——新局首个事件 id 恒 "event-0-0"，与上局最后事件相同时
             // 幂等早退（ShowEvent 提前 return）→ 首事件沿用上局内容。整局结束（RunEnded）清 _currentEventId。
             EventCenter.Instance.AddEventListener(GameEvent.RunEnded, OnRunEnded);
+            // 2026-08-12：遗物获得提示（大审查 B5 漏接修复——首事件必得遗物，玩家需看到"获得遗物 XX"）
+            EventCenter.Instance.AddEventListener(GameEvent.RelicObtained, OnRelicObtained);
             // 预加载选项按钮模板（Btn_EventOption）
             StartCoroutine(LoadOptionTemplate());
         }
@@ -65,11 +67,24 @@ namespace TheLaw.UI
         {
             EventCenter.Instance.RemoveEventListener(GameEvent.EventOpened, OnEventOpened);
             EventCenter.Instance.RemoveEventListener(GameEvent.RunEnded, OnRunEnded);
+            EventCenter.Instance.RemoveEventListener(GameEvent.RelicObtained, OnRelicObtained);
         }
 
         void OnRunEnded(object data)
         {
             _currentEventId = null; // 跨局重置（防新局首事件幂等早退）
+            _relicPending = false;
+        }
+
+        bool _relicPending; // 本次选项获得遗物（描述区追加提示 + 延迟关闭展示）
+
+        void OnRelicObtained(object data)
+        {
+            if (data is RelicDef relic && _desc != null && gameObject.activeSelf)
+            {
+                _relicPending = true;
+                _desc.text += $"\n\n✨ 获得遗物：{relic.displayName}";
+            }
         }
 
         void OnEventOpened(object data)
@@ -86,6 +101,7 @@ namespace TheLaw.UI
             if (string.IsNullOrEmpty(eventId)) return;
             if (eventId == _currentEventId) return; // 幂等：同一事件重复推送跳过（防双消费双推进）
             _currentEventId = eventId;
+            _relicPending = false; // 新事件重置遗物提示标记
             _currentEvent = ConfigTable.FindByName<EventDefinition>(eventId);
             if (_currentEvent == null)
             {
@@ -170,10 +186,22 @@ namespace TheLaw.UI
             {
                 gameObject.SetActive(false); // 等专用面板完成（EventCompleted 推进）——下一节点 EventOpened 再激活
             }
+            else if (_relicPending)
+            {
+                // 获得遗物：描述区已追加提示——延迟关闭让玩家看到（大审查 B5）
+                _relicPending = false;
+                StartCoroutine(DelayedComplete());
+            }
             else
             {
                 Complete(); // 无交互效果（遗物/婉拒）→ 直接推进
             }
+        }
+
+        System.Collections.IEnumerator DelayedComplete()
+        {
+            yield return new WaitForSeconds(0.9f); // 遗物提示展示时间
+            Complete();
         }
 
         /// <summary>事件交互完成：先关自己再通知 TowerFlow 推进（防同步推进重新激活面板后被 SetActive(false) 关闭——时序反转）。</summary>

@@ -227,6 +227,16 @@ namespace TheLaw.UI
             OpenEventPanel();
         }
 
+        /// <summary>公共懒加载：CreateAsync → WaitUntil → onReady（大审查 R2：5 个面板加载协程合并——模式统一、防漂移）。</summary>
+        private System.Collections.IEnumerator LoadPanelAsync<T>(System.Action<T> onReady) where T : PanelBase
+        {
+            bool done = false;
+            T panel = null;
+            PanelBase.CreateAsync<T>(p => { panel = p; done = true; });
+            yield return new WaitUntil(() => done);
+            if (onReady != null) onReady(panel);
+        }
+
         private void OpenEventPanel()
         {
             if (_eventPanel == null)
@@ -242,16 +252,15 @@ namespace TheLaw.UI
 
         private System.Collections.IEnumerator LoadEventPanel()
         {
-            bool done = false;
-            EventPanel panel = null;
-            PanelBase.CreateAsync<EventPanel>(p => { panel = p; done = true; });
-            yield return new WaitUntil(() => done);
-            _eventPanel = panel;
-            _uiManager.RegisterPanel(panel);
-            panel.Init(_eventNodeSystem);
-            panel.ShowEvent(_pendingEventId); // 主动推首次事件数据（面板注册晚于事件广播——否则显示预制文本/选项无响应）
-            _uiManager.ShowPanel("EventPanel");
-            Debug.Log($"[Bootstrap] 事件面板已显示（event={_pendingEventId}）");
+            yield return LoadPanelAsync<EventPanel>(panel =>
+            {
+                _eventPanel = panel;
+                _uiManager.RegisterPanel(panel);
+                panel.Init(_eventNodeSystem);
+                panel.ShowEvent(_pendingEventId); // 主动推首次事件数据（面板注册晚于事件广播——否则显示预制文本/选项无响应）
+                _uiManager.ShowPanel("EventPanel");
+                Debug.Log($"[Bootstrap] 事件面板已显示（event={_pendingEventId}）");
+            });
         }
 
         private void OnStateChanged(object data)
@@ -405,15 +414,14 @@ namespace TheLaw.UI
 
         private System.Collections.IEnumerator LoadPieceEditPanel()
         {
-            bool done = false;
-            PieceEditPanel panel = null;
-            PanelBase.CreateAsync<PieceEditPanel>(p => { panel = p; done = true; });
-            yield return new WaitUntil(() => done);
-            _pieceEditPanel = panel;
-            _uiManager.RegisterPanel(panel);
-            panel.Init(_editorSession, _gameState);
-            _uiManager.ShowPanel("PieceEdit");
-            Debug.Log("[Bootstrap] 棋子编辑界面已显示（事件模式）");
+            yield return LoadPanelAsync<PieceEditPanel>(panel =>
+            {
+                _pieceEditPanel = panel;
+                _uiManager.RegisterPanel(panel);
+                panel.Init(_editorSession, _gameState);
+                _uiManager.ShowPanel("PieceEdit");
+                Debug.Log("[Bootstrap] 棋子编辑界面已显示（事件模式）");
+            });
         }
 
         /// <summary>打开牌组构筑面板（事件关模式——StateChanged("deck") 驱动；Btn_Next 经 Resolver.BuildDeck 落账后发 EventCompleted 推进）。</summary>
@@ -431,15 +439,14 @@ namespace TheLaw.UI
 
         private System.Collections.IEnumerator LoadDeckBuildPanel()
         {
-            bool done = false;
-            DeckBuildPanel panel = null;
-            PanelBase.CreateAsync<DeckBuildPanel>(p => { panel = p; done = true; });
-            yield return new WaitUntil(() => done);
-            _deckBuildPanel = panel;
-            _uiManager.RegisterPanel(panel);
-            panel.Init(_resolver, _gameState);
-            _uiManager.ShowPanel("DeckBuild");
-            Debug.Log("[Bootstrap] 牌组构筑界面已显示（事件模式）");
+            yield return LoadPanelAsync<DeckBuildPanel>(panel =>
+            {
+                _deckBuildPanel = panel;
+                _uiManager.RegisterPanel(panel);
+                panel.Init(_resolver, _gameState);
+                _uiManager.ShowPanel("DeckBuild");
+                Debug.Log("[Bootstrap] 牌组构筑界面已显示（事件模式）");
+            });
         }
 
         private void CreateBattleController()
@@ -453,10 +460,8 @@ namespace TheLaw.UI
         /// <summary>结算面板常驻创建（战斗结束 overlay——自身监听 StateChanged + PushPanel/PopPanel；须在战斗前就绪）。</summary>
         private System.Collections.IEnumerator CreateBattleResultPanel()
         {
-            bool done = false;
-            BattleResultPanel panel = null;
-            PanelBase.CreateAsync<BattleResultPanel>(p => { panel = p; done = true; });
-            yield return new WaitUntil(() => done);
+            yield return LoadPanelAsync<BattleResultPanel>(panel =>
+            {
             _battleResultPanel = panel;
             _uiManager.RegisterPanel(panel);
             panel.Init(_gameState, _uiManager);
@@ -471,15 +476,14 @@ namespace TheLaw.UI
             };
             panel.gameObject.SetActive(false); // prefab 根 active——必须显式隐藏（常驻但不可见；首次 StateChanged 才 PushOverlay）
             Debug.Log("[Bootstrap] 结算面板已就绪（常驻）");
+            });
         }
 
         private System.Collections.IEnumerator LoadMainMenu()
         {
             yield return Addressables.InitializeAsync();
-            bool done = false;
-            MainMenuPanel panel = null;
-            PanelBase.CreateAsync<MainMenuPanel>(p => { panel = p; done = true; });
-            yield return new WaitUntil(() => done);
+            yield return LoadPanelAsync<MainMenuPanel>(panel =>
+            {
             _uiManager.RegisterPanel(panel);
             // 按钮事件接线（面板只转发输入，流程响应在此）
             panel.OnNewGameClicked += () => { _uiManager.HidePanel("MainMenu"); StartNewGame(); };
@@ -488,6 +492,7 @@ namespace TheLaw.UI
             panel.OnQuitClicked += Application.Quit;
             _uiManager.ShowPanel("MainMenu");
             Debug.Log("[Bootstrap] 主菜单已显示");
+            });
         }
 
         // ========== 生命周期（存档时机）==========

@@ -45,10 +45,21 @@ namespace TheLaw.UI
 
         private void Awake()
         {
-            _resultText = transform.Find("Txt_BattleResult")?.GetComponent<TMP_Text>();
-            _statsText = transform.Find("Txt_Stats")?.GetComponent<TMP_Text>();
-            _tipText = transform.Find("Txt_Tip")?.GetComponent<TMP_Text>();
+            // 节点在 Img_Bg/Img_BgBorder/ 下（二级）——用递归查找（Find 只找直接子级会 null）
+            _resultText = FindDeep(transform, "Txt_BattleResult")?.GetComponent<TMP_Text>();
+            _statsText = FindDeep(transform, "Txt_Stats")?.GetComponent<TMP_Text>();
+            _tipText = FindDeep(transform, "Txt_Tip")?.GetComponent<TMP_Text>();
             EventCenter.Instance.AddEventListener(GameEvent.StateChanged, OnStateChanged);
+        }
+
+        /// <summary>递归按名查找（容错 prefab 层级嵌套）。</summary>
+        static Transform FindDeep(Transform root, string name)
+        {
+            foreach (var t in root.GetComponentsInChildren<Transform>(true))
+            {
+                if (t.name == name) return t;
+            }
+            return null;
         }
 
         void OnDestroy()

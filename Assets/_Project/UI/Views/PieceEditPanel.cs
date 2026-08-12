@@ -85,11 +85,17 @@ namespace TheLaw.UI
             {
                 foreach (var defId in new List<int>(_state.EditingDefs))
                 {
-                    _editor.EndEdit(defId);
+                    if (!_editor.EndEdit(defId))
+                    {
+                        // 空程序（至少 1 槽校验失败——2026-08-12 修复）：提示并保持编辑态，防"废棋子"进战斗
+                        var def = ConfigTable.Find<PieceDef>(defId);
+                        Debug.LogWarning($"[PieceEdit] {def?.displayName ?? defId.ToString()} 程序为空——无法完成编辑，请至少保留 1 个程序块");
+                        return;
+                    }
                 }
             }
             gameObject.SetActive(false);
-            EventCenter.Instance.EventTrigger(GameEvent.EventCompleted);
+            EventCenter.Instance.EventTrigger(GameEvent.EventCompleted, _state != null ? _state.CurrentEventId : null); // 推进（携带事件 id——TowerFlow 校验匹配；防重复信号跳节点）
         }
 
         protected override void OnShow()
@@ -649,26 +655,31 @@ namespace TheLaw.UI
 
         // ====== 程序编排（锁定块在前绝对固定 + 替换/插入语义——整组提交） ======
 
+        /// <summary>程序槽位上限（当前方案固定 4——策划变更时改此处即可；ProgramDef.slots 本身是 List 无硬上限）。</summary>
+        private const int MaxProgramSlots = 4;
+
         /// <summary>
         /// 拖入到槽 to（2026-08-11 需求对齐 v2）：
         /// - 目标锁定槽 → 拒绝（锁定块绝对固定）
-        /// - 程序有空缺（Count &lt; 4）→ **插入 to 位置**（原 to 及之后顺移，空位补齐——如 [锁a 锁b c 空] 拖 x 到 c → [锁a 锁b x c]）
-        /// - 程序满 4 槽 → 替换 to 槽（原块回程序库——无限复制语义下无额外动作）
+        /// - 程序有空缺（Count &lt; MaxProgramSlots）→ **插入 to 位置**（原 to 及之后顺移，空位补齐——如 [锁a 锁b c 空] 拖 x 到 c → [锁a 锁b x c]）
+        /// - 程序满 → 替换 to 槽（原块回程序库——无限复制语义下无额外动作）
+        /// ⚠️ 2026-08-12：原 Clamp(to,0,4) 满槽时 to=4 会索引越界（UI 只传 0-3 未触发）——改用 Count 动态处理，不依赖硬编码 4。
         /// </summary>
         public bool InsertProgram(int to, Template template)
         {
             if (_selectedDefId < 0 || template == null) return false;
-            to = Mathf.Clamp(to, 0, 4);
-            if (to < _slotLocked.Count && _slotLocked[to]) return false; // 目标锁定槽：拒绝
-            if (_slotTemplates.Count >= 4)
+            if (_slotTemplates.Count >= MaxProgramSlots)
             {
-                // 满 4 槽：替换目标槽（锁定标记不变——原块本就非锁定）
-                _slotTemplates[to] = template;
+                // 满槽：替换目标槽（索引必须在 0..Count-1 内）
+                to = Mathf.Clamp(to, 0, _slotTemplates.Count - 1);
+                if (to < _slotLocked.Count && _slotLocked[to]) return false; // 锁定槽拒绝
+                _slotTemplates[to] = template; // 锁定标记不变——原块本就非锁定
             }
             else
             {
-                // 有空缺：插入 to（顺移——原 to 及之后后移，空缺补齐）
+                // 有空缺：插入 to（0..Count——顺移，空缺补齐）
                 to = Mathf.Clamp(to, 0, _slotTemplates.Count);
+                if (to < _slotLocked.Count && _slotLocked[to]) return false; // 锁定槽拒绝
                 _slotTemplates.Insert(to, template);
                 _slotLocked.Insert(to, false); // 新块不锁定
             }

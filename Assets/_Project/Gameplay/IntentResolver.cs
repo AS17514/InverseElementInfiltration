@@ -58,7 +58,7 @@ namespace TheLaw.Gameplay
             int bestScore = int.MinValue;
             foreach (var cell in options)
             {
-                int score = ScoreCell(state, cell, rule);
+                int score = ScoreCell(state, cell, rule, piece);
                 if (score > bestScore)
                 {
                     bestScore = score;
@@ -98,7 +98,7 @@ namespace TheLaw.Gameplay
             Core.Assert.IsNotNull(options, "PickTarget: options 为 null");
         }
 
-        private int ScoreCell(GameState state, Vector2Int cell, TargetRule rule)
+        private int ScoreCell(GameState state, Vector2Int cell, TargetRule rule, PieceInstance attacker)
         {
             var target = state.GetPieceAt(cell);
             switch (rule)
@@ -108,9 +108,11 @@ namespace TheLaw.Gameplay
                 case TargetRule.LowestHP:
                     return target != null ? -target.durability : 0;
                 case TargetRule.Nearest:
-                default:
-                    // 按距离取反（调用方传"最近"时 bestScore 取最大）
-                    return 0;
+                    // ⚠️ 2026-08-12：原实现返回 0（全部候选同分→永远选第一个）——补距离评分：
+                    // 候选格离攻击者越近分越高（曼哈顿距离取负——与 LowestHP 同方向，bestScore 取最大）
+                    return attacker != null
+                        ? -(Mathf.Abs(cell.x - attacker.position.x) + Mathf.Abs(cell.y - attacker.position.y))
+                        : 0;
             }
         }
     }

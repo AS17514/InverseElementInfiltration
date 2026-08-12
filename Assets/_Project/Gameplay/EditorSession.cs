@@ -38,11 +38,20 @@ namespace TheLaw.Gameplay
             }
         }
 
-        /// <summary>退出编辑（校验程序完整——4 槽；移除编辑态标记）。</summary>
-        public void EndEdit(int defId)
+        /// <summary>
+        /// 退出编辑（校验程序非空——至少 1 槽；移除编辑态标记）。
+        /// ⚠️ 2026-08-12：原断言 `!= null` 恒真（GetCurrentProgram 永不返回 null，空程序也通过）——
+        /// 空程序进战斗 = 棋子永不行动（缺陷）。改为 Count &gt; 0 校验；失败返回 false（UI 提示，不移除标记）。
+        /// 注："必须 4 槽"是玩法规则（待策划确认）——此处只做"非空"防御。
+        /// </summary>
+        public bool EndEdit(int defId)
         {
-            Assert.IsTrue(GetCurrentProgram(defId) != null, $"EndEdit: defId={defId} 程序为空");
+            if (GetCurrentProgram(defId).Count == 0)
+            {
+                return false; // 空程序：拒绝结束编辑（防"废棋子"进战斗）
+            }
             _state.EditingDefs.Remove(defId);
+            return true;
         }
 
         /// <summary>实时修改（经 Resolver 落账；旧程序入撤销栈）。</summary>

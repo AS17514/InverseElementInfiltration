@@ -266,6 +266,7 @@ namespace TheLaw.EditorTools
                     pieceDefIds = ResolvePieceIds(w.pieceDefIds), // 资产名 → defId（int）
                     isLastWave = w.isLastWave,
                     endCountdown = w.endCountdown,
+                    promotions = ParsePromotions(w.promotions), // 波次升变预告（2026-08-12：DTO 补字段——此前只能手动配资产，与"JSON 是权威源"公约冲突）
                 });
             }
             if (floor.Id == 0)
@@ -557,17 +558,32 @@ namespace TheLaw.EditorTools
             var ids = new List<int>();
             foreach (var name in assetNames ?? new List<string>())
             {
-                var def = AssetDatabase.LoadAssetAtPath<PieceDef>($"{PieceAssetsDir}/{name}.asset");
-                if (def != null)
-                {
-                    ids.Add(def.Id);
-                }
-                else
-                {
-                    Debug.LogWarning($"[配置导入器] 找不到棋子资产 {name}（Assets/Settings/Pieces/）——波次阵容跳过该项");
-                }
+                ids.Add(ResolvePieceId(name));
             }
             return ids;
+        }
+
+        /// <summary>单个棋子资产名 → defId（找不到返回 0 并警告——升变预告等单值引用用）。</summary>
+        private static int ResolvePieceId(string assetName)
+        {
+            var def = AssetDatabase.LoadAssetAtPath<PieceDef>($"{PieceAssetsDir}/{assetName}.asset");
+            if (def != null)
+            {
+                return def.Id;
+            }
+            Debug.LogWarning($"[配置导入器] 找不到棋子资产 {assetName}（Assets/Settings/Pieces/）——该项跳过");
+            return 0;
+        }
+
+        /// <summary>波次升变预告（JSON WavePromotionJson → WaveDef.promotions；toDefId 资产名 → defId）。</summary>
+        private static List<WavePromotion> ParsePromotions(List<WavePromotionJson> promotions)
+        {
+            var list = new List<WavePromotion>();
+            foreach (var p in promotions ?? new List<WavePromotionJson>())
+            {
+                list.Add(new WavePromotion { pieceIndexInWave = p.pieceIndexInWave, toDefId = ResolvePieceId(p.toDefId) });
+            }
+            return list;
         }
 
         private static T ParseEnum<T>(string s, T fallback) where T : struct
@@ -596,7 +612,8 @@ namespace TheLaw.EditorTools
 
         private class MapJson { public string mapName; public string displayName; public string description; public List<string> floors; }
         private class FloorJson { public string floorName; public string displayName; public string description; public string victoryRule; public int targetScore; public int enemyMaxAP; public List<string> eventSequence; public List<string> eventPoolIds; public List<WaveJson> waves; }
-        private class WaveJson { public int startTurn; public List<string> pieceDefIds; public bool isLastWave; public int endCountdown; }
+        private class WaveJson { public int startTurn; public List<string> pieceDefIds; public bool isLastWave; public int endCountdown; public List<WavePromotionJson> promotions; }
+        private class WavePromotionJson { public int pieceIndexInWave; public string toDefId; }
         private class RelicsJson { public List<RelicJson> relics; }
         private class RelicJson { public string relicName; public string displayName; public string description; public List<AbilityJson> abilities; }
         private class EventsJson { public List<PoolJson> pools; public List<EventJson> events; }

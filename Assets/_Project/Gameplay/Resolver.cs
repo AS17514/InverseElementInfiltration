@@ -233,7 +233,7 @@ namespace TheLaw.Gameplay
             }
             var newDef = ConfigTable.Get<PieceDef>(action.newDefId);
             piece.def = newDef;
-            piece.durability = newDef.durability;
+            piece.ApplyDefProperties(); // 承伤+护盾按新身体重算（2026-08-12：护盾此前漏算——升变丢新身体护盾；统一初始化路径）
             if (piece.side == Side.Player)
             {
                 _state.Hand.Remove(action.newDefId); // 升变牌打出（手牌减一）——仅玩家（敌方无手牌）

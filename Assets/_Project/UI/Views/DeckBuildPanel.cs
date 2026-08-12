@@ -415,7 +415,7 @@ namespace TheLaw.UI
             if (_resolver.BuildDeck(new List<int>(_deck)))
             {
                 gameObject.SetActive(false);
-                EventCenter.Instance.EventTrigger(GameEvent.EventCompleted); // 推进（TowerFlow 监听）
+                EventCenter.Instance.EventTrigger(GameEvent.EventCompleted, _state != null ? _state.CurrentEventId : null); // 推进（携带事件 id——TowerFlow 校验匹配；防重复信号跳节点）
             }
             else
             {

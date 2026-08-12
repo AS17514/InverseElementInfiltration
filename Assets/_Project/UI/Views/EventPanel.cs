@@ -204,11 +204,12 @@ namespace TheLaw.UI
             Complete();
         }
 
-        /// <summary>事件交互完成：先关自己再通知 TowerFlow 推进（防同步推进重新激活面板后被 SetActive(false) 关闭——时序反转）。</summary>
+        /// <summary>事件交互完成：先关自己再通知 TowerFlow 推进（防同步推进重新激活面板后被 SetActive(false) 关闭——时序反转）。
+        /// ⚠️ 2026-08-12：携带当前事件 id——TowerFlow 校验匹配才推进（防重复信号跳节点）。</summary>
         void Complete()
         {
             gameObject.SetActive(false);
-            EventCenter.Instance.EventTrigger(GameEvent.EventCompleted);
+            EventCenter.Instance.EventTrigger(GameEvent.EventCompleted, _currentEventId);
         }
 
         void Exit()

@@ -26,9 +26,16 @@ namespace TheLaw.Gameplay
             EventCenter.Instance.AddEventListener(GameEvent.EventCompleted, OnEventCompleted);
         }
 
-        /// <summary>事件关完成（UI 发 EventCompleted）→ 推进下一个节点（下一事件或战斗）。</summary>
+        /// <summary>
+        /// 事件关完成（UI 发 EventCompleted，携带当前事件 id）→ 推进下一个节点（下一事件或战斗）。
+        /// ⚠️ 2026-08-12 防重：信号必须对应当前事件（data 为当前事件 id）——重复/过期信号（id 不匹配）被拒绝，防 UI 连发跳节点。
+        /// </summary>
         private void OnEventCompleted(object data)
         {
+            if (!(data is string eventId) || eventId != _state.CurrentEventId)
+            {
+                return; // 信号不匹配当前事件（旧/重复信号）——拒绝
+            }
             AdvanceNode();
         }
 

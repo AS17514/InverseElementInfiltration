@@ -31,11 +31,21 @@ namespace TheLaw.Gameplay
             _defId = def.Id;
             this.side = side;
             this.position = position;
-            durability = def.durability;
-            // 敌方与我方对向——初始朝向翻转（我方朝上/向前，敌方朝下/向后）
+            ApplyDefProperties(); // 承伤/护盾按 def 初始化（与升变共用同一初始化路径——防属性只初始化一条路径再漏）
+            // 敌方与我方对向——初始朝向翻转（我方朝上/向前，敌方朝下/向后；朝向只在创建时定，升变保留原朝向）
             facing = side == Side.Enemy ? OppositeFacing(def.defaultFacing) : def.defaultFacing;
             isDeployed = true;
-            shieldCount = GetShieldAmount(); // 初始护盾 = 固有 ShieldBlock 能力 amount 之和
+        }
+
+        /// <summary>
+        /// 按当前 def 重算"def 决定的可变实例属性"（创建与升变共用）。
+        /// ⚠️ 2026-08-12：升变此前只更新 durability、漏了 shieldCount（新身体护盾丢失）——提炼统一方法根治；
+        /// 以后新增"def 决定的可变属性"只需在此添加，创建/升变两条路径自动覆盖。
+        /// </summary>
+        public void ApplyDefProperties()
+        {
+            durability = def.durability;
+            shieldCount = GetShieldAmount(); // 固有 + 临时护盾能力之和（临时能力保留——实例状态不因升变消失）
         }
 
         /// <summary>朝向翻转（上下互换/左右互换）——敌方与我方对向。</summary>

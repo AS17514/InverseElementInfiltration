@@ -100,6 +100,22 @@ namespace TheLaw.UI
             _slotTemplates.Clear();
             _slotLocked.Clear(); // 锁定标记与槽同步清（选中后 ShowPieceInfo 重建）
             if (_pieceInfo != null) _pieceInfo.gameObject.SetActive(false);
+            // ⚠️ 2026-08-12：UGUI 组件状态必须【同步】立即重置——BuildPieceList 是异步协程
+            // （Addressables 加载 + Destroy 延迟帧末），打开瞬间若依赖它则旧内容/旧选中/旧滚动仍在显示：
+            // - Grp_PieceDisplay 卡面：同步 DestroyImmediate 清空（无延迟窗口）
+            // - 选中态：ToggleGroup.SetAllTogglesOff（清残留选中高亮）
+            // - 滚动条：ScrollRect.normalizedPosition 归零
+            if (_pieceContent != null)
+            {
+                for (int i = _pieceContent.childCount - 1; i >= 0; i--)
+                {
+                    DestroyImmediate(_pieceContent.GetChild(i).gameObject); // 同步清空（Destroy 延迟帧末→旧卡残留）
+                }
+                var group = _pieceContent.GetComponent<ToggleGroup>();
+                if (group != null) group.SetAllTogglesOff();
+                var scroll = _pieceContent.GetComponentInParent<ScrollRect>();
+                if (scroll != null) scroll.normalizedPosition = Vector2.zero;
+            }
             RefreshPieceList();
         }
 

@@ -289,6 +289,8 @@ namespace TheLaw.UI
             DestroyBattleController();
             _gameState.ResetForNewRun();
             SaveManager.Instance.SaveAll();
+            // 2026-08-12：回主菜单前强制隐藏会话面板（防 _current==null 时编辑/构筑面板残留显示）
+            HideSessionPanels();
             // 结算面板不在 UIManager 栈（BattlePanel/EventPanel 直接 Show）——ShowPanel 不影响它；
             // 失败路径：MainMenu 显示在结算面板下层，玩家确认后结算关闭露出 MainMenu
             _uiManager.ShowPanel("MainMenu");
@@ -341,12 +343,28 @@ namespace TheLaw.UI
             StartNewGame();
         }
 
-        /// <summary>新局：重置状态（基础牌组填手牌）→ 直接进入爬塔节点序列（事件→编辑事件→构筑事件→战斗——固定链）。</summary>
+        /// <summary>
+        /// 新局：重置状态（基础牌组填手牌）→ 直接进入爬塔节点序列（事件→编辑事件→构筑事件→战斗——固定链）。
+        /// ⚠️ 2026-08-12：先强制隐藏会话面板——UIManager.ShowPanel 幂等早退（_current==key && IsVisible）
+        /// 会跳过 OnShow → 上局停留在编辑/构筑界面时状态残留（选中/槽位/列表）。隐藏后 _current 置空，
+        /// 新局 ShowPanel 必然走完整路径触发 OnShow 重置。
+        /// </summary>
         private void StartNewGame()
         {
             DestroyBattleController(); // 清理旧战斗会话（重开/结算重开路径）
+            HideSessionPanels();
             _gameState.ResetForNewRun(); // 基础牌组填手牌（协作者实现）；敌方由波次调度产出（数据集 floor1 回合 1/4/7）
             EnterTower();
+        }
+
+        /// <summary>强制隐藏全部会话面板（编辑/构筑/事件/战斗）——跨局重置防幂等早退跳过 OnShow。</summary>
+        private void HideSessionPanels()
+        {
+            if (_uiManager == null) return; // 防御：编译重载中间态
+            _uiManager.HidePanel("PieceEdit");
+            _uiManager.HidePanel("DeckBuild");
+            _uiManager.HidePanel("EventPanel");
+            _uiManager.HidePanel("Battle");
         }
 
         /// <summary>进入爬塔：TowerFlow 节点序列驱动（事件关/编辑/战斗）。</summary>

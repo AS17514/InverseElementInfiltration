@@ -29,6 +29,117 @@ namespace TheLaw.UI
         IntentResolver _intentResolver;
         BattlePanel _panel;
 
+        // ========== 回合进度条（2026-08-12：进度条 + 波次节点）==========
+        private FloorConfig _floor; // 当前层配置（波次数据源）
+        private List<WaveDef> _waveDefs = new List<WaveDef>();
+        private GameObject _waveNodeTemplate; // Tag_WaveNode prefab（Addressables）
+        private readonly List<GameObject> _waveNodes = new List<GameObject>(); // 已创建的节点实例
+
+        /// <summary>回合进度：预期总回合 = 末波 startTurn + endCountdown（推导）；进度 = TurnCount / 总回合。</summary>
+        void RefreshTurnProgress()
+        {
+            if (_panel == null) return;
+            if (_floor == null)
+            {
+                // 从 GameState.CurrentFloor 拿层配置（无需 Init 注入）
+                foreach (var map in ConfigTable.All<MapConfig>())
+                {
+                    if (map.floors != null && _state.CurrentFloor >= 0 && _state.CurrentFloor < map.floors.Count)
+                    {
+                        _floor = map.floors[_state.CurrentFloor];
+                        break;
+                    }
+                }
+                if (_floor != null)
+                {
+                    _waveDefs = _floor.waveDefs ?? new List<WaveDef>();
+                    BuildWaveNodes();
+                }
+            }
+            if (_floor == null) return;
+            // 预期总回合 = 末波 startTurn + endCountdown
+            int totalTurns = 0;
+            if (_waveDefs.Count > 0)
+            {
+                totalTurns = _waveDefs[_waveDefs.Count - 1].startTurn + Mathf.Max(0, _waveDefs[_waveDefs.Count - 1].endCountdown);
+            }
+            int turn = _state.TurnCount;
+            if (totalTurns > 0)
+            {
+                float progress = Mathf.Clamp01((float)turn / totalTurns);
+                _panel.SetTurnProgress(progress);
+                _panel.SetTurnProgressText($"第 {turn}/{totalTurns} 回合");
+                // 末波后：满条 + 倒计时
+                if (_state.WaveEndCountdown >= 0)
+                {
+                    _panel.SetTurnProgressText($"第 {turn}/{totalTurns} 回合  末波倒计时 {_state.WaveEndCountdown}");
+                    _panel.SetTurnProgress(1f);
+                }
+            }
+            else
+            {
+                _panel.SetTurnProgressText($"第 {turn} 回合");
+            }
+            RefreshWaveNodeStates();
+        }
+
+        /// <summary>波次节点：按 startTurn/总回合 比例定位（0~1 → Slider 范围）。</summary>
+        void BuildWaveNodes()
+        {
+            if (_panel == null || _panel.WaveNodesRoot == null) return;
+            foreach (var n in _waveNodes) if (n != null) Destroy(n);
+            _waveNodes.Clear();
+            if (_waveDefs.Count == 0 || _waveNodeTemplate == null) return;
+            int totalTurns = _waveDefs[_waveDefs.Count - 1].startTurn + Mathf.Max(0, _waveDefs[_waveDefs.Count - 1].endCountdown);
+            foreach (var wave in _waveDefs)
+            {
+                var node = Instantiate(_waveNodeTemplate, _panel.WaveNodesRoot);
+                node.name = $"WaveNode_{wave.startTurn}";
+                _waveNodes.Add(node);
+                // 定位：startTurn/总回合 → 容器宽比例
+                var rt = node.GetComponent<RectTransform>();
+                if (rt != null && totalTurns > 0)
+                {
+                    float ratio = Mathf.Clamp01((float)wave.startTurn / totalTurns);
+                    rt.anchorMin = new Vector2(ratio, 0.5f);
+                    rt.anchorMax = new Vector2(ratio, 0.5f);
+                    rt.anchoredPosition = Vector2.zero;
+                }
+                // 波次号文本（可选）
+                var txt = node.GetComponentInChildren<TMP_Text>();
+                if (txt != null) txt.text = wave.startTurn.ToString();
+            }
+        }
+
+        /// <summary>节点状态：已过波高亮、当前波闪烁、未来波暗。</summary>
+        void RefreshWaveNodeStates()
+        {
+            int turn = _state.TurnCount;
+            for (int i = 0; i < _waveNodes.Count && i < _waveDefs.Count; i++)
+            {
+                var node = _waveNodes[i];
+                if (node == null) continue;
+                var img = node.GetComponent<Image>();
+                if (img == null) continue;
+                int startTurn = _waveDefs[i].startTurn;
+                if (turn >= startTurn + 1) img.color = new Color(1f, 1f, 1f, 1f);      // 已过：亮
+                else if (turn >= startTurn) img.color = new Color(1f, 0.84f, 0.2f, 1f); // 当前波：金
+                else img.color = new Color(0.5f, 0.5f, 0.5f, 0.5f);                     // 未来：暗
+            }
+        }
+
+        /// <summary>加载波次节点模板（Addressables——Tag_WaveNode；失败则跳过节点只显示进度条）。</summary>
+        System.Collections.IEnumerator LoadWaveNodeTemplate()
+        {
+            var handle = UnityEngine.AddressableAssets.Addressables.LoadAssetAsync<GameObject>("Tag_WaveNode");
+            yield return handle;
+            if (handle.Status == UnityEngine.ResourceManagement.AsyncOperations.AsyncOperationStatus.Succeeded && handle.Result != null)
+            {
+                _waveNodeTemplate = handle.Result;
+                BuildWaveNodes();
+            }
+        }
+
         // ========== 状态 ==========
         bool _executing;             // 执行镜像进行中
         int _execPieceId = -1;
@@ -146,6 +257,9 @@ namespace TheLaw.UI
                 ClearPieceInfo(); // 初始：信息面板隐藏（无选中/无临时状态）
                 // 补齐开局已有棋子视觉（首波部署早于控制器创建——PieceDeployed 事件已丢）
                 SyncExistingPieces();
+                // 回合进度条：加载波次节点模板 + 首次刷新（2026-08-12）
+                StartCoroutine(LoadWaveNodeTemplate());
+                RefreshTurnProgress();
             });
         }
 
@@ -743,6 +857,7 @@ namespace TheLaw.UI
                 _uiManager.ShowPanel("Battle");
             }
             RefreshAll();
+            RefreshTurnProgress(); // 回合进度条刷新（阶段切换=回合推进）
             ClearSelection();
             ClearHighlights(); // 阶段切换必清高亮
             // 阶段切换重置执行镜像（防执行中结束回合致新回合软锁）

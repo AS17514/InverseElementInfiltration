@@ -17,6 +17,9 @@ namespace TheLaw.UI
         public TMP_Text PhaseButtonText { get; private set; }
         public TMP_Text APValueText { get; private set; }
         public TMP_Text EventNameText { get; private set; }
+        public TMP_Text TurnProgressText { get; private set; } // Txt_CurrentProgress（第 3/10 回合）
+        public Slider TurnProgressSlider { get; private set; } // Sld_TurnProgress（回合进度条）
+        public RectTransform WaveNodesRoot { get; private set; } // Grp_WaveNodes（波次节点容器）
         public RectTransform HandRoot { get; private set; }
         public GameObject HandCardTemplate { get; private set; }
 
@@ -46,6 +49,10 @@ namespace TheLaw.UI
                 }
             }
             HandRoot = transform.Find("Grp_Hand") as RectTransform;
+            // 回合进度（2026-08-12：进度条 + 波次节点）
+            TurnProgressText = transform.Find("Grp_TopBar/Txt_CurrentProgress")?.GetComponent<TMP_Text>();
+            TurnProgressSlider = transform.Find("Grp_TopBar/Grp_M/Sld_TurnProgress")?.GetComponent<Slider>();
+            WaveNodesRoot = transform.Find("Grp_TopBar/Grp_M/Grp_WaveNodes") as RectTransform;
 
             // 手牌模板（Grp_Hand 下名为 Piece_Handcard 的节点，保留作克隆模板）
             var template = transform.Find("Grp_Hand/Piece_Handcard");
@@ -66,6 +73,18 @@ namespace TheLaw.UI
         public void SetEventName(string name)
         {
             if (EventNameText != null) EventNameText.text = name;
+        }
+
+        /// <summary>回合进度文本（第 3/10 回合）。</summary>
+        public void SetTurnProgressText(string text)
+        {
+            if (TurnProgressText != null) TurnProgressText.text = text;
+        }
+
+        /// <summary>进度条值（0~1）。</summary>
+        public void SetTurnProgress(float value)
+        {
+            if (TurnProgressSlider != null) TurnProgressSlider.value = value;
         }
     }
 }

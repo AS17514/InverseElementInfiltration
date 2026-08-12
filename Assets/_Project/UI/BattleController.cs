@@ -34,6 +34,7 @@ namespace TheLaw.UI
         private List<WaveDef> _waveDefs = new List<WaveDef>();
         private GameObject _waveNodeTemplate; // Tag_WaveNode prefab（Addressables）
         private readonly List<GameObject> _waveNodes = new List<GameObject>(); // 已创建的节点实例
+        private int _lastWaveCount = -1; // Update 轮询：WaveScores 变化（波次部署完成）→ 刷新节点亮黄
 
         /// <summary>回合进度：总回合 = 末波 startTurn-1 + endCountdown；进度 = (TurnCount+1)/总回合（归零回合满条，末段等距体现倒计时）。</summary>
         void RefreshTurnProgress()
@@ -104,20 +105,19 @@ namespace TheLaw.UI
             }
         }
 
-        /// <summary>节点状态：已过波高亮、当前波闪烁、未来波暗。</summary>
+        /// <summary>节点状态：用 WaveScores.Count 精确绑定部署完成时刻（BattleFlow 部署完 Add(0)）——亮黄与敌方生成同刻。</summary>
         void RefreshWaveNodeStates()
         {
-            int turn = _state.TurnCount;
+            int deployed = _state.WaveScores != null ? _state.WaveScores.Count : 0;
             for (int i = 0; i < _waveNodes.Count && i < _waveDefs.Count; i++)
             {
                 var node = _waveNodes[i];
-                if (node == null) continue;
+                if (node == null || !node.activeSelf) continue;
                 var img = node.GetComponent<Image>();
                 if (img == null) continue;
-                int startTurn = _waveDefs[i].startTurn;
-                if (turn >= startTurn) img.color = new Color(1f, 1f, 1f, 1f);            // 已过（生成次回合起）：亮
-                else if (turn >= startTurn - 1) img.color = new Color(1f, 0.84f, 0.2f, 1f); // 当前波（生成当回合 turn=startTurn-1 亮黄）：金
-                else img.color = new Color(0.5f, 0.5f, 0.5f, 0.5f);                       // 未来：暗
+                if (i + 1 < deployed) img.color = new Color(1f, 1f, 1f, 1f);            // 已过（该波后又有新波部署）：亮白
+                else if (i + 1 == deployed) img.color = new Color(1f, 0.84f, 0.2f, 1f); // 当前波（刚部署）：金
+                else img.color = new Color(0.5f, 0.5f, 0.5f, 0.5f);                     // 未来（未部署）：暗
             }
         }
 
@@ -253,6 +253,7 @@ namespace TheLaw.UI
                 // 回合进度条：加载波次节点模板 + 首次刷新（2026-08-12）
                 StartCoroutine(LoadWaveNodeTemplate());
                 RefreshTurnProgress();
+                _lastWaveCount = _state.WaveScores != null ? _state.WaveScores.Count : -1; // 初始同步（开局首波已部署）
             });
         }
 
@@ -270,6 +271,13 @@ namespace TheLaw.UI
 
         void Update()
         {
+            // 波次部署完成轮询：WaveScores.Count 变化 → 节点亮黄与敌方生成同刻（部署后无事件通知，轮询最可靠）
+            if (_state != null && _state.WaveScores != null && _state.WaveScores.Count != _lastWaveCount)
+            {
+                _lastWaveCount = _state.WaveScores.Count;
+                RefreshWaveNodeStates();
+            }
+
             if (!Input.GetMouseButtonDown(0)) return;
             if (EventSystem.current != null && EventSystem.current.IsPointerOverGameObject()) return;
 

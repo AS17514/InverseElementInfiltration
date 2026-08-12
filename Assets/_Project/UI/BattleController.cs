@@ -1013,6 +1013,15 @@ namespace TheLaw.UI
         {
             if (_infoName != null) return;
             var ui = GameObject.Find("UI");
+            if (ui == null)
+            {
+                // ⚠️ GameObject.Find 只找 active 对象——UI 根 inactive 时兜底遍历（含 inactive）
+                // （场景资产 UI 默认 active；编辑器内可能被误勾掉。ShowPieceInfo 时会 SetActive(true) 强制显示）
+                foreach (var go in FindObjectsOfType<GameObject>(true))
+                {
+                    if (go.name == "UI" && go.transform.parent == null) { ui = go; break; }
+                }
+            }
             if (ui == null) return;
             _infoRoot = ui;
             _infoName = GetTmp(ui, "Txt_Name");

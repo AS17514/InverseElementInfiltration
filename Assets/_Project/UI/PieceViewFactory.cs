@@ -62,7 +62,9 @@ namespace TheLaw.UI
             shadow.transform.SetParent(root.transform, false);
             var ssr = shadow.AddComponent<SpriteRenderer>();
             ssr.sprite = _shadowSprite;
-            ssr.sortingOrder = 0;
+            // ⚠️ 2026-08-12 修复：原 sortingOrder=0 与高处敌人（cell.y≥4 → -y*100+400 ≤ 0）同层冲突——
+            // 同层按 z 排序时阴影(局部 z=0.02 更近相机)后画 → 阴影盖在敌人身上。固定极小值保证永远在所有棋子之下。
+            ssr.sortingOrder = -1000;
             shadow.transform.localPosition = new Vector3(0f, 0.02f, 0f);
             shadow.transform.localRotation = Quaternion.Euler(90f, 0f, 0f);
             shadow.transform.localScale = new Vector3(0.3f, 0.3f, 0.3f);

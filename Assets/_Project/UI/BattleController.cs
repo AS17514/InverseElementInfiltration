@@ -34,6 +34,7 @@ namespace TheLaw.UI
         private List<WaveDef> _waveDefs = new List<WaveDef>();
         private GameObject _waveNodeTemplate; // Tag_WaveNode prefab（Addressables）
         private readonly List<GameObject> _waveNodes = new List<GameObject>(); // 已创建的节点实例
+        private int _lastTurnCount = -1; // Update 轮询：TurnCount++（敌方回合逻辑结束）→ 游标右移+节点亮黄（该点无阶段切换事件可挂）
 
         /// <summary>回合进度：总回合 = 末波 startTurn-1 + endCountdown；进度 = (TurnCount+1)/总回合（归零回合满条，末段等距体现倒计时）。</summary>
         void RefreshTurnProgress()
@@ -254,6 +255,7 @@ namespace TheLaw.UI
                 // 回合进度条：加载波次节点模板 + 首次刷新（2026-08-12）
                 StartCoroutine(LoadWaveNodeTemplate());
                 RefreshTurnProgress();
+                _lastTurnCount = _state.TurnCount; // 开局同步（第一回合=准备+敌方，敌方结束 0→1 才右移）
             });
         }
 
@@ -271,6 +273,14 @@ namespace TheLaw.UI
 
         void Update()
         {
+            // 回合推进轮询：TurnCount++ 发生在 ResolveEnemyTurn（敌方回合逻辑结束、动画前）
+            // → 游标右移/节点亮黄精确绑定敌方回合结束（而非我方回合开始——PhaseChanged(PlayerTurn) 在动画后才触发）
+            if (_state != null && _state.TurnCount != _lastTurnCount)
+            {
+                _lastTurnCount = _state.TurnCount;
+                RefreshTurnProgress();
+            }
+
             if (!Input.GetMouseButtonDown(0)) return;
             if (EventSystem.current != null && EventSystem.current.IsPointerOverGameObject()) return;
 

@@ -35,9 +35,6 @@ namespace TheLaw.UI
         private int _enemyScore;
         private List<int> _waveScores = new List<int>();
 
-        /// <summary>结算面板是否正在显示（Bootstrap 收尾判断用——失败时 BackToMainMenu 不覆盖结算面板）。</summary>
-        public bool IsShowing => _hasResult && gameObject.activeSelf;
-
         private Tween _tipTween; // 提示闪动
 
         public void Init(GameState state, UIManager uiManager)
@@ -95,6 +92,7 @@ namespace TheLaw.UI
         {
             if (_state == null || _state.Phase != BattlePhase.GameOver) return;
             if (!(data is Side winner)) return;
+            if (_hasResult) return; // 防重（规则层 GameOver 幂等已兜底——防御性）
             // ⚠️ 快照时机：收到信号立即读（BackToMainMenu 延后 1 帧 Reset——确认时再读会丢数据）
             _victory = winner == Side.Player;
             _playerScore = _state.PlayerScore;

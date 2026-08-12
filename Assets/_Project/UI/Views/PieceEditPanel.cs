@@ -192,6 +192,19 @@ namespace TheLaw.UI
         {
             if (_pieceContent == null) yield break;
             _buildingList = true;
+            try
+            {
+                yield return BuildPieceListInner();
+            }
+            finally
+            {
+                _buildingList = false; // ⚠️ 2026-08-12：所有退出路径（含异常/加载失败 yield break）必须复位——
+                // 否则永久 true → 后续 RefreshPieceList 永远跳过 → 卡面永不重建（重开显示旧局）
+            }
+        }
+
+        System.Collections.IEnumerator BuildPieceListInner()
+        {
             EnsureScrollContent(_pieceContent);
             // 加载 Piece_Card / Piece_ProgramInfo 模板（Addressables）
             var cardHandle = UnityEngine.AddressableAssets.Addressables.LoadAssetAsync<GameObject>("Piece_Card");
@@ -224,7 +237,6 @@ namespace TheLaw.UI
             // 滚动位置归零（跨局打开不残留旧滚动）
             var scroll = _pieceContent.GetComponentInParent<ScrollRect>();
             if (scroll != null) scroll.normalizedPosition = Vector2.zero;
-            _buildingList = false;
         }
 
         void FillPieceCard(GameObject go, PieceDef def, GameObject progTemplate, ToggleGroup group)

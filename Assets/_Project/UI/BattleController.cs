@@ -627,15 +627,28 @@ namespace TheLaw.UI
 
         IEnumerator PlayDamage(DamageInfo info)
         {
-            // 闪烁目标（被攻击方）——原实现闪攻击者（敌方），玩家看不到自己被攻击
+            // 攻击者挥动闪白（动作反馈——2026-08-12 恢复：dacb39b 改闪目标时攻击者动作被整体删除；
+            // 含空挥 TargetId=-1（AttackerId 所有攻击路径均有效））
+            var attacker = GameObject.Find($"Piece_{info.AttackerId}");
+            if (attacker != null)
+            {
+                var asr = attacker.transform.Find("Portrait")?.GetComponent<SpriteRenderer>();
+                if (asr != null)
+                {
+                    var aOrig = asr.color;
+                    asr.color = Color.white;
+                    yield return new WaitForSeconds(0.06f); // 攻击者动作短闪
+                    asr.color = aOrig;
+                }
+            }
+            // 目标受击闪烁（被攻击方；空挥 TargetId=-1 跳过）
             var go = GameObject.Find($"Piece_{info.TargetId}");
             if (go != null)
             {
                 var sr = go.transform.Find("Portrait")?.GetComponent<SpriteRenderer>();
                 if (sr != null)
                 {
-                    // ⚠️ 2026-08-12 修复：恢复原色而非重算 TintFor(DefId)——原实现敌方创建色 TintFor(DefId+1)
-                    // 与恢复色不一致（闪后颜色永久漂移），且目标死亡时 GetPiece null 兑底 TintFor(0)（变蓝）
+                    // ⚠️ 恢复原色而非重算 TintFor（创建色/恢复色不一致会颜色漂移）
                     var original = sr.color;
                     sr.color = Color.white;
                     yield return new WaitForSeconds(0.08f);

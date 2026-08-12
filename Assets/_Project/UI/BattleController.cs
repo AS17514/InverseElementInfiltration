@@ -127,7 +127,11 @@ namespace TheLaw.UI
                 }
                 if (_panel.ExitButton != null)
                 {
-                    _panel.ExitButton.onClick.AddListener(() => OnExitRequested?.Invoke());
+                    _panel.ExitButton.onClick.AddListener(() =>
+                    {
+                        _panel.ExitButton.interactable = false; // 立即反馈——收尾延后 1 帧期间按钮置灰（防"点了没反应"）
+                        OnExitRequested?.Invoke();
+                    });
                 }
                 RefreshAll();
                 UpdateHandPositionByPhase(); // 初始阶段即应用手牌区状态（准备阶段高度 250）
@@ -164,6 +168,10 @@ namespace TheLaw.UI
         // ========== 棋盘点击 ==========
         void HandleBoardClick(Vector2Int cell)
         {
+            if (_state.Phase == BattlePhase.GameOver)
+            {
+                return; // 战斗结束：输入抑制（收尾延后窗口内禁止点击——规则层也拒绝，双保险）
+            }
             if (_presentationPlaying)
             {
                 return; // 表现播放中：所有操作等动画播完（防时序错乱）

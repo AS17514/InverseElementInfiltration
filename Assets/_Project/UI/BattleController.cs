@@ -86,6 +86,8 @@ namespace TheLaw.UI
             {
                 var node = Instantiate(_waveNodeTemplate, _panel.WaveNodesRoot);
                 node.name = $"WaveNode_{wave.startTurn}";
+                // 初始波（startTurn=1，第一回合默认生成初始敌人）不显示节点
+                if (wave.startTurn <= 1) node.SetActive(false);
                 _waveNodes.Add(node);
                 // 定位：startTurn/总回合（与进度公式 (TurnCount+1)/total 对齐——节点落在该波部署瞬间的进度位置）
                 var rt = node.GetComponent<RectTransform>();
@@ -113,9 +115,9 @@ namespace TheLaw.UI
                 var img = node.GetComponent<Image>();
                 if (img == null) continue;
                 int startTurn = _waveDefs[i].startTurn;
-                if (turn >= startTurn + 1) img.color = new Color(1f, 1f, 1f, 1f);      // 已过：亮
-                else if (turn >= startTurn) img.color = new Color(1f, 0.84f, 0.2f, 1f); // 当前波：金
-                else img.color = new Color(0.5f, 0.5f, 0.5f, 0.5f);                     // 未来：暗
+                if (turn >= startTurn) img.color = new Color(1f, 1f, 1f, 1f);            // 已过（生成次回合起）：亮
+                else if (turn >= startTurn - 1) img.color = new Color(1f, 0.84f, 0.2f, 1f); // 当前波（生成当回合 turn=startTurn-1 亮黄）：金
+                else img.color = new Color(0.5f, 0.5f, 0.5f, 0.5f);                       // 未来：暗
             }
         }
 

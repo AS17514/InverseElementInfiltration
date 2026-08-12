@@ -47,6 +47,11 @@ MonoBehaviour:
     m_ReadOnly: 0
     m_SerializedLabels: []
     FlaggedDuringContentUpdateRestriction: 0
+  - m_GUID: 78f53f3ccb515474389ee0dd142b4b5e
+    m_Address: Tag_DeckLimit
+    m_ReadOnly: 0
+    m_SerializedLabels: []
+    FlaggedDuringContentUpdateRestriction: 0
   - m_GUID: 7d2de312b8ce90941a8d42e13778d589
     m_Address: BattlePanel
     m_ReadOnly: 0

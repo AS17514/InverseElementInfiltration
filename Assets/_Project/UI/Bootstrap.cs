@@ -33,6 +33,9 @@ namespace TheLaw.UI
         [Header("程序块描述表（结构特征码→描述；未命中回退代码生成）")]
         [SerializeField] private TextAsset _slotDescriptions;
 
+        [Header("buff 描述表（key→名称/描述；护盾/免费行动/临时能力）")]
+        [SerializeField] private TextAsset _buffDescriptions;
+
         // 普通类实例（去单例化后由 Bootstrap 创建并持有；规则层行为类显式传递避免网状耦合）
         private static Bootstrap _instance; // 静态实例标记：防重（双实例并存时先到者存活，后到者自毁）
         private UIManager _uiManager;
@@ -70,6 +73,8 @@ namespace TheLaw.UI
             LoadConfigs();
             // ②b 程序块描述表（数据驱动——UI 槽位描述）
             SlotDescTable.Load(_slotDescriptions);
+            // ②c buff 描述表（数据驱动——UI buff 区显示名）
+            BuffDescTable.Load(_buffDescriptions);
             // ③ 创建规则层（依赖注入）
             CreateGameplay();
             // ④ 注册存档快照
@@ -251,11 +256,46 @@ namespace TheLaw.UI
                 }
                 return;
             }
-            // 战斗结算：GameOver 携带胜方 → TowerFlow 收尾（胜利推进/失败结束——RunEnded 驱动回主菜单）
+            // 战斗结算：GameOver 携带胜方 → 快照结算数据 + TowerFlow 收尾（胜利推进/失败结束——RunEnded 驱动回主菜单）
             if (_gameState.Phase != BattlePhase.GameOver) return;
             if (!(data is Side winner)) return;
-            Debug.Log($"[Bootstrap] 战斗结束（{(winner == Side.Player ? "胜利" : "失败")}）→ TowerFlow 收尾");
+            Debug.Log($"[Bootstrap] 战斗结束（{(winner == Side.Player ? "胜利" : "失败")}）→ 结算 + TowerFlow 收尾");
+            // 快照结算数据（同步——Reset 1 帧后清空 GameState，面板异步加载完成时再读会丢）
+            _pendingResultVictory = winner == Side.Player;
+            _pendingResultScore = _gameState.PlayerScore;
+            _pendingResultTurn = _gameState.TurnCount;
+            ShowBattleResult();
             _towerFlow.OnBattleEnded(winner);
+        }
+
+        // ====== 结算面板（overlay：前端展示，确认只关面板） ======
+        private BattleResultPanel _battleResultPanel;
+        private bool _pendingResultVictory;
+        private int _pendingResultScore;
+        private int _pendingResultTurn;
+
+        private void ShowBattleResult()
+        {
+            if (_battleResultPanel == null)
+            {
+                StartCoroutine(LoadBattleResult());
+            }
+            else
+            {
+                _battleResultPanel.ShowResult(_pendingResultVictory, _pendingResultScore, _pendingResultTurn);
+            }
+        }
+
+        private System.Collections.IEnumerator LoadBattleResult()
+        {
+            bool done = false;
+            BattleResultPanel panel = null;
+            PanelBase.CreateAsync<BattleResultPanel>(p => { panel = p; done = true; });
+            yield return new WaitUntil(() => done);
+            _battleResultPanel = panel;
+            _uiManager.RegisterPanel(panel);
+            panel.ShowResult(_pendingResultVictory, _pendingResultScore, _pendingResultTurn); // 用同步快照数据
+            Debug.Log($"[Bootstrap] 结算面板已显示（{(_pendingResultVictory ? "胜利" : "失败")}）");
         }
 
         /// <summary>

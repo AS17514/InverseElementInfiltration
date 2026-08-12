@@ -8,5 +8,20 @@
     "name": "免费行动",
     "desc": "下次执行不消耗行动点（击杀触发，用掉消失）",
     "format": "count"
+  },
+  "ability_2119510590": {
+    "name": "击杀回能",
+    "desc": "击杀敌人后获得一次免费行动（Ability_ExtraAction_OnKill_1）",
+    "format": "plain"
+  },
+  "ability_2127001715": {
+    "name": "格挡",
+    "desc": "受到伤害时抵挡一次（Ability_ShieldBlock_OnDamaged_1）",
+    "format": "plain"
+  },
+  "ability_693967630": {
+    "name": "附着十字",
+    "desc": "攻击时对十字范围额外结算（Ability_Attach_OnAttack_Cross）",
+    "format": "plain"
   }
 }

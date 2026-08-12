@@ -53,8 +53,7 @@ namespace TheLaw.UI
 
         // 信息面板（Main 1 场景 UI 根下的 3D TMP 文本，用户已拼）
         TMPro.TextMeshPro _infoName, _infoType, _infoValue, _infoDurability, _infoAbilities;
-        TMPro.TextMeshPro _infoOtherLabel1, _infoOtherLabel2, _infoOtherLabel3;
-        TMPro.TextMeshPro[] _infoOthers = new TMPro.TextMeshPro[3];
+        TMPro.TextMeshPro _infoOther; // 单节点多行 buff 区（Txt_Other——护盾/免费行动/临时能力/升变，\n 分隔）
         SpriteRenderer[] _infoProgramBlocks = new SpriteRenderer[4]; // 行为逻辑块（SpriteRenderer）
         List<Template> _infoProgram; // 当前信息面板显示的程序（浮窗内容源）
         RectTransform _tooltip; // 行为逻辑浮窗（UGUI）
@@ -71,6 +70,8 @@ namespace TheLaw.UI
             EventCenter.Instance.RemoveEventListener(GameEvent.PieceDeployed, OnPieceDeployed);
             EventCenter.Instance.RemoveEventListener(GameEvent.PieceDied, OnPieceDied);
             EventCenter.Instance.RemoveEventListener(GameEvent.StateChanged, OnStateChanged);
+            EventCenter.Instance.RemoveEventListener(GameEvent.BuffsChanged, OnBuffsChanged);
+            EventCenter.Instance.RemoveEventListener(GameEvent.ExtraActionGranted, OnBuffsChanged);
             if (_tooltip != null) _tooltip.gameObject.SetActive(false);
             if (_handPosTween != null) _handPosTween.Kill();
             if (_handSizeTween != null) _handSizeTween.Kill();
@@ -116,6 +117,8 @@ namespace TheLaw.UI
             EventCenter.Instance.AddEventListener(GameEvent.PieceDeployed, OnPieceDeployed);
             EventCenter.Instance.AddEventListener(GameEvent.PieceDied, OnPieceDied);
             EventCenter.Instance.AddEventListener(GameEvent.StateChanged, OnStateChanged);
+            EventCenter.Instance.AddEventListener(GameEvent.BuffsChanged, OnBuffsChanged); // buff 变化 → 刷新选中棋子信息面板
+            EventCenter.Instance.AddEventListener(GameEvent.ExtraActionGranted, OnBuffsChanged); // 免费行动授予同刷新
 
             PanelBase.CreateAsync<BattlePanel>(p =>
             {
@@ -466,6 +469,19 @@ namespace TheLaw.UI
                 ClearHighlights();
             }
             EnqueuePresentation(() => PlayDeath(info));
+        }
+
+        /// <summary>buff 变化（护盾/免费行动/临时能力）：目标是当前选中棋子 → 刷新信息面板（Txt_Other buff 区实时更新）。</summary>
+        void OnBuffsChanged(object data)
+        {
+            if (data is int pieceId && pieceId == _selectedPieceId && _selectedPieceId >= 0)
+            {
+                var piece = _state.GetPiece(_selectedPieceId);
+                if (piece != null && _infoName != null)
+                {
+                    FillInfo(piece.def, piece);
+                }
+            }
         }
 
         // ========== 表现动画（DOTween 优先，测试最小可用）==========
@@ -870,9 +886,7 @@ namespace TheLaw.UI
             _infoValue = GetTmp(ui, "Txt_Value");
             _infoDurability = GetTmp(ui, "Txt_Durability");
             _infoAbilities = GetTmp(ui, "Txt_SpecialAbilities");
-            _infoOtherLabel1 = GetTmp(ui, "Txt_Other1_K");
-            _infoOtherLabel2 = GetTmp(ui, "Txt_Other2_K");
-            _infoOtherLabel3 = GetTmp(ui, "Txt_Other3_K");
+            _infoOther = GetTmp(ui, "Txt_Other"); // 单节点多行 buff 区（2026-08-11：场景无 Txt_Other1~3，改为单 Txt_Other）
             for (int i = 0; i < 4; i++)
             {
                 var t = ui.transform.Find($"Txt_BehaviorLogic{i + 1}");
@@ -887,11 +901,7 @@ namespace TheLaw.UI
                     bc.size = new Vector3(sr.bounds.size.x / sx, sr.bounds.size.y / sy, 0.2f);
                 }
             }
-            for (int i = 0; i < 3; i++) _infoOthers[i] = GetTmp(ui, $"Txt_Other{i + 1}");
-            // 标签占位文本替换（“其他”→ 实际字段名）
-            if (_infoOtherLabel1 != null) _infoOtherLabel1.text = "护盾";
-            if (_infoOtherLabel2 != null) _infoOtherLabel2.text = "阵营";
-            if (_infoOtherLabel3 != null) _infoOtherLabel3.text = "升变";
+            // 注：Txt_Other_K 是标题（“其他”），Txt_Other 是多行 buff 区——由 FillInfo 填充（2026-08-11）
         }
 
         static TMPro.TextMeshPro GetTmp(GameObject root, string name)
@@ -914,7 +924,9 @@ namespace TheLaw.UI
 
         void FillInfo(PieceDef def, PieceInstance piece)
         {
-            Set(_infoName, def.displayName);
+            // 名称带阵营：士兵(友) / 士兵(敌)（2026-08-11：阵营并入名称）
+            string sideTag = piece != null ? (piece.side == Side.Player ? "(友)" : "(敌)") : "";
+            Set(_infoName, $"{def.displayName}{sideTag}");
             Set(_infoType, def.pieceType == PieceType.Initial ? "初始" : def.pieceType == PieceType.Deployable ? "部署" : "升变");
             Set(_infoValue, def.value.ToString());
             Set(_infoDurability, piece != null ? $"{piece.durability}/{def.durability}" : def.durability.ToString());
@@ -928,6 +940,8 @@ namespace TheLaw.UI
                 }
             }
             Set(_infoAbilities, abilities.Count > 0 ? string.Join(", ", abilities) : "无");
+            // buff 区（Txt_Other 多行）：升变 → 护盾 → 免费行动 → 临时能力（BuffDisplay 聚合）
+            Set(_infoOther, BuildBuffLines(def, piece));
 
             var program = piece != null ? piece.GetProgram(_state) : (def.programSet != null && def.programSet.Count > 0 ? def.programSet[0].slots : null);
             _infoProgram = program;
@@ -946,9 +960,41 @@ namespace TheLaw.UI
                     }
                 }
             }
-            Set(_infoOthers[0], piece != null ? $"护盾:{piece.shieldCount}" : "");
-            Set(_infoOthers[1], piece != null ? (piece.side == Side.Player ? "我方" : "敌方") : "");
-            Set(_infoOthers[2], def.promotionConfigId != 0 ? $"可升变:{def.promotionConfigId}" : "");
+        }
+
+        /// <summary>
+        /// buff 区文本（Txt_Other 多行拼接）：升变 → 护盾 → 免费行动 → 临时能力（BuffDisplay 聚合 + BuffDescTable 名称）。
+        /// 无 buff → “无”；最多 6 行；升变：PromotionConfig.toDefId → 棋子名。
+        /// </summary>
+        string BuildBuffLines(PieceDef def, PieceInstance piece)
+        {
+            var lines = new List<string>();
+            // 升变（buff 行：可升变为 xx）
+            if (def.promotionConfigId != 0 && ConfigTable.Find<PromotionConfig>(def.promotionConfigId) is PromotionConfig promo)
+            {
+                var toDef = ConfigTable.Find<PieceDef>(promo.toDefId);
+                lines.Add(toDef != null ? $"升变：{toDef.displayName}" : $"升变：{promo.toDefId}");
+            }
+            // BuffDisplay 聚合（护盾/免费行动/临时能力——后端顺序）
+            if (piece != null)
+            {
+                foreach (var buff in BuffDisplay.GetBuffs(piece, _state))
+                {
+                    string name = BuffDescTable.GetName(buff.key) ?? buff.key; // 未命中回退 key
+                    // count 格式：剩余≥2 → ×N；=1 → 只名称；plain → 只名称
+                    string line = name;
+                    if (BuffDescTable.IsCountFormat(buff.key) && buff.remaining >= 2)
+                    {
+                        line = $"{name}×{buff.remaining}";
+                    }
+                    lines.Add(line);
+                }
+            }
+            // 无 buff → “无”（标题 Txt_Other_K 保持“其他”）
+            if (lines.Count == 0) return "无";
+            // 最多 6 行（区域支持——超出截断）
+            if (lines.Count > 6) lines = lines.GetRange(0, 6);
+            return string.Join("\n", lines);
         }
 
         public void ClearPieceInfo()
@@ -960,11 +1006,11 @@ namespace TheLaw.UI
             Set(_infoValue, "");
             Set(_infoDurability, "");
             Set(_infoAbilities, "");
+            Set(_infoOther, "");
             for (int i = 0; i < 4; i++)
             {
                 if (_infoProgramBlocks[i] != null) _infoProgramBlocks[i].gameObject.SetActive(false);
             }
-            for (int i = 0; i < 3; i++) Set(_infoOthers[i], "");
         }
 
         static void Set(TMPro.TextMeshPro tmp, string text)

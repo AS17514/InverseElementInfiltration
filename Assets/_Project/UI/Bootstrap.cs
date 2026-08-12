@@ -54,6 +54,7 @@ namespace TheLaw.UI
         private DeckBuildPanel _deckBuildPanel; // 牌组构筑面板（StateChanged("deck") 显示）
         private EventNodeSystem _eventNodeSystem;
         private TowerFlow _towerFlow;
+        private BattleResultPanel _battleResultPanel; // 结算面板（战斗结束 overlay——常驻，自身监听 StateChanged）
 
         private void Awake()
         {
@@ -81,6 +82,8 @@ namespace TheLaw.UI
             RegisterSnapshots();
             // ⑤ 事件接线（进层/开战存档、RunEnded）
             WireEvents();
+            // ⑤a 结算面板常驻创建（战斗结束 overlay——自身监听 StateChanged + PushPanel；须在战斗前就绪）
+            StartCoroutine(CreateBattleResultPanel());
             // ⑤b 开局初始化（新局状态——含基础牌组手牌填充，ResetForNewRun 内完成）
             _gameState.ResetForNewRun();
             // ⑥ 进主菜单（TODO: UI 层面板）
@@ -286,6 +289,8 @@ namespace TheLaw.UI
             DestroyBattleController();
             _gameState.ResetForNewRun();
             SaveManager.Instance.SaveAll();
+            // 结算面板不在 UIManager 栈（BattlePanel/EventPanel 直接 Show）——ShowPanel 不影响它；
+            // 失败路径：MainMenu 显示在结算面板下层，玩家确认后结算关闭露出 MainMenu
             _uiManager.ShowPanel("MainMenu");
             _finalizing = false; // 复位——下一局收尾可用
             Debug.Log("[Bootstrap] 返回主菜单（收尾链完成）");
@@ -407,6 +412,20 @@ namespace TheLaw.UI
             var controller = battleGo.AddComponent<BattleController>();
             controller.Init(_battleFlow, _gameState);
             controller.OnExitRequested += BackToMainMenu; // 战斗面板退出按钮 → 回主菜单
+        }
+
+        /// <summary>结算面板常驻创建（战斗结束 overlay——自身监听 StateChanged + PushPanel/PopPanel；须在战斗前就绪）。</summary>
+        private System.Collections.IEnumerator CreateBattleResultPanel()
+        {
+            bool done = false;
+            BattleResultPanel panel = null;
+            PanelBase.CreateAsync<BattleResultPanel>(p => { panel = p; done = true; });
+            yield return new WaitUntil(() => done);
+            _battleResultPanel = panel;
+            _uiManager.RegisterPanel(panel);
+            panel.Init(_gameState);
+            // 不 Show——首次 StateChanged(GameOver) 时 FillAndShow 显示
+            Debug.Log("[Bootstrap] 结算面板已就绪（常驻）");
         }
 
         private System.Collections.IEnumerator LoadMainMenu()

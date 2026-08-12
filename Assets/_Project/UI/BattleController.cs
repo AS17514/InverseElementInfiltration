@@ -858,8 +858,8 @@ namespace TheLaw.UI
         // ========== 事件监听 ==========
         void OnPhaseChanged(object data)
         {
-            // 2026-08-12 架构重构（B 审查阻塞项）：BattleController 跨战斗复用（不重建）——CreateAsync 回调只跑一次，
-            // 第 2 场起 BattlePanel 需在此重新 ShowPanel（首场回调已 Show，此处幂等）
+            // 2026-08-12：实际实现为每场战斗重建（Bootstrap.OnPhaseChanged 守卫 + DestroyBattleController 每次销毁）——
+            // 此处 ShowPanel 为幂等兜底（面板重建后需确保显示）
             if (_state.Phase == BattlePhase.Placement && _panel != null && _uiManager != null)
             {
                 _uiManager.ShowPanel("Battle");

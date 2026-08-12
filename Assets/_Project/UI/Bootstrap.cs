@@ -296,11 +296,16 @@ namespace TheLaw.UI
             Debug.Log("[Bootstrap] 返回主菜单（收尾链完成）");
         }
 
-        /// <summary>销毁战斗会话（BattleController 连带销毁战斗面板——防多局累积实例）。</summary>
+        /// <summary>
+        /// 销毁战斗会话（BattleController 连带销毁战斗面板——防多局累积实例）。
+        /// ⚠️ 用 DestroyImmediate：Destroy 延迟到帧末——重开新局时旧 BattleController 的 OnDestroy（事件反注册）
+        /// 尚未执行，旧监听仍会收到 PhaseChanged（对象已伪 null → StartCoroutine 崩），且 GameObject.Find 还能找到
+        /// 旧对象导致不创建新控制器（面板/滚动条沿用旧的）。立即销毁同步反注册，消除延迟窗口（2026-08-12）。
+        /// </summary>
         private void DestroyBattleController()
         {
             var old = GameObject.Find("BattleController");
-            if (old != null) UnityEngine.Object.Destroy(old);
+            if (old != null) UnityEngine.Object.DestroyImmediate(old);
         }
 
         private void OnRunEnded(object data)

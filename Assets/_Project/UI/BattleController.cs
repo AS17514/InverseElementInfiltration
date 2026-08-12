@@ -34,7 +34,6 @@ namespace TheLaw.UI
         private List<WaveDef> _waveDefs = new List<WaveDef>();
         private GameObject _waveNodeTemplate; // Tag_WaveNode prefab（Addressables）
         private readonly List<GameObject> _waveNodes = new List<GameObject>(); // 已创建的节点实例
-        private TMP_Text _countdownText; // 末波倒计时文本（代码动态创建——Txt_CurrentProgress 是关卡名不动）
 
         /// <summary>回合进度：预期总回合 = 末波 startTurn + endCountdown（推导）；进度 = TurnCount / 总回合。</summary>
         void RefreshTurnProgress()
@@ -55,34 +54,21 @@ namespace TheLaw.UI
                 {
                     _waveDefs = _floor.waveDefs ?? new List<WaveDef>();
                     BuildWaveNodes();
-                    EnsureCountdownText();
                 }
             }
             if (_floor == null) return;
-            // 预期总回合 = 末波 startTurn + endCountdown
+            // 总回合 = 末波 startTurn - 1 + endCountdown（TurnCount 从 0 开始；倒计时设值当回合即减 1）
+            //   → 归零回合 TurnCount = startTurn+endCountdown-2，(TurnCount+1)/total 恰为 1.0 满条
             int totalTurns = 0;
             if (_waveDefs.Count > 0)
             {
-                totalTurns = _waveDefs[_waveDefs.Count - 1].startTurn + Mathf.Max(0, _waveDefs[_waveDefs.Count - 1].endCountdown);
+                var last = _waveDefs[_waveDefs.Count - 1];
+                totalTurns = last.startTurn - 1 + Mathf.Max(0, last.endCountdown);
             }
-            int turn = _state.TurnCount;
             if (totalTurns > 0)
             {
-                _panel.SetTurnProgress(Mathf.Clamp01((float)turn / totalTurns));
-                // 末波倒计时（动态文本；Txt_CurrentProgress 是关卡名不动）
-                if (_state.WaveEndCountdown >= 0)
-                {
-                    _panel.SetTurnProgress(1f); // 末波：满条
-                    SetCountdown($"末波倒计时 {_state.WaveEndCountdown}");
-                }
-                else
-                {
-                    SetCountdown(null); // 非末波：隐藏倒计时
-                }
-            }
-            else
-            {
-                SetCountdown(null);
+                // 进度 = 已完成回合数 / 总回合数（末波倒计时自然体现在末段等距推进——无需额外文本）
+                _panel.SetTurnProgress(Mathf.Clamp01((float)(_state.TurnCount + 1) / totalTurns));
             }
             RefreshWaveNodeStates();
         }
@@ -94,13 +80,14 @@ namespace TheLaw.UI
             foreach (var n in _waveNodes) if (n != null) Destroy(n);
             _waveNodes.Clear();
             if (_waveDefs.Count == 0 || _waveNodeTemplate == null) return;
-            int totalTurns = _waveDefs[_waveDefs.Count - 1].startTurn + Mathf.Max(0, _waveDefs[_waveDefs.Count - 1].endCountdown);
+            var last = _waveDefs[_waveDefs.Count - 1];
+            int totalTurns = last.startTurn - 1 + Mathf.Max(0, last.endCountdown);
             foreach (var wave in _waveDefs)
             {
                 var node = Instantiate(_waveNodeTemplate, _panel.WaveNodesRoot);
                 node.name = $"WaveNode_{wave.startTurn}";
                 _waveNodes.Add(node);
-                // 定位：startTurn/总回合 → 容器宽比例
+                // 定位：startTurn/总回合（与进度公式 (TurnCount+1)/total 对齐——节点落在该波部署瞬间的进度位置）
                 var rt = node.GetComponent<RectTransform>();
                 if (rt != null && totalTurns > 0)
                 {
@@ -113,31 +100,6 @@ namespace TheLaw.UI
                 var txt = node.GetComponentInChildren<TMP_Text>();
                 if (txt != null) txt.text = wave.startTurn.ToString();
             }
-        }
-
-        /// <summary>倒计时文本：动态创建于进度条容器下（首次），SetCountdown(null) 隐藏。</summary>
-        void EnsureCountdownText()
-        {
-            if (_countdownText != null || _panel.TurnProgressSlider == null) return;
-            // ⚠️ TMP_Text 是抽象基类不能 AddComponent——用具体类 TextMeshProUGUI
-            var go = new GameObject("Txt_WaveCountdown", typeof(RectTransform), typeof(TextMeshProUGUI));
-            go.transform.SetParent(_panel.TurnProgressSlider.transform, false);
-            var rt = (RectTransform)go.transform;
-            rt.anchorMin = new Vector2(1f, 0.5f);
-            rt.anchorMax = new Vector2(1f, 0.5f);
-            rt.anchoredPosition = new Vector2(160f, 0f); // 进度条右侧
-            rt.sizeDelta = new Vector2(200f, 40f);
-            _countdownText = go.GetComponent<TextMeshProUGUI>();
-            _countdownText.fontSize = 24;
-            _countdownText.alignment = TextAlignmentOptions.Left;
-            _countdownText.color = new Color(1f, 0.84f, 0.2f, 1f);
-        }
-
-        void SetCountdown(string text)
-        {
-            if (_countdownText == null) return;
-            _countdownText.text = text ?? "";
-            _countdownText.gameObject.SetActive(text != null);
         }
 
         /// <summary>节点状态：已过波高亮、当前波闪烁、未来波暗。</summary>

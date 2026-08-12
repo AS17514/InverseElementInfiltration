@@ -119,14 +119,15 @@ namespace TheLaw.UI
         void EnsureCountdownText()
         {
             if (_countdownText != null || _panel.TurnProgressSlider == null) return;
-            var go = new GameObject("Txt_WaveCountdown", typeof(RectTransform), typeof(TMP_Text));
+            // ⚠️ TMP_Text 是抽象基类不能 AddComponent——用具体类 TextMeshProUGUI
+            var go = new GameObject("Txt_WaveCountdown", typeof(RectTransform), typeof(TextMeshProUGUI));
             go.transform.SetParent(_panel.TurnProgressSlider.transform, false);
             var rt = (RectTransform)go.transform;
             rt.anchorMin = new Vector2(1f, 0.5f);
             rt.anchorMax = new Vector2(1f, 0.5f);
             rt.anchoredPosition = new Vector2(160f, 0f); // 进度条右侧
             rt.sizeDelta = new Vector2(200f, 40f);
-            _countdownText = go.GetComponent<TMP_Text>();
+            _countdownText = go.GetComponent<TextMeshProUGUI>();
             _countdownText.fontSize = 24;
             _countdownText.alignment = TextAlignmentOptions.Left;
             _countdownText.color = new Color(1f, 0.84f, 0.2f, 1f);

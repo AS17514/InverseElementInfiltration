@@ -348,7 +348,16 @@ namespace TheLaw.UI
             Debug.Log($"[Bootstrap] 整局结束 victory={victory}");
             // 2026-08-12：挂起收尾——结算面板确认前保持战斗场景（玩家看结算时下层仍是战斗界面）
             // 确认后（BattleResultPanel.OnConfirmed）才 BackToMainMenu：销毁战斗 → Reset → 主界面
-            _pendingFinalize = true;
+            // ⚠️ 2026-08-13 防御：面板未就绪（极端时序）直接收尾——防 _pendingFinalize 永久挂起卡死
+            // （正常路径面板必然就绪——创建于启动时、战斗数回合后才结束；未就绪=宁可跳过结算不卡死）
+            if (_battleResultPanel != null)
+            {
+                _pendingFinalize = true;
+            }
+            else
+            {
+                BackToMainMenu();
+            }
         }
 
         private bool _pendingFinalize; // 结算确认后待执行的收尾（失败/通关——确认前保持战斗场景）

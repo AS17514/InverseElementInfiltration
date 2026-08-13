@@ -325,7 +325,9 @@ namespace TheLaw.EditorTools
             int ok = 0;
             foreach (var t in dto.templates)
             {
-                string key = $"{t.type}-{t.id}"; // "Move-1" / "Attack-11"（与描述表 key 同构）
+                // ⚠️ 2026-08-13：key 统一"种类前缀+编号"（与描述表/编号体系同构）——原用具体类型前缀（"Melee-1"）
+                // 与描述表 "Attack-1" 不一致（攻击类统一 Attack 前缀、移动类 Move 前缀）
+                string key = t.type == "Move" ? $"Move-{t.id}" : $"Attack-{t.id}";
                 string assetPath = $"{ConfigAssetsDir}/Tpl_{t.type}_{t.id}.asset";
                 var def = LoadOrCreate<TemplateDef>(assetPath, $"Tpl_{t.type}_{t.id}"); // 增量：已存在更新不删建
                 def.templateKey = key;

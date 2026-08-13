@@ -251,6 +251,14 @@ namespace TheLaw.EditorTools
                 ability.attachShape = ParseEnum(a.attachShape, AttackShape.Cross);
                 ability.attachDamage = a.attachDamage;
             }
+            else if (ability.type == SpecialAbilityType.Passive)
+            {
+                // ⚠️ 2026-08-13：补 Passive 分支（原只有 Trigger/Attach——Passive JSON 会被误解析成 Trigger；
+                // 解析逻辑与关卡导入器 ConfigImporter 的 Passive 实现一致）
+                ability.passiveTarget = ParseEnum(a.passiveTarget, PassiveTarget.AttackRange);
+                ability.passiveValue = a.passiveValue;
+                ability.applyBeforeResolve = a.applyBeforeResolve;
+            }
             AssetDatabase.CreateAsset(ability, path);
             SetId(ability, StableHash(name)); // 能力稳定 Id（按指纹名哈希）
             return ability;
@@ -261,7 +269,8 @@ namespace TheLaw.EditorTools
             // 按能力参数生成去重名（同参数共享同一资产）
             if (a.type == "Attach")
             {
-                return $"Ability_Attach_{a.attachPoint ?? "OnAttack"}_{a.attachShape ?? "Cross"}";
+                // ⚠️ 2026-08-13：补 attachDamage 区分——原指纹不含伤害，不同 attachDamage 的附着能力错误共享资产
+                return $"Ability_Attach_{a.attachPoint ?? "OnAttack"}_{a.attachShape ?? "Cross"}_{a.attachDamage}";
             }
             return $"Ability_{a.effect ?? "Effect"}_{a.triggerPoint ?? "Trigger"}_{a.amount}";
         }
@@ -371,13 +380,16 @@ namespace TheLaw.EditorTools
 
         private class AbilityJson
         {
-            public string type;          // Trigger / Attach
+            public string type;          // Trigger / Attach / Passive
             public string triggerPoint;  // OnKill / OnDamaged / ...
             public string effect;        // ExtraAction / ShieldBlock / ...
             public int amount;
             public string attachPoint;   // OnAttack
             public string attachShape;   // Cross
             public int attachDamage;
+            public string passiveTarget; // Passive（2026-08-13 补：MoveStep/AttackDamage/AttackRange/Durability）
+            public int passiveValue;
+            public bool applyBeforeResolve = true;
         }
     }
 }

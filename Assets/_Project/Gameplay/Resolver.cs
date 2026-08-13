@@ -406,8 +406,10 @@ namespace TheLaw.Gameplay
             if (valueLimit > 0 && totalValue > valueLimit) return false;
 
             // 通过校验：整组替换手牌（落账纪律——唯一写入口）
+            // ⚠️ 2026-08-13：按入参顺序写入（原 AddRange(seen) 迭代 HashSet——顺序不确定；
+            // 去重校验仍由 seen 完成，顺序按玩家选择顺序——存档往返一致）
             _state.Hand.Clear();
-            _state.Hand.AddRange(seen);
+            _state.Hand.AddRange(defIds);
             EventCenter.Instance.EventTrigger(GameEvent.HandChanged, _state.Hand);
             return true;
         }

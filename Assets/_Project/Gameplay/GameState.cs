@@ -72,10 +72,25 @@ namespace TheLaw.Gameplay
             return _nextPieceId++;
         }
 
-        /// <summary>玩家判负（无棋子 且 无手牌——仅玩家侧；敌方是 AI 测试员不吃此规则）。</summary>
+        /// <summary>
+        /// 玩家判负（无己方棋子 且 无手牌——仅玩家侧；敌方是 AI 测试员不吃此规则）。
+        /// ⚠️ 2026-08-13：原 `Pieces.Count == 0` 未按阵营过滤——玩家被清盘+手牌打光时敌方在场不判负，
+        /// 只能空过回合等末波兜底（延迟失败）。改为按 side==Player 过滤（"棋盘无棋"=玩家的棋——架构原意）。
+        /// </summary>
         public bool IsPlayerDefeated()
         {
-            return Pieces.Count == 0 && Hand.Count == 0;
+            if (Hand.Count > 0)
+            {
+                return false; // 还有牌能部署——不判负
+            }
+            foreach (var piece in Pieces.Values)
+            {
+                if (piece.side == Side.Player)
+                {
+                    return false; // 还有己方棋子——不判负
+                }
+            }
+            return true;
         }
 
         /// <summary>敌方波次池增强（加牌落点：玩家→手牌，敌方→波次池）。</summary>
@@ -119,6 +134,28 @@ namespace TheLaw.Gameplay
             {
                 Hand.Add(def.Id);
             }
+        }
+
+        /// <summary>
+        /// 战斗态重置（每场战斗开始时调用——与 ResetForNewRun 整局重置区分）。
+        /// ⚠️ 2026-08-13：跨战斗的战斗态此前从未重置（第 1 层是末层掩盖了问题）——胜利推进下一场战斗时
+        /// TurnCount 继承（波次瞬发）/棋盘继承（残局）/波次分继承（结算数据串）。
+        /// 清：每场战斗重来的字段；留：整局积累的字段（手牌/积分/遗物/塔进度/回放——局内持久）。
+        /// 注：积分（PlayerScore/EnemyScore）当前保留（跨战斗累计）——语义待策划确认（待确认清单⑥），确认后调整。
+        /// </summary>
+        public void ResetForBattle()
+        {
+            Phase = BattlePhase.Placement;
+            TurnCount = 0;
+            Pieces.Clear();
+            PiecesById.Clear();
+            Obstacles.Clear();
+            _nextPieceId = 1;
+            PlayerAP = 0;
+            EnemyAP = 0;
+            WaveScores.Clear();
+            PromoteAnnouncements.Clear();
+            WaveEndCountdown = -1;
         }
 
         // ========== ISnapshot（经 DTO——Vector2Int/PieceDef 引用不可直接序列化）==========

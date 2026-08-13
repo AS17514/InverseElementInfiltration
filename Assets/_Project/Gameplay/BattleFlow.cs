@@ -64,6 +64,7 @@ namespace TheLaw.Gameplay
 
         public void StartBattle(FloorConfig floor, AIParams aiParams)
         {
+            _state.ResetForBattle(); // 战斗态重置（2026-08-13：跨战斗残留——TurnCount/棋盘/波次分每场战斗重来）
             ResetState(); // 新局统一清瞬态执行状态（防跨局残留——后端待办 #5：多次重开卡死根因）
             _floor = floor;
             _aiParams = aiParams;
@@ -584,6 +585,7 @@ namespace TheLaw.Gameplay
                     break;
                 }
                 var deployedThisWave = new List<PieceInstance>();
+                bool anyDeployed = false;
                 foreach (var defId in wave.pieceDefIds)
                 {
                     var cell = FindDeployCell(Side.Enemy);
@@ -594,6 +596,14 @@ namespace TheLaw.Gameplay
                     var deployAction = new DeployAction(defId, Side.Enemy, cell) { waveIndex = _deployedWaveIndex }; // 打波次标（每波得分）
                     _resolver.Resolve(deployAction);
                     deployedThisWave.Add(_state.GetPieceAt(cell));
+                    anyDeployed = true;
+                }
+                if (!anyDeployed)
+                {
+                    // ⚠️ 2026-08-13：部署区满零落地——原实现仍推进波次索引（该波永久丢失）+
+                    // 置 _deployedThisRound 等待表现（无 PieceDeployed 事件 → AI 无表现时软锁）。
+                    // 改为：本波不推进、不等待（下回合波次判定仍成立会重试）。
+                    break;
                 }
                 _deployedThisRound = true;
                 // 本波开始 → 预告下一波升变（配置的升变棋子）
@@ -631,7 +641,12 @@ namespace TheLaw.Gameplay
             // 末波倒计时 → 强制结算
             if (_waveEnded && _state.WaveEndCountdown >= 0)
             {
-                _state.WaveEndCountdown--;
+                // ⚠️ 2026-08-13：末波部署当回合不递减——原"设置后同调用立即递减"少 1 回合
+                // （配置 endCountdown=3 实际只有 2 回合多；=1 时部署当回合即强制判负）
+                if (!_deployedThisRound)
+                {
+                    _state.WaveEndCountdown--;
+                }
                 if (_state.WaveEndCountdown <= 0)
                 {
                     CheckVictory(true);

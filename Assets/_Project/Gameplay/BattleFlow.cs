@@ -60,6 +60,18 @@ namespace TheLaw.Gameplay
             EventCenter.Instance.AddEventListener(GameEvent.PlacementFinished, OnPlacementFinished);
         }
 
+        /// <summary>
+        /// 销毁钩子（2026-08-13 战斗级"进入创建、离开销毁"改造）：注销全部事件监听。
+        /// ⚠️ 必须对称于构造注册——漏注销 = 旧实例幽灵回调 + 新实例双处理（表现完成双推进）。
+        /// 销毁路径全枚举：胜利/失败（TowerFlow.OnBattleEnded）、战斗中退出/新游戏（Bootstrap 经 TowerFlow.DisposeCurrentBattle）。
+        /// </summary>
+        public void Dispose()
+        {
+            EventCenter.Instance.RemoveEventListener(GameEvent.PresentationFinished, OnPresentationFinished);
+            EventCenter.Instance.RemoveEventListener(GameEvent.PhaseDisplayed, OnPhaseDisplayed);
+            EventCenter.Instance.RemoveEventListener(GameEvent.PlacementFinished, OnPlacementFinished);
+        }
+
         // ========== 开战 / 阶段 ==========
 
         public void StartBattle(FloorConfig floor, AIParams aiParams)

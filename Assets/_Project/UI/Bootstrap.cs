@@ -1,3 +1,4 @@
+using System;
 using System.Collections.Generic;
 using TheLaw.Core;
 using TheLaw.Data;
@@ -47,7 +48,7 @@ namespace TheLaw.UI
         private Resolver _resolver;
         private RelicSystem _relicSystem;
         private EnemyAI _enemyAI;
-        private BattleFlow _battleFlow;
+        // BattleFlow 不再常驻（2026-08-13 战斗级"进入创建、离开销毁"——经 TowerFlow 创建/持有/销毁）
         private EditorSession _editorSession;
         private PieceEditPanel _pieceEditPanel; // 棋子编辑面板（新局入口——编辑完成进战斗）
         private EventPanel _eventPanel;         // 事件关面板（EventOpened 显示）
@@ -146,10 +147,11 @@ namespace TheLaw.UI
             _resolver = new Resolver(_gameState, _boardRules);
             _relicSystem = new RelicSystem(_gameState, _resolver);
             _enemyAI = new EnemyAI(_intentResolver, GetDefaultAIParams());
-            _battleFlow = new BattleFlow(_gameState, _boardRules, _intentResolver, _resolver, _enemyAI, _relicSystem);
+            // 战斗级"进入创建、离开销毁"（2026-08-13）：BattleFlow 不再常驻——工厂注入 TowerFlow，每场战斗创建新实例
+            Func<BattleFlow> battleFlowFactory = () => new BattleFlow(_gameState, _boardRules, _intentResolver, _resolver, _enemyAI, _relicSystem);
             _editorSession = new EditorSession(_gameState, _resolver);
             _eventNodeSystem = new EventNodeSystem(_gameState, _resolver);
-            _towerFlow = new TowerFlow(_gameState, _eventNodeSystem, _battleFlow, GetMapConfig());
+            _towerFlow = new TowerFlow(_gameState, _eventNodeSystem, battleFlowFactory, GetMapConfig());
         }
 
         private AIParams GetDefaultAIParams()
@@ -218,6 +220,9 @@ namespace TheLaw.UI
                 }
             }
         }
+
+        /// <summary>当前战斗实例（BattleFlow 每场创建——经 TowerFlow 取；非战斗中为 null）。</summary>
+        private BattleFlow CurrentBattleFlow => _towerFlow != null ? _towerFlow.CurrentBattleFlow : null;
 
         private string _pendingEventId; // 缓存当前事件 id（懒加载完成后主动推给面板——防首次事件丢失）
 
@@ -318,6 +323,8 @@ namespace TheLaw.UI
             _finalizing = true;
             yield return null; // 等一帧：当前事件回调栈必然已退出（Unity 单线程，帧末栈空）
             DestroyBattleController();
+            _towerFlow.DisposeCurrentBattle(); // 战斗级"离开销毁"（2026-08-13：战斗中退出路径——注销监听防幽灵回调）
+            SaveManager.Instance.ArchiveHistory(); // 局终归档（2026-08-13：Reset 前——存局终完整状态含回放，排查可回溯；保留 N 份超量清理）
             _gameState.ResetForNewRun();
             _editorSession.ResetSession(); // 编辑会话跨局清空（后端待办 #7——退出→新局路径）
             SaveManager.Instance.SaveAll();
@@ -393,6 +400,7 @@ namespace TheLaw.UI
         private void StartNewGame()
         {
             DestroyBattleController(); // 清理旧战斗会话（重开/结算重开路径）
+            _towerFlow.DisposeCurrentBattle(); // 战斗级"离开销毁"（2026-08-13：重开路径清理——防残留实例监听）
             HideSessionPanels();
             _gameState.ResetForNewRun(); // 基础牌组填手牌（协作者实现）；敌方由波次调度产出（数据集 floor1 回合 1/4/7）
             _editorSession.ResetSession(); // 编辑会话跨局清空（后端待办 #7——快照/撤销栈残留会让"恢复原样"恢复错局）
@@ -474,9 +482,16 @@ namespace TheLaw.UI
 
         private void CreateBattleController()
         {
+            var flow = CurrentBattleFlow;
+            if (flow == null)
+            {
+                // 防御（2026-08-13 战斗级改造后）：战斗实例应已由 TowerFlow 创建——null 说明时序异常，跳过创建防 NRE
+                Debug.LogWarning("[Bootstrap] PhaseChanged(Placement) 但无当前战斗实例——跳过控制器创建");
+                return;
+            }
             var battleGo = new GameObject("BattleController");
             var controller = battleGo.AddComponent<BattleController>();
-            controller.Init(_battleFlow, _gameState, _uiManager); // 2026-08-12：注入 UIManager（BattlePanel 注册/切换）
+            controller.Init(flow, _gameState, _uiManager); // 2026-08-12：注入 UIManager（BattlePanel 注册/切换）
             controller.OnExitRequested += BackToMainMenu; // 战斗面板退出按钮 → 回主菜单
         }
 

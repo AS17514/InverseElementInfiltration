@@ -1,5 +1,6 @@
 using System.Collections.Generic;
 using System.IO;
+using System.Linq;
 using Newtonsoft.Json;
 using UnityEngine;
 
@@ -12,6 +13,8 @@ namespace TheLaw.Core
     public class SaveManager : BaseManager<SaveManager>
     {
         private readonly Dictionary<string, ISnapshot> _snapshots = new Dictionary<string, ISnapshot>();
+
+        private const int MaxHistoryCount = 5; // 历史存档保留上限（2026-08-13：整局结束归档保留 N 份，超出删除最旧——排查可回溯）
 
         private string SavePath => Path.Combine(Application.persistentDataPath, "save.json");
 
@@ -27,18 +30,56 @@ namespace TheLaw.Core
         /// </summary>
         public void SaveAll()
         {
-            var bundle = new Dictionary<string, string>();
-            foreach (var pair in _snapshots)
-            {
-                bundle[pair.Key] = pair.Value.ToJson();
-            }
             string tmpPath = SavePath + ".tmp";
-            File.WriteAllText(tmpPath, JsonConvert.SerializeObject(bundle));
+            File.WriteAllText(tmpPath, JsonConvert.SerializeObject(CollectBundle()));
             if (File.Exists(SavePath))
             {
                 File.Delete(SavePath);
             }
             File.Move(tmpPath, SavePath);
+        }
+
+        /// <summary>
+        /// 整局结束归档（2026-08-13）：当前局完整状态（含回放）存为历史存档——排查可回溯。
+        /// ⚠️ 主档随后由收尾链清空（ResetForNewRun + SaveAll）——历史档保留最近 N 份，超出删除最旧。
+        /// 触发点：Bootstrap.FinalizeRun（ResetForNewRun 之前调用——必须存局终完整状态）。
+        /// </summary>
+        public void ArchiveHistory()
+        {
+            try
+            {
+                string stamp = System.DateTime.Now.ToString("yyyyMMdd_HHmmss");
+                string path = Path.Combine(Application.persistentDataPath, $"save_history_{stamp}.json");
+                File.WriteAllText(path, JsonConvert.SerializeObject(CollectBundle()));
+                CleanupHistory();
+            }
+            catch (System.Exception e)
+            {
+                UnityEngine.Debug.LogError($"[SaveManager] 历史归档失败：{e.Message}");
+            }
+        }
+
+        /// <summary>收集全部快照（key → json——SaveAll/ArchiveHistory 共用）。</summary>
+        private Dictionary<string, string> CollectBundle()
+        {
+            var bundle = new Dictionary<string, string>();
+            foreach (var pair in _snapshots)
+            {
+                bundle[pair.Key] = pair.Value.ToJson();
+            }
+            return bundle;
+        }
+
+        /// <summary>清理历史存档：数量超过上限 → 删除最旧（文件名 yyyyMMdd_HHmmss 字典序 = 时间序）。</summary>
+        private void CleanupHistory()
+        {
+            var files = System.IO.Directory.GetFiles(Application.persistentDataPath, "save_history_*.json")
+                .OrderBy(f => f).ToList();
+            while (files.Count > MaxHistoryCount)
+            {
+                File.Delete(files[0]);
+                files.RemoveAt(0);
+            }
         }
 
         /// <summary>

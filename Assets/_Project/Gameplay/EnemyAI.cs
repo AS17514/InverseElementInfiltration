@@ -25,8 +25,12 @@ namespace TheLaw.Gameplay
         /// 同棋子多攻击槽 → 多请求 → 每请求执行完整程序 = 行动放大；且单棋子可耗尽全部预算。
         /// 现语义与玩家一致：能攻击（任一攻击槽有目标）→ 执行一次棋子（完整程序内自动攻击）；
         /// 否则能移动（任一移动槽有候选）→ 执行一次（完整程序内自动移动；攻击槽无目标自动 Skip）。
+        /// ⚠️ 2026-08-13 两项修复：
+        ///   ① actedPieces 排除——逐步决策下每步调用，跳过本回合已行动的棋子（防 requests[0] 固定重复执行）
+        ///   ② 攻击评估改"移动后位置"——决策与执行的攻击评估基准一致（执行时移动槽先移动、攻击槽按
+        ///      移动后位置重算——决策也用移动后位置评估，消除"棋子内漂移"导致的空放/打己方）
         /// </summary>
-        public List<Request> DecideTurn(GameState state)
+        public List<Request> DecideTurn(GameState state, HashSet<int> actedPieces)
         {
             var requests = new List<Request>();
             int budget = state.EnemyAPMax;
@@ -41,18 +45,24 @@ namespace TheLaw.Gameplay
                 {
                     continue;
                 }
+                if (actedPieces != null && actedPieces.Contains(piece.Id))
+                {
+                    continue; // ① 已行动棋子——本回合不再选中
+                }
 
                 var program = piece.GetProgram(state);
                 if (program == null || program.Count == 0)
                 {
                     continue;
                 }
+                // ② 预测移动后位置（与执行时移动槽的 AI 选择一致——无移动槽/无候选 = 当前位置）
+                var moveTarget = PredictMoveTarget(state, piece, program);
+                // 决策模拟：临时移到"移动后位置"评估攻击（决策阶段单线程安全——执行前还原）
+                var origPos = piece.position;
+                piece.position = moveTarget;
                 bool canAttack = CanAttackNow(state, piece, program);
-                bool canMove = false;
-                if (!canAttack)
-                {
-                    canMove = CanMoveNow(state, piece, program);
-                }
+                piece.position = origPos;
+                bool canMove = moveTarget != origPos;
                 if (canAttack || canMove)
                 {
                     // 免费资格消费（2026-08-12）：该棋子有免费资格 → 本次执行免费（不扣 AP）
@@ -63,6 +73,26 @@ namespace TheLaw.Gameplay
                 }
             }
             return requests;
+        }
+
+        /// <summary>
+        /// ② 预测执行时移动槽的落点（与 BattleFlow 执行逻辑一致：PickClosestToEnemy 选最近玩家的落点）。
+        /// 程序无移动槽/全部无候选 → 返回当前位置（移动不会发生——攻击按当前位置评估）。
+        /// </summary>
+        private Vector2Int PredictMoveTarget(GameState state, PieceInstance piece, List<Template> program)
+        {
+            foreach (var slot in program)
+            {
+                if (slot is MoveTemplate move)
+                {
+                    var options = _intentResolver.GetMoveOptions(state, piece, move);
+                    if (options.Count > 0)
+                    {
+                        return _intentResolver.PickClosestToEnemy(state, piece, options);
+                    }
+                }
+            }
+            return piece.position;
         }
 
         private bool HasEnemyTarget(GameState state, List<Vector2Int> cells)

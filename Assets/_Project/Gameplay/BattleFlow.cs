@@ -43,7 +43,8 @@ namespace TheLaw.Gameplay
         private bool _enemyTurnEndPending;   // 敌方回合结束待定——本阶段表现全部播完才切回玩家回合（动画优先）
         private bool _hadEnemyPresentation;  // 本轮敌方回合是否有表现（有→表现完即切；无→等阶段展示信号）
         private bool _deployedThisRound;     // 本轮波次是否部署（部署动画挂起点）
-        private readonly Queue<Request> _enemyRequests = new Queue<Request>(); // 敌方回合请求队列（串行处理——2026-08-12：防 _ctx 覆盖）
+        private int _enemyBudget; // 敌方回合行动次数预算（逐步决策——每步一个行动；2026-08-13 替代请求队列）
+        private readonly HashSet<int> _actedEnemyPieces = new HashSet<int>(); // 本回合已行动的敌方棋子（① 排除——防 requests[0] 固定重复执行）
 
         public BattleFlow(GameState state, BoardRules boardRules, IntentResolver intentResolver,
             Resolver resolver, EnemyAI enemyAI, RelicSystem relicSystem)
@@ -58,6 +59,18 @@ namespace TheLaw.Gameplay
             EventCenter.Instance.AddEventListener(GameEvent.PresentationFinished, OnPresentationFinished);
             EventCenter.Instance.AddEventListener(GameEvent.PhaseDisplayed, OnPhaseDisplayed);
             EventCenter.Instance.AddEventListener(GameEvent.PlacementFinished, OnPlacementFinished);
+        }
+
+        /// <summary>
+        /// 销毁钩子（2026-08-13 战斗级"进入创建、离开销毁"改造）：注销全部事件监听。
+        /// ⚠️ 必须对称于构造注册——漏注销 = 旧实例幽灵回调 + 新实例双处理（表现完成双推进）。
+        /// 销毁路径全枚举：胜利/失败（TowerFlow.OnBattleEnded）、战斗中退出/新游戏（Bootstrap 经 TowerFlow.DisposeCurrentBattle）。
+        /// </summary>
+        public void Dispose()
+        {
+            EventCenter.Instance.RemoveEventListener(GameEvent.PresentationFinished, OnPresentationFinished);
+            EventCenter.Instance.RemoveEventListener(GameEvent.PhaseDisplayed, OnPhaseDisplayed);
+            EventCenter.Instance.RemoveEventListener(GameEvent.PlacementFinished, OnPlacementFinished);
         }
 
         // ========== 开战 / 阶段 ==========
@@ -93,7 +106,8 @@ namespace TheLaw.Gameplay
             _enemyTurnEndPending = false;
             _hadEnemyPresentation = false;
             _deployedThisRound = false;
-            _enemyRequests.Clear(); // 敌方请求队列（新字段必须进重置清单——防跨局残留）
+            _enemyBudget = 0; // 敌方行动预算（新字段必须进重置清单——防跨局残留）
+            _actedEnemyPieces.Clear(); // 已行动棋子集合（新字段必须进重置清单——防跨局残留）
         }
 
         private void OnPlacementFinished(object data)
@@ -143,37 +157,49 @@ namespace TheLaw.Gameplay
         }
 
         /// <summary>
-        /// 敌方回合：AI 请求入队后逐个串行处理（2026-08-12 修复——原循环直接 ProcessRequest：
-        /// 每个请求第一槽落账后 WaitPresentation 挂起返回，循环继续会覆盖 _ctx——
-        /// 前序请求剩余槽位丢失且不扣 AP。串行化：当前请求完整执行完（FinishExecute）才处理下一个）。
+        /// 敌方回合：逐步决策-执行循环（2026-08-13 改造——替代"批量入队"）。
+        /// 每步基于【最新实时状态】决策一个行动 → 执行完（FinishExecute）→ 再基于最新状态决策下一步——
+        /// 决策状态 = 执行状态（零间隔）→ 决策-执行漂移从结构上消除（击杀漂移/打己方/空挥不再可能）。
+        /// 收尾条件：预算用完 / 无可行动棋子 / 战斗结束。
         /// </summary>
         private void ResolveEnemyTurn()
         {
-            _enemyRequests.Clear();
-            foreach (var request in _enemyAI.DecideTurn(_state))
-            {
-                _enemyRequests.Enqueue(request);
-            }
-            TryProcessNextEnemyRequest();
+            // ⚠️ 2026-08-13 回合级字段统一复位（此前 _actedEnemyPieces 只在战斗级 ResetState 清——
+            // 跨回合残留导致敌方棋子只行动一次后永久站着；_hadEnemyPresentation 同样跨回合残留致无动画回合闪切）
+            _enemyBudget = _state.EnemyAPMax; // 行动次数预算（逐步决策——每步一个行动）
+            _actedEnemyPieces.Clear();        // 已行动棋子——每回合重置（本回合行动过的不带入下回合）
+            _hadEnemyPresentation = false;    // 本回合是否有表现——每回合复位（表现发生时再锁存）
+            TryNextEnemyDecision();
         }
 
         /// <summary>
-        /// 串行处理下一个敌方请求（FinishExecute 后调用——side==Enemy 时）。
-        /// 队列空 → 敌方回合收尾（原 ResolveEnemyTurn 后半段）；战斗已结束 → 丢弃剩余请求。
+        /// 逐步决策核心（FinishExecute 后调用——side==Enemy 时）：基于最新状态决策一个行动。
+        /// 三出口：战斗结束→停；预算 0 / 无可行动棋子→敌方回合收尾；否则执行第一个请求。
+        /// ⚠️ 2026-08-13 ①：决策排除本回合已行动的棋子（防同一棋子反复被选、其他棋子饿死）。
         /// </summary>
-        private void TryProcessNextEnemyRequest()
+        private void TryNextEnemyDecision()
         {
             if (_state.Phase == BattlePhase.GameOver)
             {
-                _enemyRequests.Clear(); // 战斗已结束——不再处理剩余请求（防御：防失败后误判胜利）
-                return;
+                return; // 战斗已结束——不再决策（防御：防失败后误判胜利）
             }
-            if (_enemyRequests.Count == 0)
+            if (_enemyBudget <= 0)
             {
                 EndEnemyTurn();
                 return;
             }
-            ProcessRequest(_enemyRequests.Dequeue(), Side.Enemy);
+            var requests = _enemyAI.DecideTurn(_state, _actedEnemyPieces); // 基于最新实时状态决策（每步重算；排除已行动）
+            if (requests.Count == 0)
+            {
+                EndEnemyTurn();
+                return;
+            }
+            _enemyBudget--;
+            if (requests[0] is ExecuteRequest exec)
+            {
+                _actedEnemyPieces.Add(exec.pieceId); // ① 记录已行动棋子——后续步骤不再选中
+            }
+            ProcessRequest(requests[0], Side.Enemy); // 每步只执行第一个行动（决策时状态=执行时状态——无漂移）
         }
 
         /// <summary>敌方回合收尾（全部请求处理完后）：AP 清零/回合计数/胜负判定/回合切换挂起（动画优先）。</summary>
@@ -429,8 +455,23 @@ namespace TheLaw.Gameplay
                     else
                     {
                         // 敌方 AI 自动选目标（HighestValue）→ 落账 → 表现等待
+                        // ⚠️ 2026-08-13 ②：候选过滤为【玩家占位格】——无玩家目标 → Skip（不空放、不打己方——
+                        // 与决策层"移动后位置评估"一致：决策判定能打到玩家才产请求，执行时打玩家目标；
+                        // 空放成为玩家专属（A2b 玩家语义保持）；玩家侧路径不受影响）
                         var aiAttackOptions = _intentResolver.GetAttackOptions(_state, piece, attack);
-                        if (aiAttackOptions.Count == 0)
+                        var playerTargets = new List<Vector2Int>();
+                        if (aiAttackOptions.Count > 0)
+                        {
+                            foreach (var cell in aiAttackOptions)
+                            {
+                                var t = _state.GetPieceAt(cell);
+                                if (t != null && t.side == Side.Player)
+                                {
+                                    playerTargets.Add(cell);
+                                }
+                            }
+                        }
+                        if (playerTargets.Count == 0)
                         {
                             _resolver.Resolve(new SkipAction(piece.Id, SkipReason.NoTarget));
                             _ctx.slotIndex++;
@@ -438,7 +479,7 @@ namespace TheLaw.Gameplay
                         }
                         else
                         {
-                            var aiTarget = _intentResolver.PickTarget(_state, piece, aiAttackOptions, _aiParams.targetRule);
+                            var aiTarget = _intentResolver.PickTarget(_state, piece, playerTargets, _aiParams.targetRule);
                             _resolver.Resolve(_intentResolver.ResolveAttack(_state, piece, aiTarget, attack));
                             _ctx.slotIndex++;
                             WaitPresentation();
@@ -518,10 +559,10 @@ namespace TheLaw.Gameplay
             {
                 CheckActionPoints();
             }
-            // 敌方请求串行化（2026-08-12）：当前请求完整执行完（扣费后）→ 处理下一个；队列空 → 敌方回合收尾
+            // 敌方逐步决策（2026-08-13）：当前行动完整执行完（扣费后）→ 基于最新状态决策下一步；预算 0/无行动 → 收尾
             if (side == Side.Enemy)
             {
-                TryProcessNextEnemyRequest();
+                TryNextEnemyDecision();
             }
         }
 

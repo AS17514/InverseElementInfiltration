@@ -1,3 +1,4 @@
+using System;
 using System.Collections.Generic;
 using TheLaw.Core;
 using TheLaw.Data;
@@ -13,17 +14,31 @@ namespace TheLaw.Gameplay
     {
         private readonly GameState _state;
         private readonly EventNodeSystem _eventNodeSystem;
-        private readonly BattleFlow _battleFlow;
+        private readonly Func<BattleFlow> _battleFlowFactory; // 战斗级"进入创建"（2026-08-13：每场战斗创建新 BattleFlow）
+        private BattleFlow _battleFlow;                       // 当前战斗实例（可空——非战斗中为 null）
         private readonly MapConfig _map;
 
-        public TowerFlow(GameState state, EventNodeSystem eventNodeSystem, BattleFlow battleFlow, MapConfig map)
+        public TowerFlow(GameState state, EventNodeSystem eventNodeSystem, Func<BattleFlow> battleFlowFactory, MapConfig map)
         {
             _state = state;
             _eventNodeSystem = eventNodeSystem;
-            _battleFlow = battleFlow;
+            _battleFlowFactory = battleFlowFactory;
             _map = map;
             // 事件完成推进（与 PlacementFinished 同模式：UI 报告完成，规则层决定推进）
             EventCenter.Instance.AddEventListener(GameEvent.EventCompleted, OnEventCompleted);
+        }
+
+        /// <summary>当前战斗实例（Bootstrap 创建战斗控制器时取——非战斗中为 null）。</summary>
+        public BattleFlow CurrentBattleFlow => _battleFlow;
+
+        /// <summary>
+        /// 销毁当前战斗实例（"离开销毁"——注销监听防幽灵回调；胜利/失败/退出/新游戏路径均调用）。
+        /// ⚠️ 2026-08-13 战斗级改造：BattleFlow 每场创建、战斗结束销毁——瞬态字段随实例消失（不再依赖手清清单）。
+        /// </summary>
+        public void DisposeCurrentBattle()
+        {
+            _battleFlow?.Dispose();
+            _battleFlow = null;
         }
 
         /// <summary>
@@ -82,6 +97,8 @@ namespace TheLaw.Gameplay
             {
                 var floor = _map.floors[_state.CurrentFloor];
                 var aiParams = GetDefaultAIParams();
+                // 战斗级"进入创建"（2026-08-13）：每场战斗创建新 BattleFlow——瞬态字段随实例归零
+                _battleFlow = _battleFlowFactory();
                 _battleFlow.StartBattle(floor, aiParams);
             }
             else
@@ -92,9 +109,14 @@ namespace TheLaw.Gameplay
             }
         }
 
-        /// <summary>战斗结束回调（胜利 → 推进；失败 → 整局结束）。</summary>
+        /// <summary>
+        /// 战斗结束回调（胜利 → 推进；失败 → 整局结束）。
+        /// ⚠️ 2026-08-13：先销毁当前战斗实例（"离开销毁"——注销监听防幽灵回调），再推进。
+        /// 时序安全：EndBattle 先发 StateChanged（结算面板快照）后走到本方法——快照在前、销毁在后。
+        /// </summary>
         public void OnBattleEnded(Side winner)
         {
+            DisposeCurrentBattle();
             if (winner == Side.Player)
             {
                 AdvanceNode();

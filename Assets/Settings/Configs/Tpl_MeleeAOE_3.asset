@@ -13,4 +13,4 @@ MonoBehaviour:
   m_Name: Tpl_MeleeAOE_3
   m_EditorClassIdentifier: 
   _id: 38624545
-  templateKey: MeleeAOE-3
+  templateKey: Attack-3

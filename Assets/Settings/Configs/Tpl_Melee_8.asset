@@ -13,4 +13,4 @@ MonoBehaviour:
   m_Name: Tpl_Melee_8
   m_EditorClassIdentifier: 
   _id: 385594003
-  templateKey: Melee-8
+  templateKey: Attack-8

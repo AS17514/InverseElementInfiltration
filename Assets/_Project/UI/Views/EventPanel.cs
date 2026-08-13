@@ -31,6 +31,10 @@ namespace TheLaw.UI
             _eventNode = eventNode;
         }
 
+        // UI 架构重构 §三.2：事件面板数据 = 事件广播驱动（ShowEvent），非 Show 驱动——
+        // OnShow 无需刷新（幂等在数据层 _currentEventId：重复广播无新数据不重建）
+        protected override void OnShow() { }
+
         private void Awake()
         {
             _title = transform.Find("Grp_TopBar/Txt_EventName")?.GetComponent<TMP_Text>();

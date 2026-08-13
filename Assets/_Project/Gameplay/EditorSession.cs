@@ -66,6 +66,18 @@ namespace TheLaw.Gameplay
             _resolver.ApplyProgramEdit(defId, program);
         }
 
+        /// <summary>是否有可撤销历史（UI 空栈置灰用——只读查询，不改状态）。</summary>
+        public bool CanUndo(int defId)
+        {
+            return _undoStacks.TryGetValue(defId, out var stack) && stack.Count > 0;
+        }
+
+        /// <summary>清空指定棋子的撤销历史（"全部撤回"后历史无意义——UI 调用）。</summary>
+        public void ClearHistory(int defId)
+        {
+            if (_undoStacks.TryGetValue(defId, out var stack)) stack.Clear();
+        }
+
         /// <summary>撤销上一步（弹栈恢复 before，经 Resolver）。</summary>
         public void Undo(int defId)
         {

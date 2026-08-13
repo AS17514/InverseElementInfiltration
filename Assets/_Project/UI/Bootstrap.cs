@@ -86,6 +86,8 @@ namespace TheLaw.UI
             WireEvents();
             // ⑤a 结算面板常驻创建（战斗结束 overlay——自身监听 StateChanged + PushPanel；须在战斗前就绪）
             StartCoroutine(CreateBattleResultPanel());
+            // ⑤a2 确认面板常驻创建（通用确认 overlay——撤回全部/退出/重开等场景复用；IsPausing 暂停型）
+            StartCoroutine(CreateConfirmPanel());
             // ⑤b 开局初始化（新局状态——含基础牌组手牌填充，ResetForNewRun 内完成）
             _gameState.ResetForNewRun();
             // ⑥ 进主菜单（TODO: UI 层面板）
@@ -558,6 +560,17 @@ namespace TheLaw.UI
         }
 
         /// <summary>结算面板常驻创建（战斗结束 overlay——自身监听 StateChanged + PushPanel/PopPanel；须在战斗前就绪）。</summary>
+        /// <summary>确认面板常驻创建（通用确认 overlay——2026-08-13：编辑撤回全部等场景；IsPausing 暂停型）。</summary>
+        private System.Collections.IEnumerator CreateConfirmPanel()
+        {
+            yield return LoadPanelAsync<ConfirmPanel>(panel =>
+            {
+                _uiManager.RegisterPanel(panel);
+                panel.Init(_uiManager);
+                panel.gameObject.SetActive(false); // 常驻隐藏（ShowConfirm 时 PushOverlay）
+            });
+        }
+
         private System.Collections.IEnumerator CreateBattleResultPanel()
         {
             yield return LoadPanelAsync<BattleResultPanel>(panel =>

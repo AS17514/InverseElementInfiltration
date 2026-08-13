@@ -48,6 +48,9 @@ namespace TheLaw.UI
         // ====== 程序库（全局模板去重） ======
         private List<Template> _programLibrary = new List<Template>();
         private GameObject _progTemplate; // Piece_ProgramInfo prefab（卡面缩略图模板——Addressables）
+        private Button _undoBtn;             // Btn_Undo（单击撤一步 / 长按全部撤回）
+        private UndoButtonHandler _undoHandler;
+        private GameObject _undoTooltip;     // 悬停提示浮窗（代码动态创建）
 
         public void Init(EditorSession editor, GameState state)
         {
@@ -71,11 +74,130 @@ namespace TheLaw.UI
                 next.onClick.RemoveAllListeners();
                 next.onClick.AddListener(OnNext);
             }
+            // Btn_Undo（2026-08-13：单击撤一步 / 长按全部撤回 / 悬停提示）——按名查找（路径随面板布局变化，FindDeep 兜底）
+            _undoBtn = transform.Find("Grp/Grp_R/Grp_Low/Btn_Undo")?.GetComponent<Button>();
+            if (_undoBtn == null)
+            {
+                var undoGo = FindDeep(transform, "Btn_Undo");
+                if (undoGo != null) _undoBtn = undoGo.GetComponent<Button>();
+            }
+            if (_undoBtn != null)
+            {
+                _undoBtn.onClick.RemoveAllListeners(); // 全部走 UndoButtonHandler（防 Button.onClick 双触发）
+                var handler = _undoBtn.gameObject.GetComponent<UndoButtonHandler>();
+                if (handler == null) handler = _undoBtn.gameObject.AddComponent<UndoButtonHandler>();
+                _undoHandler = handler;
+                _undoHandler.OnClick += OnUndoClicked;
+                _undoHandler.OnLongPress += OnUndoLongPressed;
+                _undoHandler.OnHoverEnter += ShowUndoTooltip;
+                _undoHandler.OnHoverExit += HideUndoTooltip;
+                CreateUndoTooltip();
+            }
         }
 
         void OnDestroy()
         {
             EventCenter.Instance.RemoveEventListener(GameEvent.ProgramEdited, OnProgramEdited);
+            if (_undoHandler != null)
+            {
+                _undoHandler.OnClick -= OnUndoClicked;
+                _undoHandler.OnLongPress -= OnUndoLongPressed;
+                _undoHandler.OnHoverEnter -= ShowUndoTooltip;
+                _undoHandler.OnHoverExit -= HideUndoTooltip;
+            }
+        }
+
+        // ====== 撤销（2026-08-13：单击撤一步 / 长按全部撤回 / 悬停提示）======
+
+        /// <summary>单击：撤销当前选中棋子上一步（无栈无操作——按钮置灰已防）。</summary>
+        void OnUndoClicked()
+        {
+            if (_selectedDefId < 0 || _editor == null) return;
+            _editor.Undo(_selectedDefId);
+            var def = ConfigTable.Find<PieceDef>(_selectedDefId);
+            if (def != null)
+            {
+                _slotTemplates = GetCurrentProgram(def);
+                InitLockedFlags(def);
+                FillPieceInfo(def);
+                RefreshPieceCardProgram(_selectedDefId);
+                RefreshUndoButton();
+            }
+        }
+
+        /// <summary>长按：弹确认面板"确认全部撤回？" → 全部还原（RestoreAll）+ 清历史。</summary>
+        void OnUndoLongPressed()
+        {
+            if (_editor == null) return;
+            // 经 Bootstrap 常驻 ConfirmPanel（全局确认面板——未注册则跳过，防御）
+            var confirm = FindObjectOfType<ConfirmPanel>(true);
+            if (confirm != null)
+            {
+                confirm.ShowConfirm("确认全部撤回？", () =>
+                {
+                    _editor.RestoreAll();
+                    if (_selectedDefId >= 0)
+                    {
+                        _editor.ClearHistory(_selectedDefId);
+                        var def = ConfigTable.Find<PieceDef>(_selectedDefId);
+                        if (def != null)
+                        {
+                            _slotTemplates = GetCurrentProgram(def);
+                            InitLockedFlags(def);
+                            FillPieceInfo(def);
+                            RefreshPieceCardProgram(_selectedDefId);
+                        }
+                    }
+                    RefreshUndoButton();
+                });
+            }
+            else
+            {
+                _editor.RestoreAll(); // 防御：无确认面板直接还原
+                RefreshUndoButton();
+            }
+        }
+
+        /// <summary>空撤销栈 → 置灰（选中变化/每次编辑后/OnShow 刷新）。</summary>
+        void RefreshUndoButton()
+        {
+            if (_undoBtn == null) return;
+            _undoBtn.interactable = _selectedDefId >= 0 && _editor != null && _editor.CanUndo(_selectedDefId);
+        }
+
+        /// <summary>悬停提示浮窗（按钮上方，代码动态创建——两行说明）。</summary>
+        void CreateUndoTooltip()
+        {
+            if (_undoTooltip != null || _undoBtn == null) return;
+            var go = new GameObject("UndoTooltip", typeof(RectTransform), typeof(TextMeshProUGUI));
+            go.transform.SetParent(_undoBtn.transform.parent, false); // 与按钮同级（按钮上方）
+            var rt = (RectTransform)go.transform;
+            rt.anchorMin = new Vector2(0.5f, 1.15f);
+            rt.anchorMax = new Vector2(0.5f, 1.15f);
+            rt.pivot = new Vector2(0.5f, 1f);
+            rt.anchoredPosition = Vector2.zero;
+            rt.sizeDelta = new Vector2(220f, 48f);
+            var txt = go.GetComponent<TextMeshProUGUI>();
+            txt.text = "单击撤回一次\n长按全部撤回";
+            txt.fontSize = 18;
+            txt.alignment = TextAlignmentOptions.Center;
+            txt.color = Color.white;
+            txt.enableWordWrapping = true;
+            // 背景（半透明黑——可读性）
+            var img = go.AddComponent<UnityEngine.UI.Image>();
+            img.color = new Color(0f, 0f, 0f, 0.8f);
+            go.SetActive(false);
+            _undoTooltip = go;
+        }
+
+        void ShowUndoTooltip()
+        {
+            if (_undoTooltip != null) _undoTooltip.SetActive(true);
+        }
+
+        void HideUndoTooltip()
+        {
+            if (_undoTooltip != null) _undoTooltip.SetActive(false);
         }
 
         void OnNext()
@@ -123,6 +245,7 @@ namespace TheLaw.UI
                 if (scroll != null) scroll.normalizedPosition = Vector2.zero;
             }
             RefreshPieceList();
+            RefreshUndoButton(); // 新会话：无可撤销历史 → 置灰
         }
 
         void ResolveNodes()
@@ -570,6 +693,7 @@ namespace TheLaw.UI
             _slotTemplates = GetCurrentProgram(def);
             InitLockedFlags(def);
             FillPieceInfo(def);
+            RefreshUndoButton(); // 新选中：检查该棋子是否有可撤销历史
         }
 
         List<Template> GetCurrentProgram(PieceDef def)
@@ -737,6 +861,7 @@ namespace TheLaw.UI
         {
             if (_selectedDefId < 0) return;
             _editor.EditProgram(_selectedDefId, new List<Template>(_slotTemplates));
+            RefreshUndoButton(); // 编辑后必有可撤销历史 → 亮
             var def = ConfigTable.Find<PieceDef>(_selectedDefId);
             if (def != null)
             {

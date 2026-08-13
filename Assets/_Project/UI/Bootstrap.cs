@@ -324,6 +324,7 @@ namespace TheLaw.UI
             yield return null; // 等一帧：当前事件回调栈必然已退出（Unity 单线程，帧末栈空）
             DestroyBattleController();
             _towerFlow.DisposeCurrentBattle(); // 战斗级"离开销毁"（2026-08-13：战斗中退出路径——注销监听防幽灵回调）
+            SaveManager.Instance.ArchiveHistory(); // 局终归档（2026-08-13：Reset 前——存局终完整状态含回放，排查可回溯；保留 N 份超量清理）
             _gameState.ResetForNewRun();
             _editorSession.ResetSession(); // 编辑会话跨局清空（后端待办 #7——退出→新局路径）
             SaveManager.Instance.SaveAll();

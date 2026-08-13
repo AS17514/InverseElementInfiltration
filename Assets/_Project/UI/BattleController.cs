@@ -237,18 +237,22 @@ namespace TheLaw.UI
             if (_panel == null) return; // 防御：面板未就绪（Bootstrap 保证——不应发生）
             _uiManager.RegisterPanel(panel); // 幂等覆盖（重复注册无害）
             _uiManager.ShowPanel("Battle");
-                if (_panel.PhaseButton != null)
+            // ⚠️ 面板局内复用（UI 架构重构 §五）：旧 BC 的按钮监听残留在复用面板上——
+            // 每场绑定前必须 RemoveAllListeners（否则第 2 场起点按钮触发多次回调）
+            if (_panel.PhaseButton != null)
+            {
+                _panel.PhaseButton.onClick.RemoveAllListeners();
+                _panel.PhaseButton.onClick.AddListener(OnPhaseButtonClicked);
+            }
+            if (_panel.ExitButton != null)
+            {
+                _panel.ExitButton.onClick.RemoveAllListeners();
+                _panel.ExitButton.onClick.AddListener(() =>
                 {
-                    _panel.PhaseButton.onClick.AddListener(OnPhaseButtonClicked);
-                }
-                if (_panel.ExitButton != null)
-                {
-                    _panel.ExitButton.onClick.AddListener(() =>
-                    {
-                        _panel.ExitButton.interactable = false; // 立即反馈——收尾延后 1 帧期间按钮置灰（防"点了没反应"）
-                        OnExitRequested?.Invoke();
-                    });
-                }
+                    _panel.ExitButton.interactable = false; // 立即反馈——收尾延后 1 帧期间按钮置灰（防"点了没反应"）
+                    OnExitRequested?.Invoke();
+                });
+            }
                 RefreshAll();
                 UpdateHandPositionByPhase(); // 初始阶段即应用手牌区状态（准备阶段高度 250）
                 ClearPieceInfo(); // 初始：信息面板隐藏（无选中/无临时状态）

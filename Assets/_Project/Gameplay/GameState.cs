@@ -171,6 +171,7 @@ namespace TheLaw.Gameplay
                     TempAbilities = piece.tempAbilities.ConvertAll(a => a.Id),
                     IsDeployed = piece.isDeployed,
                     ShieldCount = piece.shieldCount,
+                    WaveIndex = piece.waveIndex, // 波次标（2026-08-13 补——原 DTO 缺字段，读档后每波得分链路断）
                 });
             }
             // TypeNameHandling.Auto：多态基类（Template/ConcreteAction）序列化需写类型名，否则反序列化丢失子类
@@ -223,7 +224,13 @@ namespace TheLaw.Gameplay
             {
                 foreach (var pdto in dto.Pieces)
                 {
-                    var pieceDef = ConfigTable.Get<PieceDef>(pdto.DefId);
+                    // ⚠️ 2026-08-13 读档健壮性：原 ConfigTable.Get（查不到抛异常崩读档）——改 Find（配置缺失跳过该棋子+警告）
+                    var pieceDef = ConfigTable.Find<PieceDef>(pdto.DefId);
+                    if (pieceDef == null)
+                    {
+                        UnityEngine.Debug.LogWarning($"[GameState] 读档：棋子配置缺失 DefId={pdto.DefId}——跳过该棋子");
+                        continue;
+                    }
                     var piece = new PieceInstance(pieceDef, pdto.Side, new Vector2Int(pdto.X, pdto.Y))
                     {
                         Id = pdto.Id,
@@ -232,6 +239,7 @@ namespace TheLaw.Gameplay
                         programOverride = pdto.ProgramOverride,
                         isDeployed = pdto.IsDeployed,
                         shieldCount = pdto.ShieldCount,
+                        waveIndex = pdto.WaveIndex, // 波次标（2026-08-13 补：第 3 关每波得分依赖——原 DTO 缺字段读档归 -1）
                     };
                     foreach (var abilityId in pdto.TempAbilities)
                     {
@@ -303,5 +311,6 @@ namespace TheLaw.Gameplay
         public List<int> TempAbilities;
         public bool IsDeployed;
         public int ShieldCount;
+        public int WaveIndex; // 所属波次（2026-08-13 补——每波得分按此累计）
     }
 }

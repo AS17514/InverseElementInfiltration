@@ -556,7 +556,9 @@ namespace TheLaw.Gameplay
 
         private void HandleWaveAndPromotions()
         {
-            // 升变预告倒计时（波次 N 开始预告波次 N+1；此处波次推进时处理）
+            // 升变预告倒计时（波次 N 开始预告波次 N+1）。
+            // 【语义确认 2026-08-13】按"每次 HandleWaveAndPromotions（每敌方回合）"递减——countdown=1 的预告
+            // 在下一敌方回合即升变（比"下波部署时升变"提前数回合）。该语义已确认保持现状（按实现），暂不改。
             foreach (var ann in new List<PromoteAnnouncement>(_state.PromoteAnnouncements))
             {
                 ann.countdown--;

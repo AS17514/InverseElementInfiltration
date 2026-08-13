@@ -21,7 +21,10 @@ namespace TheLaw.Core
             _snapshots[snapshot.Key] = snapshot;
         }
 
-        /// <summary>保存全部快照（key → json 打包为一个文件）。</summary>
+        /// <summary>
+        /// 保存全部快照（key → json 打包为一个文件）。
+        /// ⚠️ 2026-08-13 原子写：先写临时文件再替换——防"写到一半进程被杀"留下半个 JSON 损坏存档。
+        /// </summary>
         public void SaveAll()
         {
             var bundle = new Dictionary<string, string>();
@@ -29,23 +32,45 @@ namespace TheLaw.Core
             {
                 bundle[pair.Key] = pair.Value.ToJson();
             }
-            File.WriteAllText(SavePath, JsonConvert.SerializeObject(bundle));
+            string tmpPath = SavePath + ".tmp";
+            File.WriteAllText(tmpPath, JsonConvert.SerializeObject(bundle));
+            if (File.Exists(SavePath))
+            {
+                File.Delete(SavePath);
+            }
+            File.Move(tmpPath, SavePath);
         }
 
-        /// <summary>读取全部快照并分发（文件不存在则跳过）。</summary>
+        /// <summary>
+        /// 读取全部快照并分发（文件不存在则跳过）。
+        /// ⚠️ 2026-08-13 健壮性：损坏存档（半个 JSON/解析异常）→ 跳过不崩（LogError），后续快照不恢复——
+        /// 宁可丢存档也不崩游戏（原实现异常上抛中断 LoadAll）。
+        /// </summary>
         public void LoadAll()
         {
             if (!File.Exists(SavePath))
             {
                 return;
             }
-            var bundle = JsonConvert.DeserializeObject<Dictionary<string, string>>(File.ReadAllText(SavePath));
-            foreach (var pair in bundle)
+            try
             {
-                if (_snapshots.TryGetValue(pair.Key, out var snapshot))
+                var bundle = JsonConvert.DeserializeObject<Dictionary<string, string>>(File.ReadAllText(SavePath));
+                if (bundle == null)
                 {
-                    snapshot.FromJson(pair.Value);
+                    UnityEngine.Debug.LogError("[SaveManager] 存档为空或格式错误——跳过读档");
+                    return;
                 }
+                foreach (var pair in bundle)
+                {
+                    if (_snapshots.TryGetValue(pair.Key, out var snapshot))
+                    {
+                        snapshot.FromJson(pair.Value);
+                    }
+                }
+            }
+            catch (System.Exception e)
+            {
+                UnityEngine.Debug.LogError($"[SaveManager] 读档失败（存档损坏？）：{e.Message}");
             }
         }
 

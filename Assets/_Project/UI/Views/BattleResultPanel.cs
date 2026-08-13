@@ -30,6 +30,7 @@ namespace TheLaw.UI
 
         // ====== 快照（收到信号立即读——防 Reset 清空）======
         private bool _hasResult;
+        private bool _dismissReady; // 显示后跳一帧再允许按键（防战斗结束同帧点击被当成确认——结算一闪而过）
         private bool _victory;
         private int _playerScore;
         private int _enemyScore;
@@ -115,6 +116,7 @@ namespace TheLaw.UI
             _hasResult = true;
             FillContent();
             _uiManager?.PushOverlay(Key); // 覆盖显示（不隐藏下层——收尾/下层界面在面板之下）
+            _dismissReady = false; // 跳帧守卫：战斗结束那帧的按键不再被当成确认
         }
 
         /// <summary>填充内容（PushOverlay 前调用——Show 由 UIManager 负责）。</summary>
@@ -142,6 +144,11 @@ namespace TheLaw.UI
         {
             // 按任意键：键盘任意键 + 鼠标点击 → PopOverlay（确认只关面板——不触发后端逻辑；恢复下层）
             if (!_hasResult || !gameObject.activeSelf) return;
+            if (!_dismissReady)
+            {
+                _dismissReady = true; // 跳过战斗结束那一帧（同帧点击防误认确认——结算面板一闪而过）
+                return;
+            }
             // Input System 原生检测（项目 activeInputHandler=2——旧 UnityEngine.Input 可能不可用）
             bool keyDown = false;
             bool mouseDown = false;

@@ -69,10 +69,13 @@ namespace TheLaw.Core
             _seed = state.Seed;
             _callCount = state.CallCount;
             _random = new Random(_seed);
-            // 重放 _callCount 次调用（保证读档后序列与存档时一致）
+            // 重放 _callCount 次调用（保证读档后序列与存档时一致）。
+            // ⚠️ 2026-08-13：补的方式必须与消耗方式一致（调用端只用 NextDouble——事件池抽取）——
+            // 原用 Next() 整数补，两种方式内部消耗的随机原料数可能不同（旧 .NET 实现）→ 补不齐序列漂移。
+            // 用同款 NextDouble 补 → 无论内部消耗几份原料都必然对齐。
             for (int i = 0; i < _callCount; i++)
             {
-                _random.Next();
+                _random.NextDouble();
             }
         }
 

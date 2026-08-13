@@ -663,7 +663,9 @@ namespace TheLaw.Gameplay
                 for (int x = 0; x < 8; x++)
                 {
                     var cell = new Vector2Int(x, y);
-                    if (!_state.Pieces.ContainsKey(cell))
+                    // ⚠️ 2026-08-13：+障碍物检查（原只查占用——部署区配障碍物时棋子会部署到障碍物格上；
+                    // 与移动落点 IsCellPassable 三条件对称：界内+非占用+非障碍）
+                    if (!_state.Pieces.ContainsKey(cell) && !_state.Obstacles.Contains(cell))
                     {
                         return cell;
                     }
@@ -700,7 +702,8 @@ namespace TheLaw.Gameplay
             {
                 return false;
             }
-            return !_state.Pieces.ContainsKey(cell);
+            // ⚠️ 2026-08-13：+障碍物检查（与 FindDeployCell/IsCellPassable 三条件对称——部署区配障碍物时不可部署到障碍物格）
+            return !_state.Pieces.ContainsKey(cell) && !_state.Obstacles.Contains(cell);
         }
 
         // ========== 胜负（非对称：玩家判负 + 关卡 victoryRule）==========

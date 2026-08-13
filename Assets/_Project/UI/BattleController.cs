@@ -1027,6 +1027,13 @@ namespace TheLaw.UI
                     if (txt != null) txt.text = "等待中"; // 按钮文字限 4 字
                     if (_panel != null) _panel.SetEventName("敌方回合");
                     break;
+                case BattlePhase.GameOver:
+                    // 2026-08-13 需求：按钮全程可见（不隐藏）——战斗结束等结算确认：置灰"等待中"
+                    // （防"中途胜利复用控制器"时按钮被隐藏 → 新摆放阶段无按钮卡死）
+                    btn.gameObject.SetActive(true);
+                    btn.interactable = false;
+                    if (txt != null) txt.text = "等待中";
+                    break;
                 default:
                     btn.gameObject.SetActive(false);
                     break;

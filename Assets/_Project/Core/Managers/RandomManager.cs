@@ -10,8 +10,10 @@ namespace TheLaw.Core
     /// </summary>
     public class RandomManager : BaseManager<RandomManager>, ISnapshot
     {
-        private Random _random = new Random(0);
-        private int _seed;
+        // ⚠️ 2026-08-13：启动随机种子（原固定 0 → 每次 play 抽取序列完全确定 → 事件池永远抽同一事件"每次疾风之靴"）。
+        // 读档路径 FromJson 会用存档种子覆盖（序列可复现保留）；SetSeed 供测试复现。
+        private Random _random = new Random(Environment.TickCount);
+        private int _seed = Environment.TickCount;
         private int _callCount;
 
         public string Key => "RandomManager";

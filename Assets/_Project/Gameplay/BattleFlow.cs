@@ -164,7 +164,11 @@ namespace TheLaw.Gameplay
         /// </summary>
         private void ResolveEnemyTurn()
         {
+            // ⚠️ 2026-08-13 回合级字段统一复位（此前 _actedEnemyPieces 只在战斗级 ResetState 清——
+            // 跨回合残留导致敌方棋子只行动一次后永久站着；_hadEnemyPresentation 同样跨回合残留致无动画回合闪切）
             _enemyBudget = _state.EnemyAPMax; // 行动次数预算（逐步决策——每步一个行动）
+            _actedEnemyPieces.Clear();        // 已行动棋子——每回合重置（本回合行动过的不带入下回合）
+            _hadEnemyPresentation = false;    // 本回合是否有表现——每回合复位（表现发生时再锁存）
             TryNextEnemyDecision();
         }
 

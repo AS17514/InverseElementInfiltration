@@ -185,9 +185,8 @@ namespace TheLaw.UI
             if (_tooltip != null) _tooltip.gameObject.SetActive(false);
             if (_handPosTween != null) _handPosTween.Kill();
             if (_handSizeTween != null) _handSizeTween.Kill();
-            // 随会话销毁战斗面板（重开/回主菜单时清理——防多局累积实例）
-            // ⚠️ DestroyImmediate：Destroy 延迟会让旧面板在重开新局时短暂并存（滚动条/状态沿用旧实例）——同步销毁
-            if (_panel != null) DestroyImmediate(_panel.gameObject);
+            // UI 架构重构 §五：面板局内复用——只解绑不销毁（面板生命周期归 Bootstrap：局结束统一销毁）
+            _panel = null;
             // 清理盘面视觉：高亮根 + 全部棋子视觉（重开会话时盘面必须清空）
             // ⚠️ 2026-08-12：前缀同时匹配 EnemyPiece_（PlayDeploy 复用目标）——原只清 Piece_，敌方视觉跨局残留
             ClearHighlights();
@@ -203,7 +202,7 @@ namespace TheLaw.UI
         /// <summary>退出战斗请求（Bootstrap 订阅——回主菜单）。</summary>
         public event System.Action OnExitRequested;
 
-        public void Init(BattleFlow flow, GameState state, UIManager uiManager)
+        public void Init(BattleFlow flow, GameState state, UIManager uiManager, BattlePanel panel)
         {
             _flow = flow;
             _state = state;
@@ -233,12 +232,11 @@ namespace TheLaw.UI
             EventCenter.Instance.AddEventListener(GameEvent.BuffsChanged, OnBuffsChanged); // buff 变化 → 刷新选中棋子信息面板
             EventCenter.Instance.AddEventListener(GameEvent.ExtraActionGranted, OnBuffsChanged); // 免费行动授予同刷新
 
-            PanelBase.CreateAsync<BattlePanel>(p =>
-            {
-                _panel = p;
-                // 2026-08-12 架构重构：BattlePanel 注册进 UIManager（切换型）——替代直接 _panel.Show()
-                _uiManager.RegisterPanel(p);
-                _uiManager.ShowPanel("Battle");
+            // UI 架构重构 §五：面板局内缓存（Bootstrap 管理生命周期）——每场绑定不创建
+            _panel = panel;
+            if (_panel == null) return; // 防御：面板未就绪（Bootstrap 保证——不应发生）
+            _uiManager.RegisterPanel(panel); // 幂等覆盖（重复注册无害）
+            _uiManager.ShowPanel("Battle");
                 if (_panel.PhaseButton != null)
                 {
                     _panel.PhaseButton.onClick.AddListener(OnPhaseButtonClicked);
@@ -259,8 +257,7 @@ namespace TheLaw.UI
                 // 回合进度条：加载波次节点模板 + 首次刷新（2026-08-12）
                 StartCoroutine(LoadWaveNodeTemplate());
                 RefreshTurnProgress();
-                _lastTurnCount = _state.TurnCount; // 开局同步（第一回合=准备+敌方，敌方结束 0→1 才右移）
-            });
+            _lastTurnCount = _state.TurnCount; // 开局同步（第一回合=准备+敌方，敌方结束 0→1 才右移）
         }
 
         /// <summary>同步棋盘已有棋子视觉（开局首波/后续会话补齐——事件早于监听时视觉不创建）。</summary>

@@ -480,6 +480,8 @@ namespace TheLaw.UI
             });
         }
 
+        private BattlePanel _battlePanel; // 局内缓存战斗面板（UI 架构重构 §五——一局一栋房，每场换管家）
+
         private void CreateBattleController()
         {
             var flow = CurrentBattleFlow;
@@ -489,9 +491,32 @@ namespace TheLaw.UI
                 Debug.LogWarning("[Bootstrap] PhaseChanged(Placement) 但无当前战斗实例——跳过控制器创建");
                 return;
             }
+            if (_battlePanel == null)
+            {
+                StartCoroutine(LoadBattlePanelAndController(flow)); // 局内首次：先创建面板（Addressables）再建控制器
+            }
+            else
+            {
+                CreateBattleControllerWith(flow, _battlePanel); // 面板复用——直接绑定
+            }
+        }
+
+        /// <summary>局内首次：创建战斗面板 → 创建战斗控制器绑定（面板生命周期归 Bootstrap——UI 架构重构 §五）。</summary>
+        private System.Collections.IEnumerator LoadBattlePanelAndController(BattleFlow flow)
+        {
+            yield return LoadPanelAsync<BattlePanel>(panel =>
+            {
+                _battlePanel = panel;
+                _uiManager.RegisterPanel(panel);
+                CreateBattleControllerWith(flow, panel);
+            });
+        }
+
+        private void CreateBattleControllerWith(BattleFlow flow, BattlePanel panel)
+        {
             var battleGo = new GameObject("BattleController");
             var controller = battleGo.AddComponent<BattleController>();
-            controller.Init(flow, _gameState, _uiManager); // 2026-08-12：注入 UIManager（BattlePanel 注册/切换）
+            controller.Init(flow, _gameState, _uiManager, panel); // 绑定面板（不创建——面板局内复用）
             controller.OnExitRequested += BackToMainMenu; // 战斗面板退出按钮 → 回主菜单
         }
 

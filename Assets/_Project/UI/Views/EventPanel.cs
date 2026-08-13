@@ -71,14 +71,12 @@ namespace TheLaw.UI
             EventCenter.Instance.RemoveEventListener(GameEvent.RelicObtained, OnRelicObtained);
         }
 
-        bool _relicPending; // 本次选项获得遗物（描述区追加提示 + 延迟关闭展示）
 
         void OnRelicObtained(object data)
         {
             if (data is RelicDef relic && _desc != null && gameObject.activeSelf)
             {
-                _relicPending = true;
-                _desc.text += $"\n\n✨ 获得遗物：{relic.displayName}";
+                _desc.text += $"\n\n【获得遗物】{relic.displayName}"; // 禁用 Emoji（U+2728 不在字库）；推进由"继续"按钮显式驱动（2026-08-13）
             }
         }
 
@@ -96,7 +94,6 @@ namespace TheLaw.UI
             if (string.IsNullOrEmpty(eventId)) return;
             if (eventId == _currentEventId) return; // 幂等：同一事件重复推送跳过（防双消费双推进）
             _currentEventId = eventId;
-            _relicPending = false; // 新事件重置遗物提示标记
             _currentEvent = ConfigTable.FindByName<EventDefinition>(eventId);
             if (_currentEvent == null)
             {
@@ -180,26 +177,44 @@ namespace TheLaw.UI
             if (interactive)
             {
                 gameObject.SetActive(false); // 等专用面板完成（EventCompleted 推进）——下一节点 EventOpened 再激活
+                return;
             }
-            else if (_relicPending)
-            {
-                // 获得遗物：描述区已追加提示——延迟关闭让玩家看到（大审查 B5）
-                _relicPending = false;
-                StartCoroutine(DelayedComplete());
-            }
-            else
-            {
-                Complete(); // 无交互效果（遗物/婉拒）→ 直接推进
-            }
+            // 非交互效果（遗物/婉拒）：推进只能由玩家显式操作——选项区重建为"继续"按钮（禁止自动跳过）
+            ShowContinue();
         }
 
-        System.Collections.IEnumerator DelayedComplete()
+        /// <summary>结果展示后：清空选项区 → 生成"继续"按钮（玩家点击才推进——2026-08-13 需求）。</summary>
+        void ShowContinue()
         {
-            yield return new WaitForSeconds(0.9f); // 遗物提示展示时间
-            Complete();
+            if (_optionsRoot == null) { Complete(); return; }
+            if (_optionTemplate == null)
+            {
+                StartCoroutine(ShowContinueWhenReady());
+                return;
+            }
+            foreach (Transform child in _optionsRoot) Destroy(child.gameObject);
+            var go = Instantiate(_optionTemplate, _optionsRoot);
+            var btn = go.GetComponent<Button>();
+            if (btn == null) btn = go.AddComponent<Button>();
+            var label = go.GetComponentInChildren<TMP_Text>();
+            if (label != null) label.text = "继续";
+            btn.onClick.AddListener(() => Complete());
         }
 
-        /// <summary>事件交互完成：先关自己再通知 TowerFlow 推进（防同步推进重新激活面板后被 SetActive(false) 关闭——时序反转）。
+        System.Collections.IEnumerator ShowContinueWhenReady()
+        {
+            int guard = 0;
+            while (_optionTemplate == null && guard++ < 300) yield return null; // 防死等（大审查 H2）
+            if (_optionTemplate == null)
+            {
+                Debug.LogWarning("[EventPanel] 选项模板加载超时——直接推进");
+                Complete();
+                yield break;
+            }
+            ShowContinue();
+        }
+
+/// <summary>事件交互完成：先关自己再通知 TowerFlow 推进（防同步推进重新激活面板后被 SetActive(false) 关闭——时序反转）。
         /// ⚠️ 2026-08-12：携带当前事件 id——TowerFlow 校验匹配才推进（防重复信号跳节点）。</summary>
         void Complete()
         {

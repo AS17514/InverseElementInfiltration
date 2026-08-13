@@ -47,8 +47,10 @@ namespace TheLaw.Core
                 }
             }
             _current = key;
+            bool wasVisible = panel.IsVisible; // 验收 A：暂停计数只在"隐藏→显示"时 Push——
+            // 已显示面板重复 Show 不叠加计数（否则关闭只 Pop 一次 → 计数泄漏 → 永暂停卡死）
             panel.Show();
-            if (panel.IsPausing) GamePause.Push(); // 暂停型面板（设置/确认）→ 时间冻结（§四）
+            if (panel.IsPausing && !wasVisible) GamePause.Push(); // 暂停型面板（设置/确认）→ 时间冻结（§四）
         }
 
         /// <summary>隐藏指定面板（不切换 _current；_current 相等则置空）。</summary>

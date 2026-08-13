@@ -233,8 +233,9 @@ namespace TheLaw.UI
             EventCenter.Instance.AddEventListener(GameEvent.ExtraActionGranted, OnBuffsChanged); // 免费行动授予同刷新
 
             // UI 架构重构 §五：面板局内缓存（Bootstrap 管理生命周期）——每场绑定不创建
+            // 防御：面板未就绪（Bootstrap 保证——不应发生）——先检查再订阅（验收 B：防防御路径订阅残留）
             _panel = panel;
-            if (_panel == null) return; // 防御：面板未就绪（Bootstrap 保证——不应发生）
+            if (_panel == null) return;
             _uiManager.RegisterPanel(panel); // 幂等覆盖（重复注册无害）
             _uiManager.ShowPanel("Battle");
             // ⚠️ 面板局内复用（UI 架构重构 §五）：旧 BC 的按钮监听残留在复用面板上——
@@ -253,14 +254,14 @@ namespace TheLaw.UI
                     OnExitRequested?.Invoke();
                 });
             }
-                RefreshAll();
-                UpdateHandPositionByPhase(); // 初始阶段即应用手牌区状态（准备阶段高度 250）
-                ClearPieceInfo(); // 初始：信息面板隐藏（无选中/无临时状态）
-                // 补齐开局已有棋子视觉（首波部署早于控制器创建——PieceDeployed 事件已丢）
-                SyncExistingPieces();
-                // 回合进度条：加载波次节点模板 + 首次刷新（2026-08-12）
-                StartCoroutine(LoadWaveNodeTemplate());
-                RefreshTurnProgress();
+            RefreshAll();
+            UpdateHandPositionByPhase(); // 初始阶段即应用手牌区状态（准备阶段高度 250）
+            ClearPieceInfo(); // 初始：信息面板隐藏（无选中/无临时状态）
+            // 补齐开局已有棋子视觉（首波部署早于控制器创建——PieceDeployed 事件已丢）
+            SyncExistingPieces();
+            // 回合进度条：加载波次节点模板 + 首次刷新（2026-08-12）
+            StartCoroutine(LoadWaveNodeTemplate());
+            RefreshTurnProgress();
             _lastTurnCount = _state.TurnCount; // 开局同步（第一回合=准备+敌方，敌方结束 0→1 才右移）
         }
 

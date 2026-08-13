@@ -32,10 +32,8 @@ namespace TheLaw.Core
                 if (_current == key) _current = null; // 早退也清理 _current（防残留指向已销毁面板）
                 return;
             }
-            if (_current == key && panel.IsVisible)
-            {
-                return; // 幂等：同 key 且面板已显示
-            }
+            // UI 架构重构 §三.1：Show 必 OnShow（移除幂等早退——重复 Show 也必须走 OnShow 刷新，
+            // "像新加载"由面板 OnShow 自决；同 key 不重复隐藏当前）
             // 隐藏当前（伪 null 防御——BattlePanel 随会话销毁）
             if (_current != null && _current != key)
             {
@@ -50,6 +48,7 @@ namespace TheLaw.Core
             }
             _current = key;
             panel.Show();
+            if (panel.IsPausing) GamePause.Push(); // 暂停型面板（设置/确认）→ 时间冻结（§四）
         }
 
         /// <summary>隐藏指定面板（不切换 _current；_current 相等则置空）。</summary>
@@ -58,6 +57,7 @@ namespace TheLaw.Core
             if (_panels.TryGetValue(key, out var panel) && (UnityEngine.Object)panel != null)
             {
                 panel.Hide();
+                if (panel.IsPausing) GamePause.Pop(); // 暂停型面板关闭 → 恢复时间（§四）
             }
             else
             {
@@ -79,6 +79,7 @@ namespace TheLaw.Core
             }
             _overlayStack.Push(key); // 栈存 overlay 自身 key（多层可叠）
             panel.Show();
+            if (panel.IsPausing) GamePause.Push(); // 暂停型 overlay（设置/确认）→ 时间冻结（§四）
             // 置顶：overlay 必须渲染在下层之上（同根 Canvas 下渲染顺序=兄弟顺序——结算面板创建最早会被后建面板遮挡）
             if (panel is MonoBehaviour mb && mb.transform != null)
             {
@@ -101,6 +102,7 @@ namespace TheLaw.Core
             if (_panels.TryGetValue(overlayKey, out var ov) && (UnityEngine.Object)ov != null)
             {
                 ov.Hide();
+                if (ov.IsPausing) GamePause.Pop(); // 暂停型 overlay 关闭 → 恢复时间（§四）
             }
             else
             {
@@ -127,6 +129,7 @@ namespace TheLaw.Core
             _panels.Clear();
             _overlayStack.Clear();
             _current = null;
+            GamePause.Reset(); // 清场必恢复时间（防暂停残留卡死）
         }
     }
 }

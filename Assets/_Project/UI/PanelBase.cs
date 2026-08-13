@@ -16,6 +16,8 @@ namespace TheLaw.UI
 
         public bool IsVisible => gameObject != null && gameObject.activeSelf;
 
+        public virtual bool IsPausing => false; // 默认非暂停型；设置/确认等子类覆写 true
+
         public void Show()
         {
             gameObject.SetActive(true);

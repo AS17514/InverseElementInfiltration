@@ -357,8 +357,8 @@ namespace TheLaw.UI
             SaveManager.Instance.ArchiveHistory(); // 局终归档（2026-08-13：Reset 前——存局终完整状态含回放，排查可回溯；保留 N 份超量清理）
             _gameState.ResetForNewRun();
             SaveManager.Instance.SaveAll();
-            // 2026-08-12：回主菜单前强制隐藏会话面板（防 _current==null 时编辑/构筑面板残留显示）
-            HideSessionPanels();
+            // 2026-08-13：局结束销毁会话面板（P4 断链补全——替代隐藏；新局懒加载重建，防跨局残留）
+            DestroySessionPanels();
             // 结算面板不在 UIManager 栈（BattlePanel/EventPanel 直接 Show）——ShowPanel 不影响它；
             // 失败路径：MainMenu 显示在结算面板下层，玩家确认后结算关闭露出 MainMenu
             _uiManager.ShowPanel("MainMenu");
@@ -430,20 +430,28 @@ namespace TheLaw.UI
         {
             DestroyBattleController(); // 清理旧战斗会话（重开/结算重开路径）
             DisposeSessionFlow(); // 整局级"离开销毁"（2026-08-13：重开路径清理——旧局规则层实例注销监听）
-            HideSessionPanels();
+            DestroySessionPanels(); // 局结束销毁会话面板（P4 断链补全——替代隐藏，防跨局残留）
             _gameState.ResetForNewRun(); // 基础牌组填手牌（协作者实现）；敌方由波次调度产出（数据集 floor1 回合 1/4/7）
             CreateSessionFlow(); // 整局级"进入创建"（2026-08-13：每局新建 EditorSession/EventNodeSystem/TowerFlow）
             EnterTower();
         }
 
-        /// <summary>强制隐藏全部会话面板（编辑/构筑/事件/战斗）——跨局重置防幂等早退跳过 OnShow。</summary>
-        private void HideSessionPanels()
+        /// <summary>
+        /// 销毁全部会话面板（编辑/构筑/事件/战斗）——局结束销毁（P4 断链补全，2026-08-13）：
+        /// 替代隐藏——面板是局内对象，局的边界就是销毁边界（新实例天然干净，防跨局残留）；
+        /// 引用置空 → 新局懒加载自动重建。⚠️ BattleResultPanel 是常驻 overlay，不在此范围。
+        /// </summary>
+        private void DestroySessionPanels()
         {
             if (_uiManager == null) return; // 防御：编译重载中间态
             _uiManager.HidePanel("PieceEdit");
             _uiManager.HidePanel("DeckBuild");
             _uiManager.HidePanel("EventPanel");
             _uiManager.HidePanel("Battle");
+            if (_pieceEditPanel != null) { DestroyImmediate(_pieceEditPanel.gameObject); _pieceEditPanel = null; }
+            if (_deckBuildPanel != null) { DestroyImmediate(_deckBuildPanel.gameObject); _deckBuildPanel = null; }
+            if (_eventPanel != null) { DestroyImmediate(_eventPanel.gameObject); _eventPanel = null; }
+            if (_battlePanel != null) { DestroyImmediate(_battlePanel.gameObject); _battlePanel = null; }
         }
 
         /// <summary>进入爬塔：TowerFlow 节点序列驱动（事件关/编辑/战斗）。</summary>

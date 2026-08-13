@@ -49,7 +49,8 @@ namespace TheLaw.UI
         private RelicSystem _relicSystem;
         private EnemyAI _enemyAI;
         // BattleFlow 不再常驻（2026-08-13 战斗级"进入创建、离开销毁"——经 TowerFlow 创建/持有/销毁）
-        private EditorSession _editorSession;
+        private Func<BattleFlow> _battleFlowFactory; // 战斗级工厂（每场战斗创建新 BattleFlow——无状态可常驻）
+        private EditorSession _editorSession;   // 整局级"进入创建、离开销毁"（2026-08-13——每局创建/销毁，防跨局残留）
         private PieceEditPanel _pieceEditPanel; // 棋子编辑面板（新局入口——编辑完成进战斗）
         private EventPanel _eventPanel;         // 事件关面板（EventOpened 显示）
         private DeckBuildPanel _deckBuildPanel; // 牌组构筑面板（StateChanged("deck") 显示）
@@ -148,10 +149,39 @@ namespace TheLaw.UI
             _relicSystem = new RelicSystem(_gameState, _resolver);
             _enemyAI = new EnemyAI(_intentResolver, GetDefaultAIParams());
             // 战斗级"进入创建、离开销毁"（2026-08-13）：BattleFlow 不再常驻——工厂注入 TowerFlow，每场战斗创建新实例
-            Func<BattleFlow> battleFlowFactory = () => new BattleFlow(_gameState, _boardRules, _intentResolver, _resolver, _enemyAI, _relicSystem);
+            _battleFlowFactory = () => new BattleFlow(_gameState, _boardRules, _intentResolver, _resolver, _enemyAI, _relicSystem);
+            // 整局级"进入创建、离开销毁"（2026-08-13）：EditorSession/EventNodeSystem/TowerFlow 每局创建
+            // （StartNewGame 时 CreateSessionFlow）——瞬态随实例归零，跨局残留从结构消除
+        }
+
+        /// <summary>
+        /// 整局级"进入创建"（2026-08-13）：每局创建 EditorSession/EventNodeSystem/TowerFlow——
+        /// 快照/撤销栈/消费守卫/监听随实例归零（不再依赖 ResetSession 手清清单）。
+        /// ⚠️ 已加载面板持有的规则层引用必须刷新到新实例（面板局内复用——否则旧引用跨局残留）。
+        /// </summary>
+        private void CreateSessionFlow()
+        {
             _editorSession = new EditorSession(_gameState, _resolver);
             _eventNodeSystem = new EventNodeSystem(_gameState, _resolver);
-            _towerFlow = new TowerFlow(_gameState, _eventNodeSystem, battleFlowFactory, GetMapConfig());
+            _towerFlow = new TowerFlow(_gameState, _eventNodeSystem, _battleFlowFactory, GetMapConfig());
+            RefreshSessionPanelRefs();
+        }
+
+        /// <summary>整局级"离开销毁"（2026-08-13）：注销监听 + 置空——新局懒加载自动重建。</summary>
+        private void DisposeSessionFlow()
+        {
+            _towerFlow?.Dispose(); // 注销 EventCompleted 监听 + 销毁当前战斗（防幽灵回调）
+            _towerFlow = null;
+            _eventNodeSystem = null;
+            _editorSession = null;
+        }
+
+        /// <summary>刷新已加载面板的规则层引用（规则层每局重建后必须重新 Init——否则面板持旧实例）。</summary>
+        private void RefreshSessionPanelRefs()
+        {
+            if (_eventPanel != null) _eventPanel.Init(_eventNodeSystem);
+            if (_pieceEditPanel != null) _pieceEditPanel.Init(_editorSession, _gameState);
+            if (_deckBuildPanel != null) _deckBuildPanel.Init(_resolver, _gameState);
         }
 
         private AIParams GetDefaultAIParams()
@@ -299,7 +329,7 @@ namespace TheLaw.UI
             if (_gameState.Phase != BattlePhase.GameOver) return;
             if (!(data is Side winner)) return;
             Debug.Log($"[Bootstrap] 战斗结束（{(winner == Side.Player ? "胜利" : "失败")}）→ TowerFlow 收尾");
-            _towerFlow.OnBattleEnded(winner);
+            _towerFlow?.OnBattleEnded(winner); // null 防御（整局级销毁后异常路径——正常局内必非空）
         }
 
         /// <summary>
@@ -323,10 +353,9 @@ namespace TheLaw.UI
             _finalizing = true;
             yield return null; // 等一帧：当前事件回调栈必然已退出（Unity 单线程，帧末栈空）
             DestroyBattleController();
-            _towerFlow.DisposeCurrentBattle(); // 战斗级"离开销毁"（2026-08-13：战斗中退出路径——注销监听防幽灵回调）
+            DisposeSessionFlow(); // 整局级"离开销毁"（2026-08-13：注销监听 + 置空——含战斗实例销毁）
             SaveManager.Instance.ArchiveHistory(); // 局终归档（2026-08-13：Reset 前——存局终完整状态含回放，排查可回溯；保留 N 份超量清理）
             _gameState.ResetForNewRun();
-            _editorSession.ResetSession(); // 编辑会话跨局清空（后端待办 #7——退出→新局路径）
             SaveManager.Instance.SaveAll();
             // 2026-08-12：回主菜单前强制隐藏会话面板（防 _current==null 时编辑/构筑面板残留显示）
             HideSessionPanels();
@@ -400,10 +429,10 @@ namespace TheLaw.UI
         private void StartNewGame()
         {
             DestroyBattleController(); // 清理旧战斗会话（重开/结算重开路径）
-            _towerFlow.DisposeCurrentBattle(); // 战斗级"离开销毁"（2026-08-13：重开路径清理——防残留实例监听）
+            DisposeSessionFlow(); // 整局级"离开销毁"（2026-08-13：重开路径清理——旧局规则层实例注销监听）
             HideSessionPanels();
             _gameState.ResetForNewRun(); // 基础牌组填手牌（协作者实现）；敌方由波次调度产出（数据集 floor1 回合 1/4/7）
-            _editorSession.ResetSession(); // 编辑会话跨局清空（后端待办 #7——快照/撤销栈残留会让"恢复原样"恢复错局）
+            CreateSessionFlow(); // 整局级"进入创建"（2026-08-13：每局新建 EditorSession/EventNodeSystem/TowerFlow）
             EnterTower();
         }
 

@@ -28,6 +28,16 @@ namespace TheLaw.Gameplay
             EventCenter.Instance.AddEventListener(GameEvent.EventCompleted, OnEventCompleted);
         }
 
+        /// <summary>
+        /// 销毁钩子（2026-08-13 整局级"进入创建、离开销毁"）：注销构造注册的监听 + 销毁当前战斗。
+        /// ⚠️ 必须对称于构造注册——漏注销 = 旧实例幽灵回调（EventCompleted 跨局双推进）。
+        /// </summary>
+        public void Dispose()
+        {
+            DisposeCurrentBattle();
+            EventCenter.Instance.RemoveEventListener(GameEvent.EventCompleted, OnEventCompleted);
+        }
+
         /// <summary>当前战斗实例（Bootstrap 创建战斗控制器时取——非战斗中为 null）。</summary>
         public BattleFlow CurrentBattleFlow => _battleFlow;
 

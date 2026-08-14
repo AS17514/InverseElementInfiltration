@@ -190,6 +190,8 @@ namespace TheLaw.UI
             if (_handSizeTween != null) _handSizeTween.Kill();
             // UI 架构重构 §五：面板局内复用——只解绑不销毁（面板生命周期归 Bootstrap：局结束统一销毁）
             _panel = null;
+            // 遗物点击层挂根 Canvas——必须随 BC 销毁（防残留全屏遮挡）
+            if (_relicBackdrop != null) { DestroyImmediate(_relicBackdrop); _relicBackdrop = null; }
             // 清理盘面视觉：高亮根 + 全部棋子视觉（重开会话时盘面必须清空）
             // ⚠️ 2026-08-12：前缀同时匹配 EnemyPiece_（PlayDeploy 复用目标）——原只清 Piece_，敌方视觉跨局残留
             ClearHighlights();
@@ -297,24 +299,46 @@ namespace TheLaw.UI
             }
         }
 
-        /// <summary>全屏透明点击层（列表下层）：点列表外部任意处（含按钮）→ 关列表；列表内容（图标有 handler）不触发。</summary>
+        /// <summary>
+        /// 全屏点击层（根 Canvas + SetAsLastSibling——盖住战斗面板一切 UI）：
+        /// 点任何地方（除列表）→ 关列表。列表自身挂 Canvas sortingOrder=1（在层之上可点）。
+        /// ⚠️ 层必须挂根 Canvas——挂在列表父节点只覆盖局部区域，且非交互 UI 点击不命中层。
+        /// </summary>
         void EnsureRelicBackdrop()
         {
             if (_relicBackdrop != null || _relicDisplay == null) return;
+            var rootCanvas = FindRootCanvas();
+            if (rootCanvas == null) return;
             var go = new GameObject("RelicBackdrop", typeof(RectTransform), typeof(UnityEngine.UI.Image));
-            go.transform.SetParent(_relicDisplay.parent, false);
+            go.transform.SetParent(rootCanvas.transform, false);
             var rt = (RectTransform)go.transform;
             rt.anchorMin = Vector2.zero;
             rt.anchorMax = Vector2.one;
             rt.offsetMin = Vector2.zero;
             rt.offsetMax = Vector2.zero;
             var img = go.GetComponent<UnityEngine.UI.Image>();
-            img.color = new Color(0f, 0f, 0f, 0.4f); // 半透明压暗（背景外的区域）
+            img.color = new Color(0f, 0f, 0f, 0.4f); // 半透明压暗
             img.raycastTarget = true;
             var btn = go.AddComponent<Button>();
             btn.onClick.AddListener(ToggleRelicList); // 点层 = 关列表
-            go.transform.SetSiblingIndex(_relicDisplay.GetSiblingIndex()); // 层在列表之下（列表渲染在上、优先接收）
+            go.transform.SetAsLastSibling(); // 盖住战斗面板一切（含手牌子 Canvas）
+            // 列表置顶（在层之上——点图标/列表内容不触发层）
+            var listCanvas = _relicDisplay.GetComponent<Canvas>();
+            if (listCanvas == null) listCanvas = _relicDisplay.gameObject.AddComponent<Canvas>();
+            listCanvas.overrideSorting = true;
+            listCanvas.sortingOrder = 1;
             _relicBackdrop = go;
+        }
+
+        /// <summary>顶层 Canvas（FindObjectOfType 会误命中运行时子 Canvas——手牌区等）。</summary>
+        static Canvas FindRootCanvas()
+        {
+            var all = UnityEngine.Object.FindObjectsOfType<Canvas>();
+            foreach (var c in all)
+            {
+                if (c.transform.parent == null) return c;
+            }
+            return null;
         }
 
         /// <summary>填充遗物列表：_state.Relics 每个 → Image.prefab 实例进 Grp_RelicDisplay（占位色块 + hover 描述）。</summary>

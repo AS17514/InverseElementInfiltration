@@ -49,8 +49,6 @@ namespace TheLaw.UI
             }
             EventCenter.Instance.AddEventListener(GameEvent.EventOpened, OnEventOpened);
             // UI 架构重构 §六：跨局残留由"新实例"保证（局结束销毁面板）——不再需要 RunEnded 重置
-            // 2026-08-12：遗物获得提示（大审查 B5 漏接修复——首事件必得遗物，玩家需看到"获得遗物 XX"）
-            EventCenter.Instance.AddEventListener(GameEvent.RelicObtained, OnRelicObtained);
             // 预加载选项按钮模板（Btn_EventOption）
             StartCoroutine(LoadOptionTemplate());
         }
@@ -68,16 +66,6 @@ namespace TheLaw.UI
         void OnDestroy()
         {
             EventCenter.Instance.RemoveEventListener(GameEvent.EventOpened, OnEventOpened);
-            EventCenter.Instance.RemoveEventListener(GameEvent.RelicObtained, OnRelicObtained);
-        }
-
-
-        void OnRelicObtained(object data)
-        {
-            if (data is RelicDef relic && _desc != null && gameObject.activeSelf)
-            {
-                _desc.text += $"\n\n【获得遗物】{relic.displayName}"; // 禁用 Emoji（U+2728 不在字库）；推进由"继续"按钮显式驱动（2026-08-13）
-            }
         }
 
         void OnEventOpened(object data)

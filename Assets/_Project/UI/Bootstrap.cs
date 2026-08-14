@@ -88,6 +88,8 @@ namespace TheLaw.UI
             StartCoroutine(CreateBattleResultPanel());
             // ⑤a2 确认面板常驻创建（通用确认 overlay——撤回全部/退出/重开等场景复用；IsPausing 暂停型）
             StartCoroutine(CreateConfirmPanel());
+            // ⑤a3 获取物品弹窗常驻创建（RelicObtained 统一提示——2026-08-14：取代事件面板描述区追加）
+            StartCoroutine(CreateItemGettingPanel());
             // ⑤b 开局初始化（新局状态——含基础牌组手牌填充，ResetForNewRun 内完成）
             _gameState.ResetForNewRun();
             // ⑥ 进主菜单（TODO: UI 层面板）
@@ -557,6 +559,17 @@ namespace TheLaw.UI
             var controller = battleGo.AddComponent<BattleController>();
             controller.Init(flow, _gameState, _uiManager, panel); // 绑定面板（不创建——面板局内复用）
             controller.OnExitRequested += BackToMainMenu; // 战斗面板退出按钮 → 回主菜单
+        }
+
+        /// <summary>获取物品弹窗常驻创建（RelicObtained → PushOverlay 提示；仅确认关闭）。</summary>
+        private System.Collections.IEnumerator CreateItemGettingPanel()
+        {
+            yield return LoadPanelAsync<ItemGettingPanel>(panel =>
+            {
+                _uiManager.RegisterPanel(panel);
+                panel.Init(_uiManager);
+                panel.gameObject.SetActive(false);
+            });
         }
 
         /// <summary>结算面板常驻创建（战斗结束 overlay——自身监听 StateChanged + PushPanel/PopPanel；须在战斗前就绪）。</summary>

@@ -139,6 +139,11 @@ namespace TheLaw.UI
 
         // ========== 状态 ==========
         HashSet<int> _batchFlashAttackers; // 表现组内攻击者闪白去重（#6 前端部分：AOE 多目标只闪攻击者一次——架构 §四.7 组内并行）
+        // ====== 遗物栏（2026-08-14：Btn_Relic 切换 Grp_RelicDisplay；图标占位色块 + hover 描述）======
+        Button _relicBtn;
+        RectTransform _relicDisplay;   // Grp_RelicDisplay（横向列表容器——布局用户已设）
+        GameObject _relicIconTemplate; // Image.prefab（图标占位——Addressables）
+        bool _relicListShown;
         bool _executing;             // 执行镜像进行中
         int _execPieceId = -1;
         List<Template> _execProgram;
@@ -251,6 +256,15 @@ namespace TheLaw.UI
                     OnExitRequested?.Invoke();
                 });
             }
+            // 遗物栏（2026-08-14）：Btn_Relic 切换列表显示；首次显示时填充图标
+            _relicBtn = FindDeep(_panel.transform, "Btn_Relic")?.GetComponent<Button>();
+            _relicDisplay = FindDeep(_panel.transform, "Grp_RelicDisplay") as RectTransform;
+            if (_relicBtn != null)
+            {
+                _relicBtn.onClick.RemoveAllListeners();
+                _relicBtn.onClick.AddListener(ToggleRelicList);
+            }
+            if (_relicDisplay != null) _relicDisplay.gameObject.SetActive(false); // 默认隐藏
             RefreshAll();
             UpdateHandPositionByPhase(); // 初始阶段即应用手牌区状态（准备阶段高度 250）
             ClearPieceInfo(); // 初始：信息面板隐藏（无选中/无临时状态）
@@ -260,6 +274,68 @@ namespace TheLaw.UI
             StartCoroutine(LoadWaveNodeTemplate());
             RefreshTurnProgress();
             _lastTurnCount = _state.TurnCount; // 开局同步（第一回合=准备+敌方，敌方结束 0→1 才右移）
+        }
+
+        // ====== 遗物栏逻辑（2026-08-14）======
+
+        void ToggleRelicList()
+        {
+            if (_relicDisplay == null) return;
+            _relicListShown = !_relicListShown;
+            if (_relicListShown)
+            {
+                RefreshRelicList();
+                _relicDisplay.gameObject.SetActive(true);
+            }
+            else
+            {
+                _relicDisplay.gameObject.SetActive(false);
+            }
+        }
+
+        /// <summary>填充遗物列表：_state.Relics 每个 → Image.prefab 实例进 Grp_RelicDisplay（占位色块 + hover 描述）。</summary>
+        void RefreshRelicList()
+        {
+            if (_relicDisplay == null || _state == null) return;
+            foreach (Transform child in _relicDisplay) Destroy(child.gameObject); // 清空重建（数据可能变化）
+            if (_state.Relics.Count == 0) return;
+            StartCoroutine(BuildRelicIcons());
+        }
+
+        System.Collections.IEnumerator BuildRelicIcons()
+        {
+            if (_relicIconTemplate == null)
+            {
+                var handle = UnityEngine.AddressableAssets.Addressables.LoadAssetAsync<GameObject>("Image");
+                yield return handle;
+                if (handle.Status != UnityEngine.ResourceManagement.AsyncOperations.AsyncOperationStatus.Succeeded || handle.Result == null)
+                {
+                    Debug.LogWarning("[Battle] Image 预制体加载失败——遗物图标不可用");
+                    yield break;
+                }
+                _relicIconTemplate = handle.Result;
+            }
+            foreach (var relic in _state.Relics)
+            {
+                var go = Instantiate(_relicIconTemplate, _relicDisplay);
+                go.name = $"RelicIcon_{relic.name}";
+                var img = go.GetComponent<UnityEngine.UI.Image>();
+                if (img != null) img.color = ItemGettingPanel.RelicTint(relic); // 占位色块（与获取弹窗同色）
+                // hover 描述浮窗（TooltipManager）
+                var hover = go.GetComponent<RelicIconHover>();
+                if (hover == null) hover = go.AddComponent<RelicIconHover>();
+                hover.Init(relic);
+            }
+        }
+
+        /// <summary>递归按名查找（容错 prefab 层级嵌套——BattlePanel 布局随美术调整）。</summary>
+        static Transform FindDeep(Transform root, string name)
+        {
+            foreach (var t in root.GetComponentsInChildren<Transform>(true))
+            {
+                if (t.name == name) return t;
+            }
+            return null;
         }
 
         /// <summary>同步棋盘已有棋子视觉（开局首波/后续会话补齐——事件早于监听时视觉不创建）。</summary>

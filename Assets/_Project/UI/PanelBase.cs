@@ -34,17 +34,16 @@ namespace TheLaw.UI
         protected virtual void OnShow() { }
         protected virtual void OnHide() { }
 
-        /// <summary>点击背景（全屏压暗层 Img_Bg）自动关闭（确认/获取物品等非全屏面板覆写 true）。</summary>
+        /// <summary>点击背景（面板根节点 Image——全屏压暗层）自动关闭（确认/获取物品等非全屏面板覆写 true）。</summary>
         protected virtual bool CloseOnBgClick => false;
 
-        /// <summary>给 Img_Bg（命名约定——全屏压暗背景）挂 Button：点击 = 关闭（内容区有 raycastTarget 挡住不触发）。</summary>
+        /// <summary>面板根挂/复用 Button：点击背景 = 关闭（内容区 raycastTarget 挡住不触发；transition=None 防颜色过渡出戏）。</summary>
         void EnsureBgClick()
         {
             if (!CloseOnBgClick) return;
-            var bg = transform.Find("Img_Bg");
-            if (bg == null) return;
-            var btn = bg.GetComponent<Button>();
-            if (btn == null) btn = bg.gameObject.AddComponent<Button>();
+            var btn = GetComponent<Button>();
+            if (btn == null) btn = gameObject.AddComponent<Button>();
+            btn.transition = Selectable.Transition.None; // ⚠️ 无颜色/图片过渡（点击背景不出戏）
             btn.onClick.RemoveAllListeners(); // 每次显示重新绑定（防重复）
             btn.onClick.AddListener(OnBgClicked);
         }

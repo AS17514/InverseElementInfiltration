@@ -63,6 +63,11 @@ namespace TheLaw.UI
                 if (img == null) img = content.gameObject.AddComponent<Image>();
                 img.color = new Color(1f, 1f, 1f, 0f); // 透明阻挡（不改视觉）
                 img.raycastTarget = true;
+                // ⚠️ 仅 raycastTarget 不够——事件冒泡会穿透到根 Button——必须消费点击（空 handler 截断）
+                if (content.GetComponent<BgClickBlocker>() == null)
+                {
+                    content.gameObject.AddComponent<BgClickBlocker>();
+                }
             }
         }
 
@@ -189,5 +194,11 @@ namespace TheLaw.UI
                 onReady?.Invoke(panel);
             };
         }
+    }
+
+    /// <summary>内容区点击消费（2026-08-14）：空 handler 截断事件冒泡——点内容区不触发根背景 Button（关闭）。</summary>
+    public class BgClickBlocker : MonoBehaviour, UnityEngine.EventSystems.IPointerClickHandler
+    {
+        public void OnPointerClick(UnityEngine.EventSystems.PointerEventData eventData) { }
     }
 }

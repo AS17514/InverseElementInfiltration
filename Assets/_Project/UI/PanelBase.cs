@@ -37,7 +37,11 @@ namespace TheLaw.UI
         /// <summary>点击背景（面板根节点 Image——全屏压暗层）自动关闭（确认/获取物品等非全屏面板覆写 true）。</summary>
         protected virtual bool CloseOnBgClick => false;
 
-        /// <summary>面板根挂/复用 Button：点击背景 = 关闭（内容区 raycastTarget 挡住不触发；transition=None 防颜色过渡出戏）。</summary>
+        /// <summary>
+        /// 面板根挂/复用 Button：点击背景（根全屏 Image 露出的部分）= 关闭。
+        /// 内容区（约定 Grp_ 子节点）加透明阻挡层——点内容不穿透到背景（不误关）。
+        /// transition=None 防颜色过渡出戏。
+        /// </summary>
         void EnsureBgClick()
         {
             if (!CloseOnBgClick) return;
@@ -46,6 +50,16 @@ namespace TheLaw.UI
             btn.transition = Selectable.Transition.None; // ⚠️ 无颜色/图片过渡（点击背景不出戏）
             btn.onClick.RemoveAllListeners(); // 每次显示重新绑定（防重复）
             btn.onClick.AddListener(OnBgClicked);
+            // 内容区阻挡：点击内容区被消费（不触发背景关闭）；内容区外（背景露出）点击才关
+            var content = transform.Find("Grp_");
+            if (content == null && transform.childCount > 0) content = transform.GetChild(0); // 兜底：第一个子节点
+            if (content != null)
+            {
+                var img = content.GetComponent<Image>();
+                if (img == null) img = content.gameObject.AddComponent<Image>();
+                img.color = new Color(1f, 1f, 1f, 0f); // 透明阻挡（不改视觉）
+                img.raycastTarget = true;
+            }
         }
 
         /// <summary>背景点击回调（默认关闭面板——子类可覆写如 PopOverlay）。</summary>

@@ -21,6 +21,7 @@ namespace TheLaw.UI
         public void Show()
         {
             gameObject.SetActive(true);
+            EnsureBgClick(); // 点击背景（Img_Bg 压暗层）关闭——非全屏面板通用协议
             OnShow();
         }
 
@@ -32,6 +33,27 @@ namespace TheLaw.UI
 
         protected virtual void OnShow() { }
         protected virtual void OnHide() { }
+
+        /// <summary>点击背景（全屏压暗层 Img_Bg）自动关闭（确认/获取物品等非全屏面板覆写 true）。</summary>
+        protected virtual bool CloseOnBgClick => false;
+
+        /// <summary>给 Img_Bg（命名约定——全屏压暗背景）挂 Button：点击 = 关闭（内容区有 raycastTarget 挡住不触发）。</summary>
+        void EnsureBgClick()
+        {
+            if (!CloseOnBgClick) return;
+            var bg = transform.Find("Img_Bg");
+            if (bg == null) return;
+            var btn = bg.GetComponent<Button>();
+            if (btn == null) btn = bg.gameObject.AddComponent<Button>();
+            btn.onClick.RemoveAllListeners(); // 每次显示重新绑定（防重复）
+            btn.onClick.AddListener(OnBgClicked);
+        }
+
+        /// <summary>背景点击回调（默认关闭面板——子类可覆写如 PopOverlay）。</summary>
+        protected virtual void OnBgClicked()
+        {
+            Hide();
+        }
 
         /// <summary>查找根 Canvas（顶层 Canvas）——FindObjectOfType 会误命中运行时子 Canvas（如手牌区 overrideSorting）。</summary>
         static Canvas FindRootCanvas()

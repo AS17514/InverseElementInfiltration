@@ -62,6 +62,8 @@ namespace TheLaw.UI
             else gameObject.SetActive(true);
         }
 
+        protected override bool CloseOnBgClick => true; // 点背景 = 关闭（2026-08-14）
+
         void OnConfirmClicked()
         {
             if (_uiManager != null) _uiManager.PopOverlay();

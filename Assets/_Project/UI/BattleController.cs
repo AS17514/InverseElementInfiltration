@@ -143,6 +143,7 @@ namespace TheLaw.UI
         Button _relicBtn;
         RectTransform _relicDisplay;   // Grp_RelicDisplay（横向列表容器——布局用户已设）
         GameObject _relicIconTemplate; // Image.prefab（图标占位——Addressables）
+        GameObject _relicBackdrop;     // 全屏点击层（列表显示时——点外部关列表）
         bool _relicListShown;
         bool _executing;             // 执行镜像进行中
         int _execPieceId = -1;
@@ -284,13 +285,36 @@ namespace TheLaw.UI
             _relicListShown = !_relicListShown;
             if (_relicListShown)
             {
+                EnsureRelicBackdrop();
+                if (_relicBackdrop != null) _relicBackdrop.SetActive(true);
                 RefreshRelicList();
                 _relicDisplay.gameObject.SetActive(true);
             }
             else
             {
+                if (_relicBackdrop != null) _relicBackdrop.SetActive(false);
                 _relicDisplay.gameObject.SetActive(false);
             }
+        }
+
+        /// <summary>全屏透明点击层（列表下层）：点列表外部任意处（含按钮）→ 关列表；列表内容（图标有 handler）不触发。</summary>
+        void EnsureRelicBackdrop()
+        {
+            if (_relicBackdrop != null || _relicDisplay == null) return;
+            var go = new GameObject("RelicBackdrop", typeof(RectTransform), typeof(UnityEngine.UI.Image));
+            go.transform.SetParent(_relicDisplay.parent, false);
+            var rt = (RectTransform)go.transform;
+            rt.anchorMin = Vector2.zero;
+            rt.anchorMax = Vector2.one;
+            rt.offsetMin = Vector2.zero;
+            rt.offsetMax = Vector2.zero;
+            var img = go.GetComponent<UnityEngine.UI.Image>();
+            img.color = new Color(0f, 0f, 0f, 0.4f); // 半透明压暗（背景外的区域）
+            img.raycastTarget = true;
+            var btn = go.AddComponent<Button>();
+            btn.onClick.AddListener(ToggleRelicList); // 点层 = 关列表
+            go.transform.SetSiblingIndex(_relicDisplay.GetSiblingIndex()); // 层在列表之下（列表渲染在上、优先接收）
+            _relicBackdrop = go;
         }
 
         /// <summary>填充遗物列表：_state.Relics 每个 → Image.prefab 实例进 Grp_RelicDisplay（占位色块 + hover 描述）。</summary>

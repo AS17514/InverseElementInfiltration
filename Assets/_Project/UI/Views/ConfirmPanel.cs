@@ -65,6 +65,8 @@ namespace TheLaw.UI
             else gameObject.SetActive(true); // 兜底（未注入——正常不会）
         }
 
+        protected override bool CloseOnBgClick => true; // 点背景 = 取消（2026-08-14）
+
         void OnConfirmClicked()
         {
             var cb = _onConfirm;

@@ -38,9 +38,14 @@ namespace TheLaw.UI
         /// <summary>显示描述浮窗（世界坐标——行为块/棋子旁；用主相机换算）。</summary>
         public void Show(string text, Vector3 worldPos)
         {
+            Show(text, worldPos, Camera.main);
+        }
+
+        /// <summary>显示描述浮窗（世界坐标 + 显式相机——⚠️ UI 元素必须传 canvas.worldCamera（UICamera），主相机斜俯视投影会错位）。</summary>
+        public void Show(string text, Vector3 worldPos, Camera cam)
+        {
             StartCoroutine(EnsureLoaded(() =>
             {
-                var cam = Camera.main;
                 if (cam == null) return;
                 PlaceAt(RectTransformUtility.WorldToScreenPoint(cam, worldPos));
                 _descText.text = text;

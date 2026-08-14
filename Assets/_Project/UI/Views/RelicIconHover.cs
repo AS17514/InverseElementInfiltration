@@ -21,7 +21,9 @@ namespace TheLaw.UI
         {
             if (_relic == null) return;
             string text = $"{_relic.displayName}\n{_relic.description}";
-            TooltipManager.Instance.Show(text, transform.position); // 世界坐标（UI 元素——用其世界位置）
+            // ⚠️ UI 元素世界坐标属 UICamera 系——必须传 canvas.worldCamera（主相机斜俯视投影错位）
+            var canvas = GetComponentInParent<Canvas>();
+            TooltipManager.Instance.Show(text, transform.position, canvas != null ? canvas.worldCamera : Camera.main);
         }
 
         public void OnPointerExit(PointerEventData eventData)

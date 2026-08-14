@@ -27,6 +27,11 @@ MonoBehaviour:
     m_ReadOnly: 0
     m_SerializedLabels: []
     FlaggedDuringContentUpdateRestriction: 0
+  - m_GUID: 24a7f68fdc5d5ed44b45220b531a4acb
+    m_Address: ItemGettingPanel
+    m_ReadOnly: 0
+    m_SerializedLabels: []
+    FlaggedDuringContentUpdateRestriction: 0
   - m_GUID: 3b0caba795573fc4a973caff89fd1a3b
     m_Address: DeckBuildPanel
     m_ReadOnly: 0
@@ -89,6 +94,11 @@ MonoBehaviour:
     FlaggedDuringContentUpdateRestriction: 0
   - m_GUID: a4c6d20acbc7860479ac44fc12e5fccf
     m_Address: TipPanel
+    m_ReadOnly: 0
+    m_SerializedLabels: []
+    FlaggedDuringContentUpdateRestriction: 0
+  - m_GUID: b5ff9ad8e5f797348b50f16e552b1d41
+    m_Address: Image
     m_ReadOnly: 0
     m_SerializedLabels: []
     FlaggedDuringContentUpdateRestriction: 0

@@ -1,3 +1,4 @@
+using System.Collections.Generic;
 using TheLaw.Core;
 using TheLaw.Data;
 using TMPro;
@@ -21,6 +22,8 @@ namespace TheLaw.UI
         private TMP_Text _nameText;  // Txt_Name
         private TMP_Text _infoText;  // Txt_Info（描述）
         private Button _confirmBtn;  // Btn_Confirm（仅确认关闭）
+        private readonly Queue<RelicDef> _pendingRelics = new Queue<RelicDef>(); // 待展示队列（连续获得多遗物逐个确认——不叠栈）
+        private bool _showing;        // 是否正在展示（队列消费中）
 
         public void Init(UIManager uiManager)
         {
@@ -49,12 +52,22 @@ namespace TheLaw.UI
         void OnRelicObtained(object data)
         {
             if (!(data is RelicDef relic)) return;
+            _pendingRelics.Enqueue(relic); // 入队（连续获得多遗物——逐个确认，不叠栈覆盖）
+            if (!_showing) ShowNext();
+        }
+
+        /// <summary>展示队列头部遗物（消费式）：填充内容后 PushOverlay。</summary>
+        void ShowNext()
+        {
+            if (_pendingRelics.Count == 0) return;
+            _showing = true;
+            var relic = _pendingRelics.Dequeue();
             // 填充内容
             if (_nameText != null) _nameText.text = relic.displayName;
             if (_infoText != null) _infoText.text = relic.description;
             if (_iconImg != null)
             {
-                _iconImg.color = RelicTint(relic); // 占位色块（RelicDef 无图标资源——按 id 上色）
+                _iconImg.color = RelicTint(relic); // 占位色块（RelicDef 无图标资源——按配置 id 上色）
                 _iconImg.gameObject.SetActive(true);
             }
             // 覆盖显示（不暂停——通知性质；确认关闭）
@@ -64,16 +77,36 @@ namespace TheLaw.UI
 
         protected override bool CloseOnBgClick => true; // 点背景 = 关闭（2026-08-14）
 
-        void OnConfirmClicked()
+        /// <summary>背景点击 = 确认关闭（与 Btn_Confirm 同语义——消费队列，避免叠栈残留）。</summary>
+        protected override void OnBgClicked()
         {
-            if (_uiManager != null) _uiManager.PopOverlay();
-            else gameObject.SetActive(false);
+            OnConfirmClicked();
         }
 
-        /// <summary>占位色块：按遗物 id 稳定取色（将来有图标资源替换为 sprite）——遗物列表/获取弹窗共用。</summary>
+        void OnConfirmClicked()
+        {
+            if (_pendingRelics.Count > 0)
+            {
+                // 队列还有下一个遗物——直接切换内容（Overlay 保持显示，不 Pop 再 Push 避免闪跳）
+                _showing = true; // 保持展示态
+                var relic = _pendingRelics.Dequeue();
+                if (_nameText != null) _nameText.text = relic.displayName;
+                if (_infoText != null) _infoText.text = relic.description;
+                if (_iconImg != null) _iconImg.color = RelicTint(relic);
+            }
+            else
+            {
+                _showing = false;
+                if (_uiManager != null) _uiManager.PopOverlay();
+                else gameObject.SetActive(false);
+            }
+        }
+
+        /// <summary>占位色块：按遗物配置 Id（GameConfigBase._id）稳定取色（将来有图标资源替换为 sprite）——遗物列表/获取弹窗共用。</summary>
         public static Color RelicTint(RelicDef relic)
         {
-            int h = Mathf.Abs(relic.GetInstanceID()) % 6;
+            // ⚠️ 用配置 Id（稳定，跨会话/重载不变）——GetInstanceID 是 ScriptableObject 实例 id，域重载/重新导入资产会漂移，颜色不稳定
+            int h = Mathf.Abs(relic.Id) % 6;
             switch (h)
             {
                 case 0: return new Color(0.95f, 0.75f, 0.25f); // 金

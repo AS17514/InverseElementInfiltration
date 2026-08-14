@@ -145,6 +145,7 @@ namespace TheLaw.UI
         GameObject _relicIconTemplate; // Image.prefab（图标占位——Addressables）
         GameObject _relicBackdrop;     // 全屏点击层（列表显示时——点外部关列表）
         bool _relicListShown;
+        int _relicListGen;             // 列表重建代际（快速连点防旧协程写入——2026-08-14 M1）
         bool _executing;             // 执行镜像进行中
         int _execPieceId = -1;
         List<Template> _execProgram;
@@ -188,6 +189,8 @@ namespace TheLaw.UI
             EventCenter.Instance.RemoveEventListener(GameEvent.ExtraActionGranted, OnBuffsChanged);
             if (_handPosTween != null) _handPosTween.Kill();
             if (_handSizeTween != null) _handSizeTween.Kill();
+            // 遗物按钮监听对称清理（L1——不依赖下个 BC 的 Init RemoveAllListeners 兜底）
+            if (_relicBtn != null) _relicBtn.onClick.RemoveListener(ToggleRelicList);
             // UI 架构重构 §五：面板局内复用——只解绑不销毁（面板生命周期归 Bootstrap：局结束统一销毁）
             _panel = null;
             // 遗物点击层挂根 Canvas——必须随 BC 销毁（防残留全屏遮挡）
@@ -288,7 +291,13 @@ namespace TheLaw.UI
             if (_relicListShown)
             {
                 EnsureRelicBackdrop();
-                if (_relicBackdrop != null) _relicBackdrop.SetActive(true);
+                // ⚠️ 根 Canvas 未就绪（backdrop 创建失败）→ 撤销开启，防"列表显示但无法点外部关闭"半开状态（M5）
+                if (_relicBackdrop == null)
+                {
+                    _relicListShown = false;
+                    return;
+                }
+                _relicBackdrop.SetActive(true);
                 RefreshRelicList();
                 _relicDisplay.gameObject.SetActive(true);
             }
@@ -296,6 +305,8 @@ namespace TheLaw.UI
             {
                 if (_relicBackdrop != null) _relicBackdrop.SetActive(false);
                 _relicDisplay.gameObject.SetActive(false);
+                // 列表关闭——还原列表 Canvas 层级（防面板局内复用后 sortingOrder 残留影响下一局，M5）
+                ResetRelicListCanvasOrder();
             }
         }
 
@@ -322,12 +333,29 @@ namespace TheLaw.UI
             var btn = go.AddComponent<Button>();
             btn.onClick.AddListener(ToggleRelicList); // 点层 = 关列表
             go.transform.SetAsLastSibling(); // 盖住战斗面板一切（含手牌子 Canvas）
-            // 列表置顶（在层之上——点图标/列表内容不触发层）
+            _relicBackdrop = go;
+            RefreshRelicListCanvasOrder(); // 列表置顶（在层之上——每次显示即重新设置，防复用残留，M5）
+        }
+
+        /// <summary>列表 Canvas 置顶（层之上可点）；关闭时还原（防面板局内复用 sortingOrder 残留，M5）。</summary>
+        void RefreshRelicListCanvasOrder()
+        {
+            if (_relicDisplay == null) return;
             var listCanvas = _relicDisplay.GetComponent<Canvas>();
             if (listCanvas == null) listCanvas = _relicDisplay.gameObject.AddComponent<Canvas>();
             listCanvas.overrideSorting = true;
             listCanvas.sortingOrder = 1;
-            _relicBackdrop = go;
+        }
+
+        /// <summary>还原列表 Canvas 层级（关闭列表时调用——避免 overrideSorting/sortingOrder 残留）。</summary>
+        void ResetRelicListCanvasOrder()
+        {
+            if (_relicDisplay == null) return;
+            var listCanvas = _relicDisplay.GetComponent<Canvas>();
+            if (listCanvas != null)
+            {
+                listCanvas.overrideSorting = false; // 关闭时不强制置顶（回到面板默认渲染顺序）
+            }
         }
 
         /// <summary>顶层 Canvas（FindObjectOfType 会误命中运行时子 Canvas——手牌区等）。</summary>
@@ -345,17 +373,24 @@ namespace TheLaw.UI
         void RefreshRelicList()
         {
             if (_relicDisplay == null || _state == null) return;
-            foreach (Transform child in _relicDisplay) Destroy(child.gameObject); // 清空重建（数据可能变化）
+            _relicListGen++; // 代际递增：废弃旧 BuildRelicIcons 协程（M1——防连点并发重建叠加）
+            // 清空重建（数据可能变化）——收集到临时 List 再 Destroy，避免延迟销毁期间新旧两批 icon 并存
+            var toDestroy = new List<Transform>();
+            foreach (Transform child in _relicDisplay) toDestroy.Add(child);
+            foreach (var child in toDestroy) Destroy(child.gameObject);
+            toDestroy.Clear();
             if (_state.Relics.Count == 0) return;
-            StartCoroutine(BuildRelicIcons());
+            StartCoroutine(BuildRelicIcons(_relicListGen));
         }
 
-        System.Collections.IEnumerator BuildRelicIcons()
+        System.Collections.IEnumerator BuildRelicIcons(int gen)
         {
             if (_relicIconTemplate == null)
             {
                 var handle = UnityEngine.AddressableAssets.Addressables.LoadAssetAsync<GameObject>("Image");
                 yield return handle;
+                // 代际校验：yield 期间列表被重建/关闭 → 放弃（防写脏数据，M1）
+                if (gen != _relicListGen || !_relicListShown) yield break;
                 if (handle.Status != UnityEngine.ResourceManagement.AsyncOperations.AsyncOperationStatus.Succeeded || handle.Result == null)
                 {
                     Debug.LogWarning("[Battle] Image 预制体加载失败——遗物图标不可用");
@@ -363,12 +398,18 @@ namespace TheLaw.UI
                 }
                 _relicIconTemplate = handle.Result;
             }
+            // 伪 null 守卫：面板/列表可能在协程期间被销毁（BC OnDestroy）——Instantiate 前必须显式判空（M2）
+            if (_relicDisplay == null || _state == null) yield break;
             foreach (var relic in _state.Relics)
             {
                 var go = Instantiate(_relicIconTemplate, _relicDisplay);
                 go.name = $"RelicIcon_{relic.name}";
                 var img = go.GetComponent<UnityEngine.UI.Image>();
-                if (img != null) img.color = ItemGettingPanel.RelicTint(relic); // 占位色块（与获取弹窗同色）
+                if (img != null)
+                {
+                    img.color = ItemGettingPanel.RelicTint(relic); // 占位色块（与获取弹窗同色）
+                    img.raycastTarget = true; // 显式保证可 hover/点击（消除对 Image.prefab 内部默认值的隐性依赖，M4）
+                }
                 // hover 描述浮窗（TooltipManager）
                 var hover = go.GetComponent<RelicIconHover>();
                 if (hover == null) hover = go.AddComponent<RelicIconHover>();

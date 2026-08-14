@@ -50,7 +50,6 @@ namespace TheLaw.UI
         private GameObject _progTemplate; // Piece_ProgramInfo prefab（卡面缩略图模板——Addressables）
         private Button _undoBtn;             // Btn_Undo（单击撤一步 / 长按全部撤回）
         private UndoButtonHandler _undoHandler;
-        private GameObject _undoTooltip;     // 悬停提示浮窗（代码动态创建）
 
         public void Init(EditorSession editor, GameState state)
         {
@@ -91,7 +90,6 @@ namespace TheLaw.UI
                 _undoHandler.OnLongPress += OnUndoLongPressed;
                 _undoHandler.OnHoverEnter += ShowUndoTooltip;
                 _undoHandler.OnHoverExit += HideUndoTooltip;
-                StartCoroutine(LoadUndoTooltip()); // 异步预加载 TipPanel（hover 直接显示）
             }
         }
 
@@ -165,35 +163,21 @@ namespace TheLaw.UI
             _undoBtn.interactable = _selectedDefId >= 0 && _editor != null && _editor.CanUndo(_selectedDefId);
         }
 
-        /// <summary>悬停提示浮窗（按钮上方，代码动态创建——两行说明）。</summary>
         /// <summary>悬停提示浮窗：Addressables 加载通用 TipPanel 预制体（2026-08-13——与行为描述浮窗共用；Txt_Desc 写提示文本）。</summary>
-        System.Collections.IEnumerator LoadUndoTooltip()
-        {
-            if (_undoBtn == null) yield break;
-            var handle = UnityEngine.AddressableAssets.Addressables.LoadAssetAsync<GameObject>("TipPanel");
-            yield return handle;
-            if (handle.Status != UnityEngine.ResourceManagement.AsyncOperations.AsyncOperationStatus.Succeeded || handle.Result == null)
-            {
-                Debug.LogWarning("[PieceEdit] TipPanel 加载失败——undo 提示浮窗不可用");
-                yield break;
-            }
-            var canvas = UnityEngine.Object.FindObjectOfType<Canvas>();
-            if (canvas != null && canvas.transform.parent != null) canvas = null; // 只挂根 Canvas
-            var go = UnityEngine.Object.Instantiate(handle.Result, canvas != null ? canvas.transform : null);
-            go.name = "UndoTooltip";
-            var txt = go.transform.Find("Txt_Desc")?.GetComponent<TMP_Text>();
-            if (txt != null) txt.text = "单击撤回一次\n长按全部撤回";
-            go.SetActive(false);
-            _undoTooltip = go;
-        }
         void ShowUndoTooltip()
         {
-            if (_undoTooltip != null) _undoTooltip.SetActive(true);
+            if (_undoBtn == null) return;
+            // 2026-08-13 重构：通用 TooltipManager——按钮屏幕坐标提示（根 Canvas 的 worldCamera=UICamera）
+            var canvas = _undoBtn.GetComponentInParent<Canvas>();
+            if (canvas != null)
+            {
+                Vector2 screen = RectTransformUtility.WorldToScreenPoint(canvas.worldCamera, _undoBtn.transform.position);
+                TooltipManager.Instance.ShowAtScreen("单击撤回一次\n长按全部撤回", screen);
+            }
         }
-
         void HideUndoTooltip()
         {
-            if (_undoTooltip != null) _undoTooltip.SetActive(false);
+            TooltipManager.Instance.Hide();
         }
 
         void OnNext()

@@ -166,8 +166,6 @@ namespace TheLaw.UI
         TMPro.TextMeshPro _infoOther; // 单节点多行 buff 区（Txt_Other——护盾/免费行动/临时能力/升变，\n 分隔）
         SpriteRenderer[] _infoProgramBlocks = new SpriteRenderer[4]; // 行为逻辑块（SpriteRenderer）
         List<Template> _infoProgram; // 当前信息面板显示的程序（浮窗内容源）
-        RectTransform _tooltip; // 行为逻辑浮窗（UGUI）
-        TMPro.TextMeshProUGUI _tooltipText;
 
         // ========== 生命周期 ==========
         void OnDestroy()
@@ -182,7 +180,6 @@ namespace TheLaw.UI
             EventCenter.Instance.RemoveEventListener(GameEvent.StateChanged, OnStateChanged);
             EventCenter.Instance.RemoveEventListener(GameEvent.BuffsChanged, OnBuffsChanged);
             EventCenter.Instance.RemoveEventListener(GameEvent.ExtraActionGranted, OnBuffsChanged);
-            if (_tooltip != null) _tooltip.gameObject.SetActive(false);
             if (_handPosTween != null) _handPosTween.Kill();
             if (_handSizeTween != null) _handSizeTween.Kill();
             // UI 架构重构 §五：面板局内复用——只解绑不销毁（面板生命周期归 Bootstrap：局结束统一销毁）
@@ -746,80 +743,16 @@ namespace TheLaw.UI
         public void ShowBehaviorTooltip(int slotIndex, Vector3 leftTopWorld)
         {
             if (_infoProgram == null || slotIndex < 0 || slotIndex >= _infoProgram.Count) return;
-            StartCoroutine(LoadTooltipAndShow(slotIndex, leftTopWorld));
-        }
-
-        bool _tooltipLoading; // 加载锁：防重入双实例（首帧加载慢时连续 hover 会并发创建两个浮窗）
-
-        IEnumerator LoadTooltipAndShow(int slotIndex, Vector3 leftTopWorld)
-        {
-            if (_tooltipLoading)
-            {
-                yield break; // 加载中：忽略重复请求（加载完成后下次 hover 自然显示）
-            }
-            if (_tooltip == null)
-            {
-                _tooltipLoading = true;
-                var handle = UnityEngine.AddressableAssets.Addressables.LoadAssetAsync<GameObject>("TipPanel"); // 2026-08-13：行为描述浮窗预制体改名 TipPanel（通用提示浮窗）
-                yield return handle;
-                _tooltipLoading = false;
-                if (handle.Status != UnityEngine.ResourceManagement.AsyncOperations.AsyncOperationStatus.Succeeded || handle.Result == null)
-                {
-                    Debug.LogWarning("[Battle] TipPanel 加载失败");
-                    yield break;
-                }
-                if (_tooltip != null)
-                {
-                    yield break; // 双保险：加载期间已被其他路径创建（防双实例）
-                }
-                var canvas = UnityEngine.Object.FindObjectOfType<Canvas>();
-                if (canvas != null && canvas.transform.parent != null) canvas = null; // 只挂根 Canvas（跳过子 Canvas）
-                if (canvas == null)
-                {
-                    // 兜底：遍历找根 Canvas（FindObjectOfType 顺序未定义，可能先命中子 Canvas）
-                    var all = UnityEngine.Object.FindObjectsOfType<Canvas>();
-                    foreach (var c in all)
-                    {
-                        if (c.transform.parent == null) { canvas = c; break; }
-                    }
-                }
-                var go = Instantiate(handle.Result, canvas != null ? canvas.transform : null);
-                _tooltip = go.GetComponent<RectTransform>();                _tooltipText = go.transform.Find("Txt_Desc")?.GetComponent<TMPro.TextMeshProUGUI>();
-                _tooltip.pivot = new Vector2(1f, 1f); // 右上角为锚点
-            }
-            if (_tooltipText != null)
-            {
-                // 复查：异步加载期间玩家可能切换选中 → _infoProgram 已换/变短（防 NRE/越界）
-                if (_infoProgram == null || slotIndex < 0 || slotIndex >= _infoProgram.Count)
-                {
-                    yield break;
-                }
-                _tooltipText.text = SlotDetailDesc(_infoProgram[slotIndex]);
-            }
-            // 用 Canvas 的 worldCamera（UICamera）算屏幕坐标——主相机斜俯视坐标系不一致会定位到屏幕外
-            var tooltipCanvas = _tooltip.GetComponentInParent<Canvas>();
-            var uiCam = tooltipCanvas != null ? tooltipCanvas.worldCamera : null;
-            if (uiCam != null)
-            {
-                // 屏幕坐标用主相机（玩家视角——块是 3D 对象主相机渲染）；再转 UICamera 的 Canvas 平面
-                // 用 UICamera 投影会与玩家看到的块位置偏差（两相机视角不同）
-                var screenPt = Camera.main != null
-                    ? Camera.main.WorldToScreenPoint(leftTopWorld)
-                    : uiCam.WorldToScreenPoint(leftTopWorld);
-                if (RectTransformUtility.ScreenPointToWorldPointInRectangle(
-                        tooltipCanvas.transform as RectTransform, screenPt, uiCam, out var worldPt))
-                {
-                    _tooltip.position = worldPt; // 右上角 = sprite 左上角（玩家视角）
-                }
-            }
-            _tooltip.gameObject.SetActive(true);
+            // 2026-08-13 重构：通用 TooltipManager（单实例——加载/定位/防出屏收敛；世界坐标 = 行为块左上角）
+            TooltipManager.Instance.Show(SlotDetailDesc(_infoProgram[slotIndex]), leftTopWorld);
         }
 
         public void HideBehaviorTooltip()
         {
-            if (_tooltip != null) _tooltip.gameObject.SetActive(false);
+            TooltipManager.Instance.Hide();
         }
 
+        // ========== 选格高亮
         // ========== 选格高亮（移动=实心绿块 0.8，攻击=空心红框 边框厚 0.1——可叠加同时显示）==========
         void ShowHighlights(List<Vector2Int> moves, List<Vector2Int> attacks)
         {

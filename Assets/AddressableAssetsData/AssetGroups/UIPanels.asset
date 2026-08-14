@@ -82,8 +82,13 @@ MonoBehaviour:
     m_ReadOnly: 0
     m_SerializedLabels: []
     FlaggedDuringContentUpdateRestriction: 0
+  - m_GUID: 9555e7c0417a2d94bb6b1f6036e327d6
+    m_Address: ConfirmPanel
+    m_ReadOnly: 0
+    m_SerializedLabels: []
+    FlaggedDuringContentUpdateRestriction: 0
   - m_GUID: a4c6d20acbc7860479ac44fc12e5fccf
-    m_Address: BehaviorTooltip
+    m_Address: TipPanel
     m_ReadOnly: 0
     m_SerializedLabels: []
     FlaggedDuringContentUpdateRestriction: 0
@@ -104,11 +109,6 @@ MonoBehaviour:
     FlaggedDuringContentUpdateRestriction: 0
   - m_GUID: c53e73c8e2bcc124498edf673ff18992
     m_Address: MainMenuPanel
-    m_ReadOnly: 0
-    m_SerializedLabels: []
-    FlaggedDuringContentUpdateRestriction: 0
-  - m_GUID: c56ad6bd754007847b4ea8108fb7a50a
-    m_Address: ConfirmPanel
     m_ReadOnly: 0
     m_SerializedLabels: []
     FlaggedDuringContentUpdateRestriction: 0

@@ -760,12 +760,12 @@ namespace TheLaw.UI
             if (_tooltip == null)
             {
                 _tooltipLoading = true;
-                var handle = UnityEngine.AddressableAssets.Addressables.LoadAssetAsync<GameObject>("BehaviorTooltip");
+                var handle = UnityEngine.AddressableAssets.Addressables.LoadAssetAsync<GameObject>("TipPanel"); // 2026-08-13：行为描述浮窗预制体改名 TipPanel（通用提示浮窗）
                 yield return handle;
                 _tooltipLoading = false;
                 if (handle.Status != UnityEngine.ResourceManagement.AsyncOperations.AsyncOperationStatus.Succeeded || handle.Result == null)
                 {
-                    Debug.LogWarning("[Battle] BehaviorTooltip 加载失败");
+                    Debug.LogWarning("[Battle] TipPanel 加载失败");
                     yield break;
                 }
                 if (_tooltip != null)

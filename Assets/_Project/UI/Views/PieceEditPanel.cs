@@ -91,7 +91,7 @@ namespace TheLaw.UI
                 _undoHandler.OnLongPress += OnUndoLongPressed;
                 _undoHandler.OnHoverEnter += ShowUndoTooltip;
                 _undoHandler.OnHoverExit += HideUndoTooltip;
-                CreateUndoTooltip();
+                StartCoroutine(LoadUndoTooltip()); // 异步预加载 TipPanel（hover 直接显示）
             }
         }
 
@@ -166,30 +166,26 @@ namespace TheLaw.UI
         }
 
         /// <summary>悬停提示浮窗（按钮上方，代码动态创建——两行说明）。</summary>
-        void CreateUndoTooltip()
+        /// <summary>悬停提示浮窗：Addressables 加载通用 TipPanel 预制体（2026-08-13——与行为描述浮窗共用；Txt_Desc 写提示文本）。</summary>
+        System.Collections.IEnumerator LoadUndoTooltip()
         {
-            if (_undoTooltip != null || _undoBtn == null) return;
-            var go = new GameObject("UndoTooltip", typeof(RectTransform), typeof(TextMeshProUGUI));
-            go.transform.SetParent(_undoBtn.transform.parent, false); // 与按钮同级（按钮上方）
-            var rt = (RectTransform)go.transform;
-            rt.anchorMin = new Vector2(0.5f, 1.15f);
-            rt.anchorMax = new Vector2(0.5f, 1.15f);
-            rt.pivot = new Vector2(0.5f, 1f);
-            rt.anchoredPosition = Vector2.zero;
-            rt.sizeDelta = new Vector2(220f, 48f);
-            var txt = go.GetComponent<TextMeshProUGUI>();
-            txt.text = "单击撤回一次\n长按全部撤回";
-            txt.fontSize = 18;
-            txt.alignment = TextAlignmentOptions.Center;
-            txt.color = Color.white;
-            txt.enableWordWrapping = true;
-            // 背景（半透明黑——可读性）
-            var img = go.AddComponent<UnityEngine.UI.Image>();
-            img.color = new Color(0f, 0f, 0f, 0.8f);
+            if (_undoBtn == null) yield break;
+            var handle = UnityEngine.AddressableAssets.Addressables.LoadAssetAsync<GameObject>("TipPanel");
+            yield return handle;
+            if (handle.Status != UnityEngine.ResourceManagement.AsyncOperations.AsyncOperationStatus.Succeeded || handle.Result == null)
+            {
+                Debug.LogWarning("[PieceEdit] TipPanel 加载失败——undo 提示浮窗不可用");
+                yield break;
+            }
+            var canvas = UnityEngine.Object.FindObjectOfType<Canvas>();
+            if (canvas != null && canvas.transform.parent != null) canvas = null; // 只挂根 Canvas
+            var go = UnityEngine.Object.Instantiate(handle.Result, canvas != null ? canvas.transform : null);
+            go.name = "UndoTooltip";
+            var txt = go.transform.Find("Txt_Desc")?.GetComponent<TMP_Text>();
+            if (txt != null) txt.text = "单击撤回一次\n长按全部撤回";
             go.SetActive(false);
             _undoTooltip = go;
         }
-
         void ShowUndoTooltip()
         {
             if (_undoTooltip != null) _undoTooltip.SetActive(true);

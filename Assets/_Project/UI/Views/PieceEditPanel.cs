@@ -127,33 +127,29 @@ namespace TheLaw.UI
         void OnUndoLongPressed()
         {
             if (_editor == null) return;
-            // 经 Bootstrap 常驻 ConfirmPanel（全局确认面板——未注册则跳过，防御）
             var confirm = FindObjectOfType<ConfirmPanel>(true);
             if (confirm != null)
             {
-                confirm.ShowConfirm("确认全部撤回？", () =>
-                {
-                    _editor.RestoreAll();
-                    if (_selectedDefId >= 0)
-                    {
-                        _editor.ClearHistory(_selectedDefId);
-                        var def = ConfigTable.Find<PieceDef>(_selectedDefId);
-                        if (def != null)
-                        {
-                            _slotTemplates = GetCurrentProgram(def);
-                            InitLockedFlags(def);
-                            FillPieceInfo(def);
-                            RefreshPieceCardProgram(_selectedDefId);
-                        }
-                    }
-                    RefreshUndoButton();
-                });
+                confirm.ShowConfirm("确认全部撤回？", RestoreAllAndReset);
             }
             else
             {
-                _editor.RestoreAll(); // 防御：无确认面板直接还原
-                RefreshUndoButton();
+                RestoreAllAndReset(); // 防御：无确认面板直接还原——行为与确认后一致（含重置）
             }
+        }
+
+        /// <summary>全部撤回 + 显式重置（2026-08-13 修复：不依赖 OnShow 时序——确认面板未就绪的降级路径
+        /// 曾跳过重置 → 信息区/选中残留；现统一为"重新开始编辑"状态：清选中/清槽/隐藏信息区）。</summary>
+        void RestoreAllAndReset()
+        {
+            if (_editor == null) return;
+            _editor.RestoreAll();
+            _selectedDefId = -1; // 清选中（重新开始编辑）
+            _slotTemplates.Clear();
+            _slotLocked.Clear();
+            if (_pieceInfo != null) _pieceInfo.gameObject.SetActive(false); // 隐藏信息区
+            // 卡面缩略图由 RestoreAll 的 ProgramEdited 事件驱动刷新（逐棋子）
+            RefreshUndoButton();
         }
 
         /// <summary>空撤销栈 → 置灰（选中变化/每次编辑后/OnShow 刷新）。</summary>

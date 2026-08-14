@@ -99,6 +99,12 @@ namespace TheLaw.UI
             }
             var go = Instantiate(handle.Result, canvas.transform);
             go.name = "Tooltip";
+            // ⚠️ 置顶：根 Canvas 下可能被子 Canvas（手牌 overrideSorting）遮挡——自身挂 Canvas + 高 sortingOrder 必在最上
+            var tipCanvas = go.GetComponent<Canvas>();
+            if (tipCanvas == null) tipCanvas = go.AddComponent<Canvas>();
+            tipCanvas.overrideSorting = true;
+            tipCanvas.sortingOrder = 1000;
+            go.transform.SetAsLastSibling();
             _tipGo = go;
             _tipRect = go.GetComponent<RectTransform>();
             _descText = go.transform.Find("Txt_Desc")?.GetComponent<TMP_Text>();

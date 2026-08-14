@@ -8,7 +8,7 @@ namespace TheLaw.UI
     /// 遗物图标 hover 描述（2026-08-14）：鼠标悬停 → TooltipManager 显示遗物名称+描述；移开隐藏。
     /// 挂 Image.prefab 实例（遗物列表 Grp_RelicDisplay 内）。
     /// </summary>
-    public class RelicIconHover : MonoBehaviour, IPointerEnterHandler, IPointerExitHandler
+    public class RelicIconHover : MonoBehaviour, IPointerEnterHandler, IPointerExitHandler, IPointerClickHandler
     {
         private RelicDef _relic;
 
@@ -30,5 +30,8 @@ namespace TheLaw.UI
         {
             TooltipManager.Instance.Hide();
         }
+
+        // ⚠️ 空实现：图标若挂在按钮下（如 Btn_Relic 子级），消费点击阻止冒泡——点图标不触发父按钮（关列表）
+        public void OnPointerClick(PointerEventData eventData) { }
     }
 }

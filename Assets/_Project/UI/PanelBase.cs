@@ -51,8 +51,12 @@ namespace TheLaw.UI
             btn.onClick.RemoveAllListeners(); // 每次显示重新绑定（防重复）
             btn.onClick.AddListener(OnBgClicked);
             // 内容区阻挡：点击内容区被消费（不触发背景关闭）；内容区外（背景露出）点击才关
-            var content = transform.Find("Grp_");
-            if (content == null && transform.childCount > 0) content = transform.GetChild(0); // 兜底：第一个子节点
+            // ⚠️ 递归查找 Grp_（可能嵌套在 Img_Bg 下——transform.Find 只找直接子会误中 Img_Bg 兜底 → 变透明）
+            Transform content = null;
+            foreach (var t in GetComponentsInChildren<Transform>(true))
+            {
+                if (t.name == "Grp_") { content = t; break; }
+            }
             if (content != null)
             {
                 var img = content.GetComponent<Image>();

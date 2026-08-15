@@ -143,9 +143,10 @@ namespace TheLaw.UI
         Button _relicBtn;
         RectTransform _relicDisplay;   // Grp_RelicDisplay（横向列表容器——布局用户已设）
         GameObject _relicIconTemplate; // Image.prefab（图标占位——Addressables）
-        GameObject _relicBackdrop;     // 全屏点击层（列表显示时——点外部关列表）
         bool _relicListShown;
         int _relicListGen;             // 列表重建代际（快速连点防旧协程写入——2026-08-14 M1）
+        UnityEngine.EventSystems.PointerEventData _relicPointerData; // 复用指针数据（点击外部检测——避免每帧分配）
+        readonly List<UnityEngine.EventSystems.RaycastResult> _relicRaycastResults = new(); // 复用射线结果
         bool _executing;             // 执行镜像进行中
         int _execPieceId = -1;
         List<Template> _execProgram;
@@ -193,8 +194,6 @@ namespace TheLaw.UI
             if (_relicBtn != null) _relicBtn.onClick.RemoveListener(ToggleRelicList);
             // UI 架构重构 §五：面板局内复用——只解绑不销毁（面板生命周期归 Bootstrap：局结束统一销毁）
             _panel = null;
-            // 遗物点击层挂根 Canvas——必须随 BC 销毁（防残留全屏遮挡）
-            if (_relicBackdrop != null) { DestroyImmediate(_relicBackdrop); _relicBackdrop = null; }
             // 清理盘面视觉：高亮根 + 全部棋子视觉（重开会话时盘面必须清空）
             // ⚠️ 2026-08-12：前缀同时匹配 EnemyPiece_（PlayDeploy 复用目标）——原只清 Piece_，敌方视觉跨局残留
             ClearHighlights();
@@ -284,57 +283,59 @@ namespace TheLaw.UI
 
         // ====== 遗物栏逻辑（2026-08-14）======
 
+        /// <summary>
+        /// 切换遗物列表。2026-08-15 重构（用户反馈）：原全屏 backdrop 点击层遮挡视线/hover——
+        /// 改为无遮挡：只显示列表；关闭改由 Update 全局"点击外部"检测（见 UpdateRelicListOutsideClick）。
+        /// </summary>
         void ToggleRelicList()
         {
             if (_relicDisplay == null) return;
             _relicListShown = !_relicListShown;
             if (_relicListShown)
             {
-                EnsureRelicBackdrop();
-                // ⚠️ 根 Canvas 未就绪（backdrop 创建失败）→ 撤销开启，防"列表显示但无法点外部关闭"半开状态（M5）
-                if (_relicBackdrop == null)
-                {
-                    _relicListShown = false;
-                    return;
-                }
-                _relicBackdrop.SetActive(true);
                 RefreshRelicList();
                 _relicDisplay.gameObject.SetActive(true);
+                RefreshRelicListCanvasOrder(); // 列表置顶（在战斗面板其他 UI 之上可点/hover）
             }
             else
             {
-                if (_relicBackdrop != null) _relicBackdrop.SetActive(false);
                 _relicDisplay.gameObject.SetActive(false);
-                // 列表关闭——还原列表 Canvas 层级（防面板局内复用后 sortingOrder 残留影响下一局，M5）
                 ResetRelicListCanvasOrder();
             }
         }
 
         /// <summary>
-        /// 全屏点击层（根 Canvas + SetAsLastSibling——盖住战斗面板一切 UI）：
-        /// 点任何地方（除列表）→ 关列表。列表自身挂 Canvas sortingOrder=1（在层之上可点）。
-        /// ⚠️ 层必须挂根 Canvas——挂在列表父节点只覆盖局部区域，且非交互 UI 点击不命中层。
+        /// 点击外部关闭（2026-08-15 替代 backdrop 全屏点击层——不遮挡视线、不阻塞 hover）：
+        /// 列表显示时，左键按下 → raycast 命中点：Btn_Relic 上 → 跳过（按钮自身 toggle 关闭）；
+        /// 遗物图标/列表内 → 保持（可继续 hover 看详情）；其他任何地方 → 关列表。
+        /// 点击自然穿透到下层 UI（无全屏拦截）。
         /// </summary>
-        void EnsureRelicBackdrop()
+        void UpdateRelicListOutsideClick()
         {
-            if (_relicBackdrop != null || _relicDisplay == null) return;
-            var rootCanvas = FindRootCanvas();
-            if (rootCanvas == null) return;
-            var go = new GameObject("RelicBackdrop", typeof(RectTransform), typeof(UnityEngine.UI.Image));
-            go.transform.SetParent(rootCanvas.transform, false);
-            var rt = (RectTransform)go.transform;
-            rt.anchorMin = Vector2.zero;
-            rt.anchorMax = Vector2.one;
-            rt.offsetMin = Vector2.zero;
-            rt.offsetMax = Vector2.zero;
-            var img = go.GetComponent<UnityEngine.UI.Image>();
-            img.color = new Color(0f, 0f, 0f, 0.4f); // 半透明压暗
-            img.raycastTarget = true;
-            var btn = go.AddComponent<Button>();
-            btn.onClick.AddListener(ToggleRelicList); // 点层 = 关列表
-            go.transform.SetAsLastSibling(); // 盖住战斗面板一切（含手牌子 Canvas）
-            _relicBackdrop = go;
-            RefreshRelicListCanvasOrder(); // 列表置顶（在层之上——每次显示即重新设置，防复用残留，M5）
+            if (!_relicListShown) return;
+            var mouse = Mouse.current;
+            if (mouse == null || !mouse.leftButton.wasPressedThisFrame) return;
+            var es = EventSystem.current;
+            if (es == null) return;
+            if (_relicPointerData == null) _relicPointerData = new UnityEngine.EventSystems.PointerEventData(es);
+            _relicPointerData.position = mouse.position.ReadValue();
+            _relicRaycastResults.Clear();
+            es.RaycastAll(_relicPointerData, _relicRaycastResults);
+            foreach (var r in _relicRaycastResults)
+            {
+                if (r.gameObject == null) continue;
+                if (_relicBtn != null && r.gameObject == _relicBtn.gameObject) return; // Btn_Relic 自己处理开关（防双关）
+                if (_relicDisplay != null && r.gameObject.transform.IsChildOf(_relicDisplay)) return; // 列表/图标内 → 保持
+            }
+            CloseRelicList();
+        }
+
+        void CloseRelicList()
+        {
+            if (!_relicListShown) return;
+            _relicListShown = false;
+            _relicDisplay.gameObject.SetActive(false);
+            ResetRelicListCanvasOrder();
         }
 
         /// <summary>列表 Canvas 置顶（层之上可点）；关闭时还原（防面板局内复用 sortingOrder 残留，M5）。</summary>
@@ -345,6 +346,12 @@ namespace TheLaw.UI
             if (listCanvas == null) listCanvas = _relicDisplay.gameObject.AddComponent<Canvas>();
             listCanvas.overrideSorting = true;
             listCanvas.sortingOrder = 1;
+            // ⚠️ 2026-08-15：overrideSorting 子 Canvas 必须有 GraphicRaycaster——否则该层不参与 EventSystem
+            // 射线检测 → RelicIconHover 收不到 OnPointerEnter → hover 描述浮窗失效（用户反馈）
+            if (_relicDisplay.GetComponent<UnityEngine.UI.GraphicRaycaster>() == null)
+            {
+                _relicDisplay.gameObject.AddComponent<UnityEngine.UI.GraphicRaycaster>();
+            }
         }
 
         /// <summary>还原列表 Canvas 层级（关闭列表时调用——避免 overrideSorting/sortingOrder 残留）。</summary>
@@ -356,17 +363,6 @@ namespace TheLaw.UI
             {
                 listCanvas.overrideSorting = false; // 关闭时不强制置顶（回到面板默认渲染顺序）
             }
-        }
-
-        /// <summary>顶层 Canvas（FindObjectOfType 会误命中运行时子 Canvas——手牌区等）。</summary>
-        static Canvas FindRootCanvas()
-        {
-            var all = UnityEngine.Object.FindObjectsOfType<Canvas>();
-            foreach (var c in all)
-            {
-                if (c.transform.parent == null) return c;
-            }
-            return null;
         }
 
         /// <summary>填充遗物列表：_state.Relics 每个 → Image.prefab 实例进 Grp_RelicDisplay（占位色块 + hover 描述）。</summary>
@@ -448,6 +444,9 @@ namespace TheLaw.UI
                 _lastTurnCount = _state.TurnCount;
                 RefreshTurnProgress();
             }
+
+            // 遗物列表"点击外部关闭"（2026-08-15：无遮挡方案——列表显示时全局监听下一次点击）
+            UpdateRelicListOutsideClick();
 
             // 2026-08-12：activeInputHandler=2（纯 Input System）——旧 Input.GetMouseButtonDown 失效（恒 false/抛异常）
             // → 迁移 InputSystem API（与 BattleResultPanel/PieceEditPanel 一致）

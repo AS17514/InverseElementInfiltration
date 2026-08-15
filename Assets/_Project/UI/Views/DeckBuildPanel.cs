@@ -76,7 +76,13 @@ namespace TheLaw.UI
             // LoadLimits 不在此调用——Awake 先于 Init（_state 为 null）会 NRE；改到 OnShow（显示时必已 Init）
             StartCoroutine(LoadCardTemplate());
             // 确认按钮：构筑完成 → 落账 + 推进（失败保持编辑态）
+            // ⚠️ 2026-08-15：PieceEdit prefab 已加 Grp_Btns 层——本面板同款防御（硬路径优先 + FindDeep 兜底）
             _nextBtn = transform.Find("Grp/Grp_R/Grp_Low/Btn_Next")?.GetComponent<Button>();
+            if (_nextBtn == null)
+            {
+                var nextGo = FindDeep(transform, "Btn_Next");
+                if (nextGo != null) _nextBtn = nextGo.GetComponent<Button>();
+            }
             if (_nextBtn != null)
             {
                 _nextBtn.onClick.RemoveAllListeners();

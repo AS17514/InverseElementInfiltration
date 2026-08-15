@@ -67,7 +67,14 @@ namespace TheLaw.UI
             EventCenter.Instance.AddEventListener(GameEvent.ProgramEdited, OnProgramEdited);
             // Btn_Next：编辑完成 → 下一步（新局=进战斗 / 事件关=EventCompleted 推进）
             // 路径跟随 2026-08-11 面板重构：Grp/Grp_R/Grp_Low/Btn_Next（旧 Grp_L/Grp_Top 已不存在）
+            // ⚠️ 2026-08-15：prefab 加 Grp_Btns 层（Grp_Low/Grp_Btns/Btn_Next）——硬路径 Find 失效按钮未绑定，
+            // 改为硬路径优先 + FindDeep 兜底（与 Btn_Undo 同模式）
             var next = transform.Find("Grp/Grp_R/Grp_Low/Btn_Next")?.GetComponent<Button>();
+            if (next == null)
+            {
+                var nextGo = FindDeep(transform, "Btn_Next");
+                if (nextGo != null) next = nextGo.GetComponent<Button>();
+            }
             if (next != null)
             {
                 next.onClick.RemoveAllListeners();

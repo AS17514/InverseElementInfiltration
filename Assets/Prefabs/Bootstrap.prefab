@@ -83,14 +83,22 @@ MonoBehaviour:
   _templateConfigs:
   - {fileID: 11400000, guid: 243e7bad1ad26444a818fdddd654973f, type: 2}
   - {fileID: 11400000, guid: f5e330f25540b6e438ec0c41194e8645, type: 2}
+  - {fileID: 11400000, guid: fae054a81a4a62044aa37e2416b60e76, type: 2}
+  - {fileID: 11400000, guid: e7b3eff3d15be9243926c8b8d3f93318, type: 2}
+  - {fileID: 11400000, guid: 533d5078babc3a74ead49c44249045dc, type: 2}
   - {fileID: 11400000, guid: 73a4b967f8adbf14e92ea9cb539d2f4b, type: 2}
   - {fileID: 11400000, guid: 9bccaf96ecdd0344d997f5221f51e015, type: 2}
+  - {fileID: 11400000, guid: 850a2baaa99250c498999a5147963580, type: 2}
   - {fileID: 11400000, guid: d66140469e86bda43be276586a7a7d39, type: 2}
   - {fileID: 11400000, guid: 90ed7cf2cb0e0ff4a94b8aa43880e874, type: 2}
   - {fileID: 11400000, guid: 303c87efaa629254cb42791de5a945fc, type: 2}
   - {fileID: 11400000, guid: cf3a3bb2a2c6810478cf104d6a16cbb8, type: 2}
   - {fileID: 11400000, guid: c306f53671b09784a8d5b2103132be6b, type: 2}
+  - {fileID: 11400000, guid: 28e9533e739011c47a6f0aeb6384788c, type: 2}
+  - {fileID: 11400000, guid: a068b0ced5dc7384a842a4dcba1e7d93, type: 2}
+  - {fileID: 11400000, guid: 16bc40ff2a8b0254eae28e320f79181a, type: 2}
   - {fileID: 11400000, guid: 34c885096b78584479bafe19c05576b3, type: 2}
+  - {fileID: 11400000, guid: 2aa3dec771521ca40a3bdc76aeb71d5e, type: 2}
   - {fileID: 11400000, guid: 097ba030b4b4da141a9bda9a74531038, type: 2}
   - {fileID: 11400000, guid: 596fb645145190940824585fc4073d8a, type: 2}
   - {fileID: 11400000, guid: 55755f0ba702cc14aa426491664a7e6e, type: 2}
@@ -111,6 +119,8 @@ MonoBehaviour:
   - {fileID: 11400000, guid: eb0efa1c39a0e204384a9276c7e5893e, type: 2}
   - {fileID: 11400000, guid: 897e1777435f8904eaf90f3ef73c157e, type: 2}
   - {fileID: 11400000, guid: 74108dcd1e6e85c47889ca758b4195bc, type: 2}
+  - {fileID: 11400000, guid: 1a6cfad40037220478515862f8ee17a7, type: 2}
+  - {fileID: 11400000, guid: 2bb9646ba9efd7c41a6ce39e1c180fe3, type: 2}
   _directToBattle: 0
   _slotDescriptions: {fileID: 4900000, guid: 61641052052f35242aa0036fb7af08a7, type: 3}
   _buffDescriptions: {fileID: 0}

@@ -201,6 +201,9 @@ namespace TheLaw.UI
             {
                 if (go.name.StartsWith("Piece_") || go.name.StartsWith("EnemyPiece_"))
                 {
+                    // ⚠️ 2026-08-16：销毁棋子前先杀其 Transform 上的 DOTween（移动/缩放/淡出），
+                    // 否则快速结束/收尾时 DOMove 等 tween 会访问已销毁 Transform 产生警告。
+                    DOTween.Kill(go.transform);
                     DestroyImmediate(go);
                 }
             }
@@ -885,6 +888,8 @@ namespace TheLaw.UI
                 if (sr != null) sr.material.DOFade(0f, DeathFade); // material 版扩展（DOTween.dll 内）
                 go.transform.DOScale(0f, DeathFade);
                 yield return new WaitForSeconds(DeathWait);
+                // ⚠️ 2026-08-16：销毁前杀该 Transform 上的 tween（PlayMove 等可能仍在跑），防销毁后访问告警
+                DOTween.Kill(go.transform);
                 Destroy(go);
             }
             yield return null;

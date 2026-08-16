@@ -38,6 +38,8 @@
     { "type": "Attack", "id": 16, "value": 3 },
     { "type": "Attack", "id": 17, "value": 3 },
     { "type": "Attack", "id": 18, "value": 4 },
-    { "type": "Attack", "id": 19, "value": 4 }
+    { "type": "Attack", "id": 19, "value": 4 },
+    { "type": "Attack", "id": 20, "value": 3 },
+    { "type": "Attack", "id": 21, "value": 4 }
   ]
 }

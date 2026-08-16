@@ -584,6 +584,28 @@
       ],
       "damage": 1,
       "friendlyFire": true
+    },
+    {
+      "type": "Melee",
+      "id": 20,
+      "rangeSteps": [
+        { "direction": "Up", "ranges": [1, 2] },
+        { "direction": "UpLeft", "ranges": [1] },
+        { "direction": "UpRight", "ranges": [1] }
+      ],
+      "damage": 1,
+      "friendlyFire": true
+    },
+    {
+      "type": "DirectFire",
+      "id": 21,
+      "rangeSteps": [
+        { "direction": "Up", "ranges": [1, 2, 3] },
+        { "direction": "UpLeft", "ranges": [1, 2] },
+        { "direction": "UpRight", "ranges": [1, 2] }
+      ],
+      "damage": 1,
+      "friendlyFire": true
     }
   ]
 }

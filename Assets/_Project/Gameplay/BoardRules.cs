@@ -155,6 +155,39 @@ namespace TheLaw.Gameplay
             }
 
             var result = new List<Vector2Int>();
+
+            // 方案 B：方向→射程集合（2026-08-16）——每方向独立射程（如正前 3、两斜各 2）；
+            // 近战/直射：逐格、首个棋子/障碍截断（近战 range>1 语义同直射——第一格有棋只能打第一格）；
+            // 近战群攻：范围内全部不截断；被动射程修正逐方向作用
+            if (template.rangeSteps.Count > 0)
+            {
+                int rangeMod = GetPassiveModifier(state, piece, PassiveTarget.AttackRange);
+                foreach (var step in template.rangeSteps)
+                {
+                    int maxR = 0;
+                    foreach (var r in step.ranges) maxR = Mathf.Max(maxR, r);
+                    if (maxR <= 0) continue;
+                    var dirVec = RotateVector(DirectionToVector(step.direction), piece.facing);
+                    var cursor = piece.position;
+                    for (int i = 1; i <= maxR + rangeMod; i++)
+                    {
+                        cursor += dirVec;
+                        if (!IsInsideBoard(cursor)) break;
+                        bool inRange = step.ranges.Contains(i - rangeMod);
+                        if (template.mode == AttackMode.MeleeAOE)
+                        {
+                            if (inRange) result.Add(cursor); // 群攻：范围内全部被攻击，不截断
+                            continue;
+                        }
+                        // 近战/直射：障碍截断 + 首个棋子截断（目标并截断）
+                        if (state.Obstacles.Contains(cursor)) break;
+                        if (inRange) result.Add(cursor);
+                        if (IsCellOccupied(state, cursor)) break;
+                    }
+                }
+                return result;
+            }
+
             int range = template.range + GetPassiveModifier(state, piece, PassiveTarget.AttackRange);
             for (int dir = 1; dir <= (int)Direction.DownRight; dir <<= 1)
             {
@@ -171,9 +204,10 @@ namespace TheLaw.Gameplay
                     {
                         break;
                     }
-                    if (template.mode == AttackMode.DirectFire)
+                    if (template.mode == AttackMode.DirectFire || template.mode == AttackMode.Melee)
                     {
-                        // 直射：障碍物格截断（不可达）；棋子格 = 目标并截断（第一个可攻击物阻挡）
+                        // 直射/近战（2026-08-16：近战 range>1 语义同直射——逐格、首个棋子/障碍截断；range=1 无差别）：
+                        // 障碍物格截断（不可达）；棋子格 = 目标并截断（第一个可攻击物阻挡）
                         if (state.Obstacles.Contains(cursor))
                         {
                             break;
@@ -185,7 +219,7 @@ namespace TheLaw.Gameplay
                         }
                         continue;
                     }
-                    // 近战/近战群攻/抛射/法术（points 空回退）：无视障碍
+                    // 近战群攻/抛射/法术（points 空回退）：无视障碍
                     result.Add(cursor);
                 }
             }

@@ -353,6 +353,26 @@ namespace TheLaw.EditorTools
                 case "Melee":
                 case "MeleeAOE":
                 case "DirectFire":
+                    // 方案 B（2026-08-16）：方向→射程集合（每方向独立射程）——非空优先
+                    if (t.rangeSteps != null && t.rangeSteps.Count > 0)
+                    {
+                        var atkSteps = new AttackTemplate
+                        {
+                            mode = ParseEnum(t.type, AttackMode.Melee),
+                            damage = t.damage,
+                            friendlyFire = t.friendlyFire,
+                            id = t.id,
+                        };
+                        foreach (var rs in t.rangeSteps)
+                        {
+                            atkSteps.rangeSteps.Add(new AttackRangeStep
+                            {
+                                direction = ParseDirection(rs.direction),
+                                ranges = rs.ranges != null ? new List<int>(rs.ranges) : new List<int>(),
+                            });
+                        }
+                        return atkSteps;
+                    }
                     return new AttackTemplate(
                         ParseEnum(t.type, AttackMode.Melee),
                         ParseDirections(t.directions),
@@ -612,12 +632,14 @@ namespace TheLaw.EditorTools
             public int id;                      // 种类内编号（与棋子内联模块/描述表 key 同构）
             public List<TplPathJson> paths;     // Move
             public List<PointJson> jumpOffsets; // Move 跳跃落点（2026-08-16）
+            public List<AttackRangeStepJson> rangeSteps; // 攻击：方向→射程集合（方案 B，2026-08-16）
             public List<string> directions;     // 方向集攻击
             public int range;
             public int damage;
             public bool friendlyFire;
             public List<PointJson> points;      // 抛射/法术自由点选
         }
+        private class AttackRangeStepJson { public string direction; public List<int> ranges; }
         private class TplPathJson { public List<TplSegmentJson> segments; }
         private class TplSegmentJson { public List<TplMoveJson> moves; }
         private class TplMoveJson { public string direction; public List<int> steps; }

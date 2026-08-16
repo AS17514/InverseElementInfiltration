@@ -194,6 +194,25 @@ namespace TheLaw.EditorTools
 
         private static Template ParseDirectionalAttack(ModuleJson m)
         {
+            // 方案 B（2026-08-16）：方向→射程集合（每方向独立射程）——非空优先
+            if (m.rangeSteps != null && m.rangeSteps.Count > 0)
+            {
+                var atkSteps = new AttackTemplate
+                {
+                    mode = ParseEnum(m.moduleType, AttackMode.Melee),
+                    damage = m.damage,
+                    friendlyFire = m.friendlyFire,
+                };
+                foreach (var rs in m.rangeSteps)
+                {
+                    atkSteps.rangeSteps.Add(new AttackRangeStep
+                    {
+                        direction = ParseDirection(rs.direction),
+                        ranges = rs.ranges != null ? new List<int>(rs.ranges) : new List<int>(),
+                    });
+                }
+                return atkSteps;
+            }
             return new AttackTemplate(
                 ParseEnum(m.moduleType, AttackMode.Melee),
                 ParseDirections(m.directions),
@@ -358,12 +377,14 @@ namespace TheLaw.EditorTools
             public int id;                            // 程序块编号（种类内编号，同结构可复用；0=未编号回退代码生成）
             public List<PathJson> paths;              // Move
             public List<PointJson> jumpOffsets;       // Move 跳跃落点（2026-08-16）
+            public List<AttackRangeStepJson> rangeSteps; // 攻击：方向→射程集合（方案 B，2026-08-16）
             public List<string> directions;           // 方向集攻击
             public int range;
             public int damage;
             public bool friendlyFire;
             public List<PointJson> points;            // 抛射/法术自由点选
         }
+        private class AttackRangeStepJson { public string direction; public List<int> ranges; }
 
         private class PathJson
         {

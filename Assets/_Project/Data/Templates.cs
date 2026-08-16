@@ -99,7 +99,25 @@ namespace TheLaw.Data
         }
     }
 
-    /// <summary>攻击模板：可选方向集 + 射程 + 伤害 + 友伤 + 攻击方式（攻击参数全部由模板决定，可编辑）。</summary>
+    /// <summary>攻击射程步（方案 B，2026-08-16）：方向 → 可选射程集合（与移动 MoveStep 同构对称）。
+    /// ranges=[1,2,3] = 该方向 1~3 格皆可攻击；[2] = 固定第 2 格；判定逐格、首个棋子/障碍截断（同直射）。</summary>
+    [Serializable]
+    public class AttackRangeStep
+    {
+        public Direction direction;         // 相对棋子 facing（解析时旋转——与 directions 同语义）
+        public List<int> ranges = new List<int>(); // 可选射程集合
+
+        public AttackRangeStep() { }
+
+        public AttackRangeStep(Direction direction, List<int> ranges)
+        {
+            this.direction = direction;
+            this.ranges = ranges;
+        }
+    }
+
+    /// <summary>攻击模板：可选方向集 + 射程 + 伤害 + 友伤 + 攻击方式（攻击参数全部由模板决定，可编辑）。
+    /// ⚠️ 2026-08-16：+ rangeSteps（方向→射程集合，方案 B）——非空时优先于 directions+range（每方向独立射程）。</summary>
     [Serializable]
     public class AttackTemplate : Template
     {
@@ -110,6 +128,12 @@ namespace TheLaw.Data
         public bool friendlyFire = true;           // 友伤开关（默认 true——"大部分有友伤"）
         public AttackShape shape = AttackShape.Single; // 范围形状（保留——攻击模板不再使用；特殊能力附着用 Cross）
         public List<Vector2Int> points = new List<Vector2Int>(); // 抛射/法术：自由点选攻击点（相对棋子锚点的偏移集合，无射程概念、任意形状、对点攻击无视障碍）
+
+        /// <summary>
+        /// 方向→射程集合（方案 B，2026-08-16）：非空时优先于 directions+range——
+        /// 支持"正前射程 3、两斜各 2"等多方向独立射程；近战 range&gt;1 时逐格、首个棋子/障碍截断（与直射同语义）。
+        /// </summary>
+        public List<AttackRangeStep> rangeSteps = new List<AttackRangeStep>();
 
         public AttackTemplate() { }
 

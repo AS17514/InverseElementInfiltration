@@ -495,6 +495,95 @@
           ]
         }
       ]
+    },
+    {
+      "type": "Melee",
+      "id": 12,
+      "directions": ["Up", "Left", "Right"],
+      "range": 1,
+      "damage": 1,
+      "friendlyFire": true
+    },
+    {
+      "type": "Melee",
+      "id": 13,
+      "directions": ["Up", "UpLeft", "UpRight", "Right", "Left"],
+      "range": 1,
+      "damage": 1,
+      "friendlyFire": true
+    },
+    {
+      "type": "Arcing",
+      "id": 14,
+      "points": [
+        { "dx": -1, "dy": -2 },
+        { "dx": 1, "dy": -2 }
+      ],
+      "damage": 1,
+      "friendlyFire": true
+    },
+    {
+      "type": "MeleeAOE",
+      "id": 15,
+      "directions": ["Up", "UpLeft", "UpRight"],
+      "range": 1,
+      "damage": 1,
+      "friendlyFire": true
+    },
+    {
+      "type": "Spell",
+      "id": 16,
+      "points": [
+        { "dx": 0, "dy": -1 },
+        { "dx": 1, "dy": -1 },
+        { "dx": 0, "dy": -2 },
+        { "dx": -1, "dy": -1 },
+        { "dx": -1, "dy": 0 },
+        { "dx": 1, "dy": 0 }
+      ],
+      "damage": 1,
+      "friendlyFire": true
+    },
+    {
+      "type": "Arcing",
+      "id": 17,
+      "points": [
+        { "dx": -1, "dy": -2 },
+        { "dx": 1, "dy": -2 },
+        { "dx": 0, "dy": -3 }
+      ],
+      "damage": 1,
+      "friendlyFire": true
+    },
+    {
+      "type": "Spell",
+      "id": 18,
+      "points": [
+        { "dx": -1, "dy": -1 },
+        { "dx": 0, "dy": -1 },
+        { "dx": 1, "dy": -1 },
+        { "dx": 2, "dy": -2 },
+        { "dx": 1, "dy": -2 },
+        { "dx": 0, "dy": -2 },
+        { "dx": -1, "dy": -2 },
+        { "dx": -2, "dy": -2 }
+      ],
+      "damage": 1,
+      "friendlyFire": true
+    },
+    {
+      "type": "Arcing",
+      "id": 19,
+      "points": [
+        { "dx": -1, "dy": -2 },
+        { "dx": 0, "dy": -2 },
+        { "dx": 1, "dy": -2 },
+        { "dx": 1, "dy": -3 },
+        { "dx": 0, "dy": -3 },
+        { "dx": -1, "dy": -3 }
+      ],
+      "damage": 1,
+      "friendlyFire": true
     }
   ]
 }

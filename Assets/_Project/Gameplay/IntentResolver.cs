@@ -104,7 +104,8 @@ namespace TheLaw.Gameplay
             switch (rule)
             {
                 case TargetRule.HighestValue:
-                    return target != null ? target.def.value : 0;
+                    // ⚠️ 2026-08-15：价值走推导（生效程序槽位总和——编辑后目标价值随之变化）
+                    return target != null ? PieceValue.SumValue(target.GetProgram(state)) : 0;
                 case TargetRule.LowestHP:
                     return target != null ? -target.durability : 0;
                 case TargetRule.Nearest:

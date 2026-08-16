@@ -109,6 +109,16 @@ namespace TheLaw.Gameplay
                     }
                 }
             }
+            // 跳跃落点（2026-08-16）：相对棋子位置偏移（绝对方向——与攻击 points 同语义，不随 facing 旋转）；
+            // 与常规路径共存（落点并集）；跳跃只查落点合法性（界内 + 非占用 + 非障碍），不查中间路径
+            foreach (var offset in template.jumpOffsets)
+            {
+                var cell = piece.position + offset;
+                if (IsCellPassable(state, cell))
+                {
+                    reachable.Add(cell);
+                }
+            }
             return new List<Vector2Int>(reachable);
         }
 

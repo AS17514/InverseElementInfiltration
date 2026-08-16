@@ -117,10 +117,10 @@ namespace TheLaw.Gameplay
                 return;
             }
             // 前置条件：手牌中不得还有初始棋子——必须摆完全部起始棋子才能结束摆放（防"跳过摆放"）
+            // ⚠️ 2026-08-15：类型 = 价值档位推导（初始 = 0-3 档；编辑跨档后种类随价值变化）
             foreach (var defId in _state.Hand)
             {
-                var def = ConfigTable.Find<PieceDef>(defId);
-                if (def != null && def.pieceType == PieceType.Initial)
+                if (_state.GetEffectiveType(defId) == PieceType.Initial)
                 {
                     EventCenter.Instance.EventTrigger(GameEvent.StateChanged, "placement-incomplete"); // 通知 UI 继续摆放
                     return;
@@ -318,9 +318,10 @@ namespace TheLaw.Gameplay
                         var piece = _state.GetPiece(promote.pieceId);
                         var promoteDef = ConfigTable.Find<PieceDef>(promote.newDefId);
                         // 升变规则（放宽）：任意【非升变】棋子 + 手牌有【升变牌】→ 可升变（无映射限制）
+                        // ⚠️ 2026-08-15：类型 = 价值档位推导（升变 = 7+ 档；编辑跨档后判定随之变化）
                         bool promoteValid = piece != null && piece.side == side
-                            && piece.def.pieceType != PieceType.Promoted
-                            && promoteDef != null && promoteDef.pieceType == PieceType.Promoted
+                            && _state.GetEffectiveType(piece.DefId) != PieceType.Promoted
+                            && promoteDef != null && _state.GetEffectiveType(promoteDef.Id) == PieceType.Promoted
                             && _state.Hand.Contains(promote.newDefId);
                         if (promoteValid)
                         {
@@ -487,6 +488,8 @@ namespace TheLaw.Gameplay
                     }
                     break;
                 case SkipTemplate:
+                    // ⚠️ 2026-08-15：新规则行动槽仅移动/攻击/效果（无跳过槽——不可编排）；
+                    // 本分支为兼容保留（运行时自动跳过 NoMove/NoTarget 仍走 SkipAction——执行兜底不可删）
                     _resolver.Resolve(new SkipAction(piece.Id, SkipReason.NoMove));
                     _ctx.slotIndex++;
                     AdvanceSlot();
@@ -715,14 +718,15 @@ namespace TheLaw.Gameplay
             return new Vector2Int(-1, -1); // 无空位
         }
 
-        /// <summary>玩家部署是否允许：阶段限定种类（Placement=初始 / PlayerTurn=部署）+ 手牌持有（防重复部署）。</summary>
+        /// <summary>玩家部署是否允许：阶段限定种类（Placement=初始 / PlayerTurn=部署）+ 手牌持有（防重复部署）。
+        /// ⚠️ 2026-08-15：种类 = 价值档位推导（初始 0-3 / 部署 4-6——编辑跨档后判定随之变化）。</summary>
         private bool IsDeployAllowed(PieceDef def, BattlePhase phase)
         {
-            if (phase == BattlePhase.Placement && def.pieceType != PieceType.Initial)
+            if (phase == BattlePhase.Placement && _state.GetEffectiveType(def.Id) != PieceType.Initial)
             {
                 return false; // 摆放阶段只能放初始棋子
             }
-            if (phase == BattlePhase.PlayerTurn && def.pieceType != PieceType.Deployable)
+            if (phase == BattlePhase.PlayerTurn && _state.GetEffectiveType(def.Id) != PieceType.Deployable)
             {
                 return false; // 部署阶段只能放部署棋子（升变棋子靠升变操作上场）
             }

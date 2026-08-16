@@ -66,6 +66,36 @@ namespace TheLaw.Gameplay
             return CurrentPrograms.TryGetValue(defId, out program);
         }
 
+        /// <summary>
+        /// 生效程序（编辑差异优先 → Def 默认模组）——价值/类型推导的唯一状态源（2026-08-15 策划新案）。
+        /// 与 PieceInstance.GetProgram 的三层查找同构（此处无实例覆盖层——覆盖是战斗内实例态）。
+        /// </summary>
+        public List<Template> GetEffectiveProgram(int defId)
+        {
+            if (TryGetCurrentProgram(defId, out var edited))
+            {
+                return edited; // ② 种类级表（编辑差异，入快照）
+            }
+            var def = ConfigTable.Find<PieceDef>(defId);
+            if (def != null && def.programSet != null && def.programSet.Count > 0)
+            {
+                return def.programSet[0].slots; // ③ Def 默认模组
+            }
+            return null;
+        }
+
+        /// <summary>棋子当前类型（价值档位推导——编辑跨档即变种类；可推导不入快照）。</summary>
+        public PieceType GetEffectiveType(int defId)
+        {
+            return PieceValue.GetType(GetEffectiveProgram(defId));
+        }
+
+        /// <summary>棋子当前价值（槽位价值总和推导——积分/构筑/选目标统一口径）。</summary>
+        public int GetEffectiveValue(int defId)
+        {
+            return PieceValue.SumValue(GetEffectiveProgram(defId));
+        }
+
         /// <summary>分配新 pieceId（唯一）。</summary>
         public int AllocatePieceId()
         {

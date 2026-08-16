@@ -284,18 +284,20 @@ namespace TheLaw.Gameplay
             _state.Pieces.Remove(victim.position);
             _state.PiecesById.Remove(victim.Id);
 
-            // 击杀积分（价值分）+ 墓地（仅玩家棋子；敌方无手牌概念）+ 每波得分累计
+            // 击杀积分（价值分——2026-08-15 改走推导：价值 = 生效程序槽位总和，编辑后随程序变化）
+            // + 墓地（仅玩家棋子；敌方无手牌概念）+ 每波得分累计
+            int killValue = PieceValue.SumValue(victim.GetProgram(_state));
             if (victim.side == Side.Player)
             {
                 _state.Graveyard.Add(victim.DefId);
-                _state.EnemyScore += victim.def.value;
+                _state.EnemyScore += killValue;
             }
             else
             {
-                _state.PlayerScore += victim.def.value;
+                _state.PlayerScore += killValue;
                 if (victim.waveIndex >= 0 && victim.waveIndex < _state.WaveScores.Count)
                 {
-                    _state.WaveScores[victim.waveIndex] += victim.def.value; // 每波得分累计（第 3 关"每波达标"）
+                    _state.WaveScores[victim.waveIndex] += killValue; // 每波得分累计（第 3 关"每波达标"）
                 }
             }
 
@@ -360,7 +362,8 @@ namespace TheLaw.Gameplay
 
         /// <summary>
         /// 牌组构筑落账（DeckBuild 事件——整组替换手牌，含牌数/总价值校验）。
-        /// 限制来自当前事件定义（EventDefinition.deckSizeLimit/totalValueLimit；0 = 不限制）。
+        /// 限制来自当前事件定义（EventDefinition.deckSizeLimit/totalValueLimit；0 = 不限制；
+        /// allowDuplicate 可复数 / promoteLimitByInitial 升变≤初始——2026-08-15 策划新案，事件级开关，默认 false = 旧行为）。
         /// 校验失败返回 false 且不改状态（UI 提示后保持面板编辑态）。
         /// </summary>
         public bool BuildDeck(List<int> defIds)
@@ -369,15 +372,6 @@ namespace TheLaw.Gameplay
             if (defIds == null || defIds.Count == 0)
             {
                 return false; // 至少 1 张——规则层兜底，不依赖 UI
-            }
-            // 去重校验（同种棋子一张——手牌按 defId 唯一）
-            var seen = new HashSet<int>();
-            foreach (var id in defIds)
-            {
-                if (!seen.Add(id))
-                {
-                    return false;
-                }
             }
 
             // 当前事件限制（CurrentEventId 查 EventDefinition；查不到 = 拒绝——构筑必须处于事件上下文，防超限绕过）
@@ -389,27 +383,50 @@ namespace TheLaw.Gameplay
                 Core.Assert.Fail($"BuildDeck: 无活动事件（CurrentEventId='{_state.CurrentEventId}'）——构筑拒绝（2026-08-11 加固）");
                 return false;
             }
+
+            // 去重校验：事件开关 allowDuplicate=true 允许复数编入（新案）；默认去重（旧行为——同种棋子一张）
+            var effective = new List<int>();
+            var seen = new HashSet<int>();
+            foreach (var id in defIds)
+            {
+                if (!ev.allowDuplicate && !seen.Add(id))
+                {
+                    return false;
+                }
+                effective.Add(id);
+            }
+
             int sizeLimit = ev.deckSizeLimit;
             int valueLimit = ev.totalValueLimit;
 
             int totalValue = 0;
-            foreach (var id in seen)
+            int initialCount = 0;
+            int promotedCount = 0;
+            foreach (var id in effective)
             {
                 var def = ConfigTable.Find<PieceDef>(id);
                 if (def == null)
                 {
                     return false; // 牌组含未知棋子——配置缺失当场拒绝
                 }
-                totalValue += def.value;
+                // ⚠️ 2026-08-15：总价值走推导（生效程序槽位总和——编辑差异生效；原 def.value 改为"默认价值"语义）
+                totalValue += _state.GetEffectiveValue(id);
+                if (ev.promoteLimitByInitial)
+                {
+                    var t = _state.GetEffectiveType(id); // 升变≤初始：按当前价值档位计数
+                    if (t == PieceType.Initial) initialCount++;
+                    else if (t == PieceType.Promoted) promotedCount++;
+                }
             }
-            if (sizeLimit > 0 && seen.Count > sizeLimit) return false;
+            if (sizeLimit > 0 && effective.Count > sizeLimit) return false;
             if (valueLimit > 0 && totalValue > valueLimit) return false;
+            if (ev.promoteLimitByInitial && promotedCount > initialCount) return false; // 升变数量 ≤ 初始数量
 
             // 通过校验：整组替换手牌（落账纪律——唯一写入口）
             // ⚠️ 2026-08-13：按入参顺序写入（原 AddRange(seen) 迭代 HashSet——顺序不确定；
             // 去重校验仍由 seen 完成，顺序按玩家选择顺序——存档往返一致）
             _state.Hand.Clear();
-            _state.Hand.AddRange(defIds);
+            _state.Hand.AddRange(effective); // 顺序 = 入参顺序（可复数模式下含重复）
             EventCenter.Instance.EventTrigger(GameEvent.HandChanged, _state.Hand);
             return true;
         }

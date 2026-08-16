@@ -100,6 +100,18 @@ MonoBehaviour:
   - {fileID: 11400000, guid: e93df6a7364d63e458de4492907a7ee1, type: 2}
   - {fileID: 11400000, guid: 060f0d2636338d749899ec065c3f2558, type: 2}
   - {fileID: 11400000, guid: 6a5994b1aa4fe884cb89b8f4caae752f, type: 2}
+  - {fileID: 11400000, guid: 027a4d4c616ca084785cc3742c0c5531, type: 2}
+  - {fileID: 11400000, guid: 9ed093fcde43d794493816b2e064d595, type: 2}
+  - {fileID: 11400000, guid: f1b854f7bc0849e45a8c05b7d5c74ad5, type: 2}
+  - {fileID: 11400000, guid: 4b205d7ee844ce34fb07180b50d95a33, type: 2}
+  - {fileID: 11400000, guid: 6bc67650d969f2e4ebe2555167e71a3f, type: 2}
+  - {fileID: 11400000, guid: 40b9e2e0a64432149910d5ad20d3c081, type: 2}
+  - {fileID: 11400000, guid: 921ec05ac17d9fa4f87fb5d18670c92b, type: 2}
+  - {fileID: 11400000, guid: cde4965246de06e499e90ea872c4383c, type: 2}
+  - {fileID: 11400000, guid: eb0efa1c39a0e204384a9276c7e5893e, type: 2}
+  - {fileID: 11400000, guid: 897e1777435f8904eaf90f3ef73c157e, type: 2}
   - {fileID: 11400000, guid: 74108dcd1e6e85c47889ca758b4195bc, type: 2}
   _directToBattle: 0
   _slotDescriptions: {fileID: 4900000, guid: 61641052052f35242aa0036fb7af08a7, type: 3}
+  _buffDescriptions: {fileID: 0}
+  _slotValues: {fileID: 0}

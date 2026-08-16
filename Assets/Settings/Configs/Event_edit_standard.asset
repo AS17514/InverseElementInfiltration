@@ -34,3 +34,5 @@ MonoBehaviour:
     effects: []
   deckSizeLimit: 0
   totalValueLimit: 0
+  allowDuplicate: 0
+  promoteLimitByInitial: 0

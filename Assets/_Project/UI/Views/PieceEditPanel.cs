@@ -130,10 +130,11 @@ namespace TheLaw.UI
             }
         }
 
-        /// <summary>长按：弹确认面板"确认全部撤回？" → 全部还原（RestoreAll）+ 清历史。</summary>
+        /// <summary>长按：弹确认面板"确认全部撤回？" → 全部还原（RestoreAll）+ 清历史。
+        /// ⚠️ 2026-08-16：与 RefreshUndoButton 同条件守卫——未选中/无撤销栈时即使事件漏进也不弹框。</summary>
         void OnUndoLongPressed()
         {
-            if (_editor == null) return;
+            if (_selectedDefId < 0 || _editor == null || !_editor.CanUndo(_selectedDefId)) return;
             var confirm = FindObjectOfType<ConfirmPanel>(true);
             if (confirm != null)
             {

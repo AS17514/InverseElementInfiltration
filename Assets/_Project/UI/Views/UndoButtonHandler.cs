@@ -1,6 +1,7 @@
 using System;
 using UnityEngine;
 using UnityEngine.EventSystems;
+using UnityEngine.UI;
 
 namespace TheLaw.UI
 {
@@ -23,6 +24,16 @@ namespace TheLaw.UI
         private bool _pressing;
         private bool _longFired;
 
+        /// <summary>
+        /// 按钮是否可交互。未激活（interactable=false）时不响应按下/悬停/长按，
+        /// 避免置灰后长按仍触发 OnLongPress（2026-08-16 修复：编辑面板 Btn_Undo 未激活时长按仍弹全部撤回）。
+        /// </summary>
+        bool IsInteractable()
+        {
+            var btn = GetComponent<Button>();
+            return btn == null || btn.interactable;
+        }
+
         void Update()
         {
             if (_pressing && !_longFired && Time.unscaledTime - _pressTime >= LongPressThreshold)
@@ -34,6 +45,7 @@ namespace TheLaw.UI
 
         public void OnPointerDown(PointerEventData eventData)
         {
+            if (!IsInteractable()) return;
             _pressing = true;
             _longFired = false;
             _pressTime = Time.unscaledTime;
@@ -41,7 +53,7 @@ namespace TheLaw.UI
 
         public void OnPointerUp(PointerEventData eventData)
         {
-            if (_pressing && !_longFired && Time.unscaledTime - _pressTime < LongPressThreshold)
+            if (_pressing && !_longFired && IsInteractable() && Time.unscaledTime - _pressTime < LongPressThreshold)
             {
                 OnClick?.Invoke(); // 单击（未达长按阈值且未长按触发）
             }
@@ -50,6 +62,7 @@ namespace TheLaw.UI
 
         public void OnPointerEnter(PointerEventData eventData)
         {
+            if (!IsInteractable()) return;
             OnHoverEnter?.Invoke();
         }
 

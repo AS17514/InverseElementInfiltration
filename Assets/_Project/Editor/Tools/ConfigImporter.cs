@@ -185,6 +185,8 @@ namespace TheLaw.EditorTools
                     def.description = e.description;
                     def.deckSizeLimit = e.deckSizeLimit;
                     def.totalValueLimit = e.totalValueLimit;
+                    def.allowDuplicate = e.allowDuplicate;            // 构筑新规则开关（2026-08-15：可复数）
+                    def.promoteLimitByInitial = e.promoteLimitByInitial; // 构筑新规则开关（2026-08-15：升变≤初始）
                     def.options = new List<EventOption>();
                     foreach (var o in e.options ?? new List<OptionJson>())
                     {
@@ -413,6 +415,14 @@ namespace TheLaw.EditorTools
                 }
                 template.paths.Add(movePath);
             }
+            // 跳跃落点（2026-08-16：配置器导出的 Move 模块 jumpOffsets）
+            if (t.jumpOffsets != null)
+            {
+                foreach (var p in t.jumpOffsets)
+                {
+                    template.jumpOffsets.Add(new Vector2Int(p.dx, p.dy));
+                }
+            }
             return template;
         }
 
@@ -601,6 +611,7 @@ namespace TheLaw.EditorTools
             public string type;                 // Move/Melee/MeleeAOE/DirectFire/Arcing/Spell
             public int id;                      // 种类内编号（与棋子内联模块/描述表 key 同构）
             public List<TplPathJson> paths;     // Move
+            public List<PointJson> jumpOffsets; // Move 跳跃落点（2026-08-16）
             public List<string> directions;     // 方向集攻击
             public int range;
             public int damage;
@@ -621,7 +632,7 @@ namespace TheLaw.EditorTools
         private class EventsJson { public List<PoolJson> pools; public List<EventJson> events; }
         private class PoolJson { public string poolName; public List<EntryJson> entries; }
         private class EntryJson { public string eventId; public float weight; }
-        private class EventJson { public string eventId; public string title; public string description; public int deckSizeLimit; public int totalValueLimit; public List<OptionJson> options; }
+        private class EventJson { public string eventId; public string title; public string description; public int deckSizeLimit; public int totalValueLimit; public bool allowDuplicate; public bool promoteLimitByInitial; public List<OptionJson> options; }
         private class OptionJson { public string optionId; public string label; public List<EffectJson> effects; }
         private class EffectJson { public string effectType; public int targetDefId; public int amount; public int abilityId; public string relicName; }
         private class AbilityJson

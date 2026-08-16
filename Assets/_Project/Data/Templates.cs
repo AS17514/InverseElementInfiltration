@@ -77,11 +77,19 @@ namespace TheLaw.Data
         public int id;
     }
 
-    /// <summary>移动模板：路径选项集合（多条路径独立计算；可达格 = 各路径落点合集；移动方式由模板决定，可编辑）。</summary>
+    /// <summary>移动模板：路径选项集合（多条路径独立计算；可达格 = 各路径落点合集；移动方式由模板决定，可编辑）。
+    /// ⚠️ 2026-08-16：+ jumpOffsets（跳跃落点——与常规路径共存，落点并集；跳跃只查落点合法性，不查中间路径）。</summary>
     [Serializable]
     public class MoveTemplate : Template
     {
         public List<MovePath> paths = new List<MovePath>();
+
+        /// <summary>
+        /// 跳跃落点（2026-08-16）：相对棋子位置的偏移集合（绝对方向——与攻击模板 points 同语义，不随 facing 旋转）。
+        /// 与常规路径共存（GetLegalMoves 落点并集）；跳跃只查落点合法性（界内 + 非占用 + 非障碍），不查中间路径。
+        /// 配置来源：templates.json jumpOffsets / 棋子 JSON 移动模块 jumpOffsets。
+        /// </summary>
+        public List<Vector2Int> jumpOffsets = new List<Vector2Int>();
 
         public MoveTemplate() { }
 
@@ -116,7 +124,12 @@ namespace TheLaw.Data
         }
     }
 
-    /// <summary>空操作槽（主动编排的"什么都不做"）。</summary>
+    /// <summary>
+    /// 空操作槽（主动编排的"什么都不做"）。
+    /// ⚠️ 2026-08-15 策划新案：行动槽仅移动/攻击/效果三类——**无跳过槽**。本类保留不删：
+    /// ① 运行时自动跳过机制（BattleFlow 无路可走/无目标 → SkipAction）仍依赖执行分支；
+    /// ② 模板库（templates.json）无 skip 条目——实际不可编排；此分支为兼容保留（暂无用代码）。
+    /// </summary>
     [Serializable]
     public class SkipTemplate : Template
     {

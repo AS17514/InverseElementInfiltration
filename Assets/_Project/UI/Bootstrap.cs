@@ -37,6 +37,9 @@ namespace TheLaw.UI
         [Header("buff 描述表（key→名称/描述；护盾/免费行动/临时能力）")]
         [SerializeField] private TextAsset _buffDescriptions;
 
+        [Header("槽位价值表（模板→价值——棋子价值/类型推导，2026-08-15 策划新案）")]
+        [SerializeField] private TextAsset _slotValues;
+
         // 普通类实例（去单例化后由 Bootstrap 创建并持有；规则层行为类显式传递避免网状耦合）
         private static Bootstrap _instance; // 静态实例标记：防重（双实例并存时先到者存活，后到者自毁）
         private UIManager _uiManager;
@@ -78,6 +81,8 @@ namespace TheLaw.UI
             SlotDescTable.Load(_slotDescriptions);
             // ②c buff 描述表（数据驱动——UI buff 区显示名）
             BuffDescTable.Load(_buffDescriptions);
+            // ②d 槽位价值表（数据驱动——棋子价值/类型推导；未加载 = 推导按 0 降级 + 警告）
+            PieceValue.Load(_slotValues);
             // ③ 创建规则层（依赖注入）
             CreateGameplay();
             // ④ 注册存档快照

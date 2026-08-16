@@ -181,6 +181,14 @@ namespace TheLaw.EditorTools
                 }
                 template.paths.Add(movePath);
             }
+            // 跳跃落点（2026-08-16：棋子 JSON 移动模块 jumpOffsets——与模板库同构）
+            if (m.jumpOffsets != null)
+            {
+                foreach (var p in m.jumpOffsets)
+                {
+                    template.jumpOffsets.Add(new Vector2Int(p.dx, p.dy));
+                }
+            }
             return template;
         }
 
@@ -349,6 +357,7 @@ namespace TheLaw.EditorTools
             public string moduleType;
             public int id;                            // 程序块编号（种类内编号，同结构可复用；0=未编号回退代码生成）
             public List<PathJson> paths;              // Move
+            public List<PointJson> jumpOffsets;       // Move 跳跃落点（2026-08-16）
             public List<string> directions;           // 方向集攻击
             public int range;
             public int damage;

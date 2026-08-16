@@ -14,5 +14,9 @@ namespace TheLaw.Data
         // ====== 牌组构筑限制（DeckBuild 事件用；0 = 无限制）======
         public int deckSizeLimit;        // 牌组牌数上限（0 = 不限制）
         public int totalValueLimit;      // 牌组总价值上限（0 = 不限制）
+
+        // ====== 构筑规则开关（2026-08-15 策划新案——事件级配置；默认 false = 旧行为兼容）======
+        public bool allowDuplicate;          // 允许同种棋子复数编入（false = 去重——旧行为）
+        public bool promoteLimitByInitial;   // 升变棋子数量 ≤ 初始棋子数量（按当前价值档位计；false = 不限制——旧行为）
     }
 }

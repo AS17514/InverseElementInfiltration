@@ -278,6 +278,223 @@
       "range": 1,
       "damage": 1,
       "friendlyFire": true
+    },
+    {
+      "type": "Move",
+      "id": 10,
+      "paths": [
+        {
+          "segments": [
+            {
+              "moves": [
+                { "direction": "Left", "steps": [1, 2] },
+                { "direction": "Right", "steps": [1, 2] }
+              ]
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "type": "Move",
+      "id": 11,
+      "paths": [
+        {
+          "segments": [
+            {
+              "moves": [
+                { "direction": "Up", "steps": [1, 2] },
+                { "direction": "Down", "steps": [1] }
+              ]
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "type": "Move",
+      "id": 12,
+      "paths": [
+        {
+          "segments": [
+            {
+              "moves": [
+                { "direction": "UpLeft", "steps": [1] },
+                { "direction": "Up", "steps": [1] },
+                { "direction": "UpRight", "steps": [1] },
+                { "direction": "Right", "steps": [1] },
+                { "direction": "Left", "steps": [1] }
+              ]
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "type": "Move",
+      "id": 13,
+      "paths": [
+        {
+          "segments": [
+            {
+              "moves": [
+                { "direction": "Left", "steps": [1, 2, 3] },
+                { "direction": "Up", "steps": [1] },
+                { "direction": "Right", "steps": [1, 2, 3] },
+                { "direction": "Down", "steps": [1] }
+              ]
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "type": "Move",
+      "id": 14,
+      "paths": [
+        {
+          "segments": [
+            {
+              "moves": [
+                { "direction": "Up", "steps": [1, 2, 3] },
+                { "direction": "UpLeft", "steps": [1] },
+                { "direction": "UpRight", "steps": [1] }
+              ]
+            }
+          ]
+        },
+        {
+          "segments": [
+            { "moves": [ { "direction": "Up", "steps": [1] } ] },
+            { "moves": [ { "direction": "UpRight", "steps": [1] } ] }
+          ]
+        },
+        {
+          "segments": [
+            { "moves": [ { "direction": "Up", "steps": [1] } ] },
+            { "moves": [ { "direction": "UpLeft", "steps": [1] } ] }
+          ]
+        },
+        {
+          "segments": [
+            { "moves": [ { "direction": "Left", "steps": [1] } ] },
+            { "moves": [ { "direction": "UpLeft", "steps": [1] } ] }
+          ]
+        },
+        {
+          "segments": [
+            { "moves": [ { "direction": "Right", "steps": [1] } ] },
+            { "moves": [ { "direction": "UpRight", "steps": [1] } ] }
+          ]
+        }
+      ]
+    },
+    {
+      "type": "Move",
+      "id": 15,
+      "paths": [
+        {
+          "segments": [
+            {
+              "moves": [
+                { "direction": "DownLeft", "steps": [1] },
+                { "direction": "DownRight", "steps": [1] }
+              ]
+            }
+          ]
+        }
+      ],
+      "jumpOffsets": [
+        { "dx": -1, "dy": -2 },
+        { "dx": 1, "dy": -2 }
+      ]
+    },
+    {
+      "type": "Move",
+      "id": 16,
+      "paths": [
+        {
+          "segments": [
+            {
+              "moves": [
+                { "direction": "DownLeft", "steps": [1] },
+                { "direction": "Down", "steps": [1] },
+                { "direction": "DownRight", "steps": [1] }
+              ]
+            }
+          ]
+        }
+      ],
+      "jumpOffsets": [
+        { "dx": -1, "dy": -2 },
+        { "dx": 0, "dy": -2 },
+        { "dx": 1, "dy": -2 },
+        { "dx": 2, "dy": -1 },
+        { "dx": -2, "dy": -1 }
+      ]
+    },
+    {
+      "type": "Move",
+      "id": 17,
+      "paths": [],
+      "jumpOffsets": [
+        { "dx": -1, "dy": 2 },
+        { "dx": -2, "dy": 1 },
+        { "dx": 1, "dy": 2 },
+        { "dx": 2, "dy": 1 },
+        { "dx": 2, "dy": -1 },
+        { "dx": 1, "dy": -2 },
+        { "dx": -1, "dy": -2 },
+        { "dx": -2, "dy": -1 }
+      ]
+    },
+    {
+      "type": "Move",
+      "id": 18,
+      "paths": [],
+      "jumpOffsets": [
+        { "dx": 0, "dy": 2 },
+        { "dx": -2, "dy": 2 },
+        { "dx": 2, "dy": 2 },
+        { "dx": 2, "dy": 0 },
+        { "dx": -2, "dy": 0 },
+        { "dx": -2, "dy": -2 },
+        { "dx": 2, "dy": -2 }
+      ]
+    },
+    {
+      "type": "Move",
+      "id": 19,
+      "paths": [
+        {
+          "segments": [
+            {
+              "moves": [
+                { "direction": "Left", "steps": [1] },
+                { "direction": "Right", "steps": [1] },
+                { "direction": "Down", "steps": [1] },
+                { "direction": "DownLeft", "steps": [1] },
+                { "direction": "DownRight", "steps": [1] },
+                { "direction": "Up", "steps": [1, 2] },
+                { "direction": "UpLeft", "steps": [1] },
+                { "direction": "UpRight", "steps": [1] }
+              ]
+            }
+          ]
+        },
+        {
+          "segments": [
+            { "moves": [ { "direction": "Up", "steps": [1] } ] },
+            { "moves": [ { "direction": "UpLeft", "steps": [1] } ] }
+          ]
+        },
+        {
+          "segments": [
+            { "moves": [ { "direction": "Up", "steps": [1] } ] },
+            { "moves": [ { "direction": "UpRight", "steps": [1] } ] }
+          ]
+        }
+      ]
     }
   ]
 }

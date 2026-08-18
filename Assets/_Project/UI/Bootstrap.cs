@@ -65,6 +65,8 @@ namespace TheLaw.UI
         {
             // DOTween 容量：默认 200/50 快速操作会扩容警告，起步调大
             DG.Tweening.DOTween.SetTweensCapacity(500, 125);
+            // 日志 Default：safe mode 只报汇总，具体 tween 错误需 Default 才能看到明细（排障用）
+            DG.Tweening.DOTween.logBehaviour = DG.Tweening.LogBehaviour.Default;
             // 防重：静态实例标记（先到者存活，后到者自毁——Destroy 延迟到帧末，双实例并存时双方都看到对方会双双销毁）
             if (_instance != null && _instance != this)
             {

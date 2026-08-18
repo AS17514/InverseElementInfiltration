@@ -28,6 +28,7 @@ namespace TheLaw.UI
         float _cardWidth = 100f;
         float _cardHeight = 200f;
         bool _collapsed; // 手牌区收起状态（BattleController 阶段驱动，显式设置）
+        bool _dragging;  // 拖拽中标记：冻结 hover/让位，防被拖卡受布局插值干扰
 
         void Awake()
         {
@@ -51,6 +52,13 @@ namespace TheLaw.UI
         public void SetCollapsed(bool collapsed)
         {
             _collapsed = collapsed;
+        }
+
+        /// <summary>拖拽中冻结 hover（BattleController 拖拽起止时调用）——被拖卡不再参与 hover 让位/提层，手感更稳。</summary>
+        public void SetDragging(bool dragging)
+        {
+            _dragging = dragging;
+            if (_dragging) SetHover(-1); // 立即清 hover，防拖拽瞬间残留放大/让位
         }
 
         /// <summary>手牌重建后调用：重新收集卡片。instant=true 立即落位（无动画）；false 让布局插值滑动过渡。</summary>
@@ -89,6 +97,11 @@ namespace TheLaw.UI
         /// <summary>光标在手牌区内 → 按水平 N 等分 slot 判定 hover 卡（实时切换）。</summary>
         void UpdateHoverBySlot()
         {
+            if (_dragging)
+            {
+                SetHover(-1);
+                return;
+            }
             int n = _cards.Count;
             if (n == 0)
             {

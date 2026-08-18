@@ -204,6 +204,9 @@ namespace TheLaw.UI
                     // ⚠️ 2026-08-16：销毁棋子前先杀其 Transform 上的 DOTween（移动/缩放/淡出），
                     // 否则快速结束/收尾时 DOMove 等 tween 会访问已销毁 Transform 产生警告。
                     DOTween.Kill(go.transform);
+                    // 组件 target 也要杀：sr.material.DOFade 绑的是 Material 实例，Kill(transform) 杀不到
+                    var sr = go.transform.Find("Portrait")?.GetComponent<SpriteRenderer>();
+                    if (sr != null && sr.material != null) DOTween.Kill(sr.material);
                     DestroyImmediate(go);
                 }
             }
@@ -890,6 +893,8 @@ namespace TheLaw.UI
                 yield return new WaitForSeconds(DeathWait);
                 // ⚠️ 2026-08-16：销毁前杀该 Transform 上的 tween（PlayMove 等可能仍在跑），防销毁后访问告警
                 DOTween.Kill(go.transform);
+                // 材质 tween 同杀：sr.material.DOFade 的 target 是 Material 实例，Kill(transform) 覆盖不到
+                if (sr != null && sr.material != null) DOTween.Kill(sr.material);
                 Destroy(go);
             }
             yield return null;
@@ -1480,6 +1485,7 @@ namespace TheLaw.UI
             if (_draggingCard)
             {
                 _draggingCard = false;
+                SetHandLayoutDragging(false); // 重建即结束拖拽，恢复 hover
                 _dragCard = null;
                 if (_previewPiece != null) Destroy(_previewPiece);
                 _previewPiece = null;
@@ -1684,11 +1690,21 @@ namespace TheLaw.UI
         }
 
         // ========== 拖拽部署 ==========
+        void SetHandLayoutDragging(bool dragging)
+        {
+            if (_panel != null && _panel.HandRoot != null)
+            {
+                var layout = _panel.HandRoot.GetComponent<HandLayoutController>();
+                if (layout != null) layout.SetDragging(dragging);
+            }
+        }
+
         public void OnCardDragStart(int defId, GameObject card)
         {
             if (!CanDragCard(defId)) return;
             if (_previewPiece != null) Destroy(_previewPiece); // 防旧预览泄漏
             _draggingCard = true;
+            SetHandLayoutDragging(true); // 拖拽期间冻结手牌 hover/让位（后端排查记录）
             _dragDefId = defId;
             _dragCard = card;
             PieceViewFactory.EnsureSprites();
@@ -1763,6 +1779,7 @@ namespace TheLaw.UI
             _previewCell = new Vector2Int(-1, -1);
             _dragDefId = -1;
             _dragCard = null; // 统一清理（防野引用）
+            SetHandLayoutDragging(false); // 拖拽结束恢复 hover（后端排查记录）
         }
 
         IEnumerator RecoverCardIfFailed(int defId, GameObject card)
@@ -1838,6 +1855,9 @@ namespace TheLaw.UI
                 _fadeTween.Kill();
                 _fadeTween = null;
             }
+            // ⚠️ 2026-08-16：CanvasGroup 上的 tween（FadeInCard/RestoreDragCard 等 SetTarget(cg)）
+            // 也要杀——只 Kill(transform) 杀不到组件 target，卡销毁后 DOTween 会报 missing target/field
+            if (_cg != null) DG.Tweening.DOTween.Kill(_cg);
             DG.Tweening.DOTween.Kill(transform); // 拖出缩小 tween（有 target，也要杀）
         }
 

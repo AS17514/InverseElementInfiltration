@@ -38,6 +38,8 @@ namespace TheLaw.UI
         private Transform _limitRoot;     // 构筑限制 tag 容器（Grp_BuildAndLimit/Grp_DeckLimit）
         private TMP_Text _tagSize;        // 数量 tag（"数量 x/y"）
         private TMP_Text _tagValue;       // 价值 tag（"价值 x/y"）
+        private TMP_Text _tagDuplicate;   // 可复数 tag
+        private TMP_Text _tagPromote;     // 升变≤初始 tag（含实时计数）
         private Button _nextBtn;
 
         // ====== 信息区节点（同 PieceEditPanel——Grp_PieceInfo 直接挂 Grp 下）======
@@ -55,13 +57,15 @@ namespace TheLaw.UI
         private List<PieceDef> _sortedDefs = new List<PieceDef>(); // 牌池数据（按 Id 排序——牌池卡顺序确定）
         private readonly List<int> _deck = new List<int>();        // 当前出战（defId 列表，顺序 = 入队顺序）
         private readonly List<GameObject> _deckCards = new List<GameObject>(); // 出战卡实例（按 _deck 同步）
-        private readonly List<Toggle> _poolToggles = new List<Toggle>(); // 牌池卡 Toggle（索引 = _sortedDefs 索引）
+        private readonly List<GameObject> _poolCards = new List<GameObject>(); // 牌池卡实例（索引 = _sortedDefs 索引）
         private GameObject _cardTemplate; // Piece_Card prefab（Addressables——牌池/出战共用）
         private GameObject _progTemplate; // Piece_ProgramInfo prefab（卡面程序槽图标——Addressables）
 
         // 当前事件限制（0 = 无限制）
         private int _deckSizeLimit;
         private int _valueLimit;
+        private bool _allowDuplicate;        // 允许同种棋子复数编入（策划开关——左键加/右键减）
+        private bool _promoteLimitByInitial; // 升变数量 ≤ 初始数量（策划开关）
 
         // ====== 注入（Bootstrap 创建面板后调用）======
         public void Init(Resolver resolver, GameState state)
@@ -150,6 +154,8 @@ namespace TheLaw.UI
         {
             _deckSizeLimit = 0;
             _valueLimit = 0;
+            _allowDuplicate = false;
+            _promoteLimitByInitial = false;
             if (_state == null) return; // Init 未注入（Awake 时序）——跳过，OnShow 时再调
             var ev = string.IsNullOrEmpty(_state.CurrentEventId)
                 ? null
@@ -163,6 +169,8 @@ namespace TheLaw.UI
             {
                 _deckSizeLimit = ev.deckSizeLimit;
                 _valueLimit = ev.totalValueLimit;
+                _allowDuplicate = ev.allowDuplicate;
+                _promoteLimitByInitial = ev.promoteLimitByInitial;
             }
         }
 
@@ -185,7 +193,7 @@ namespace TheLaw.UI
                 return;
             }
             foreach (Transform child in _poolContent) Destroy(child.gameObject);
-            _poolToggles.Clear();
+            _poolCards.Clear();
             _sortedDefs = GetSortedDefs();
             for (int i = 0; i < _sortedDefs.Count; i++)
             {
@@ -197,16 +205,16 @@ namespace TheLaw.UI
                 var hover = go.GetComponent<CardHover>();
                 if (hover == null) hover = go.AddComponent<CardHover>();
                 hover.Init(this, def);
+                // 左键加/右键减：模板自带 Toggle 会抢占左键切换语义——销毁 Toggle，改自定义 PointerClick
                 var toggle = go.GetComponent<Toggle>();
-                if (toggle != null)
-                {
-                    var defId = def.Id;
-                    toggle.onValueChanged.RemoveAllListeners();
-                    toggle.onValueChanged.AddListener(on => OnPoolToggle(defId, on, toggle));
-                    _poolToggles.Add(toggle);
-                }
+                if (toggle != null) Destroy(toggle);
+                var click = go.GetComponent<DeckCardClickHandler>();
+                if (click == null) click = go.AddComponent<DeckCardClickHandler>();
+                var defId = def.Id;
+                click.onClick = eventData => OnPoolClicked(defId, eventData);
+                _poolCards.Add(go);
             }
-            // 牌池 Toggle 互斥自管：不挂 ToggleGroup（isOn 即"已入队"标记，多选语义）
+            // 牌池互斥/复数由 _deck 计数驱动，不依赖 ToggleGroup
         }
 
         System.Collections.IEnumerator RebuildPoolWhenReady()
@@ -221,82 +229,141 @@ namespace TheLaw.UI
             RebuildPool();
         }
 
-        /// <summary>牌池卡点击：on=true 入队（超限拒绝回弹）；on=false 出队。信息显示由悬停（CardHover）负责——点击不显示。</summary>
-        void OnPoolToggle(int defId, bool on, Toggle toggle)
+        /// <summary>牌池卡点击：左键加 / 右键减。信息显示由悬停（CardHover）负责——点击不显示。</summary>
+        void OnPoolClicked(int defId, PointerEventData eventData)
         {
-            if (on)
+            if (eventData.button == PointerEventData.InputButton.Left)
             {
-                if (!CanAdd(defId))
-                {
-                    // ⚠️ 第 8 条（后端发现）：超限时 Toggle 已置 true——必须回弹（防"灰色+勾选残留"双重误导）
-                    toggle.SetIsOnWithoutNotify(false); // 不回触发 onValueChanged（避免多余的出队刷新）
-                    return;
-                }
-                _deck.Add(defId);
+                AddToDeck(defId);
             }
-            else
+            else if (eventData.button == PointerEventData.InputButton.Right)
             {
-                _deck.Remove(defId);
+                RemoveFromDeck(defId);
             }
+        }
+
+        /// <summary>左键：加入一张（超限拒绝，不闪烁）。</summary>
+        void AddToDeck(int defId)
+        {
+            if (!CanAdd(defId))
+            {
+                Debug.LogWarning($"[DeckBuild] 无法加入棋子 {defId}——违反构筑限制");
+                return;
+            }
+            _deck.Add(defId);
+            RefreshAfterDeckChange();
+        }
+
+        /// <summary>右键：移出一张（可复数时逐张减）。</summary>
+        void RemoveFromDeck(int defId)
+        {
+            if (!_deck.Remove(defId)) return; // 不在队：忽略
+            RefreshAfterDeckChange();
+        }
+
+        void RefreshAfterDeckChange()
+        {
             RebuildDeck();
             RefreshLimits();
-            RefreshPoolAvailability(); // 限制变化 → 刷新剩余棋子的可选中性（超限禁选）
-            // 点击不再 ShowPieceInfo/ClearPieceInfo——信息区由 CardHover 悬停驱动（2026-08-11 需求）
+            RefreshPoolAvailability(); // 限制变化 → 刷新剩余棋子的可选中性/数量角标
         }
 
         /// <summary>
-        /// 刷新牌池卡可选中性（2026-08-11：超限/单卡超限 → interactable=false 灰显禁选）：
-        /// - 数量满（_deckSizeLimit）→ 所有未入队卡禁选（已入队可出队保持可选）
-        /// - 单卡价值超限 → 该卡禁选（即使数量未满）
-        /// - 已入队卡自身不再可点（isOn=true 状态——点它 = 出队，需保留）
+        /// 刷新牌池卡可加性（2026-08-11：超限/单卡超限 → 置灰禁选；2026-08-16 改左加右减）：
+        /// - 未入队且不能加 → 半透明
+        /// - 已入队保持正常（可右键减少；可复数时还可左键再加）
+        /// - 入队数量看中间出战列表（同种相邻展示）
         /// </summary>
         void RefreshPoolAvailability()
         {
-            if (_sortedDefs == null || _poolToggles == null) return;
-            int currentValue = 0;
-            foreach (var id in _deck) currentValue += ConfigTable.Find<PieceDef>(id)?.value ?? 0;
-            for (int i = 0; i < _sortedDefs.Count && i < _poolToggles.Count; i++)
+            if (_sortedDefs == null || _poolCards == null) return;
+            for (int i = 0; i < _sortedDefs.Count && i < _poolCards.Count; i++)
             {
-                var toggle = _poolToggles[i];
-                if (toggle == null) continue;
+                var card = _poolCards[i];
+                if (card == null) continue;
                 var def = _sortedDefs[i];
-                bool inDeck = _deck.Contains(def.Id);
-                if (inDeck)
-                {
-                    toggle.interactable = true; // 已入队：可点出队
-                    continue;
-                }
-                // 未入队：数量满 or 单卡超价值 → 禁选
-                bool sizeBlocked = _deckSizeLimit > 0 && _deck.Count >= _deckSizeLimit;
-                bool valueBlocked = _valueLimit > 0 && currentValue + def.value > _valueLimit;
-                toggle.interactable = !(sizeBlocked || valueBlocked);
+                int count = CountInDeck(def.Id);
+                bool canAdd = CanAdd(def.Id);
+                SetCardBlocked(card, count == 0 && !canAdd); // 未入队且不能加 → 灰；已入队/可减保持正常
             }
         }
 
-        /// <summary>限制校验（数量/总价值——与 Resolver.BuildDeck 同规则，UI 提前拦截）。</summary>
+        /// <summary>限制校验（数量/总价值/复数/升变≤初始——与 Resolver.BuildDeck 同规则，UI 提前拦截）。</summary>
         bool CanAdd(int defId)
         {
-            if (_deck.Contains(defId)) return true; // 已在队：出队而非入队（Toggle 回弹场景）
+            // 单枚模式：已在队不能再加（左键加第二张被拦）
+            if (!_allowDuplicate && CountInDeck(defId) > 0)
+            {
+                return false;
+            }
             if (_deckSizeLimit > 0 && _deck.Count >= _deckSizeLimit)
             {
-                Debug.LogWarning($"[DeckBuild] 牌组数量已达上限 {_deckSizeLimit}");
                 return false;
             }
             if (_valueLimit > 0)
             {
-                var def = ConfigTable.Find<PieceDef>(defId);
-                if (def != null)
+                int total = GetDeckTotalValue();
+                int value = GetEffectiveValue(defId);
+                if (total + value > _valueLimit)
                 {
-                    int total = 0;
-                    foreach (var id in _deck) total += ConfigTable.Find<PieceDef>(id).value;
-                    if (total + def.value > _valueLimit)
-                    {
-                        Debug.LogWarning($"[DeckBuild] 总价值超限（{total}+{def.value} > {_valueLimit}）");
-                        return false;
-                    }
+                    return false;
+                }
+            }
+            if (_promoteLimitByInitial && GetEffectiveType(defId) == PieceType.Promoted)
+            {
+                int initialCount = CountByEffectiveType(PieceType.Initial);
+                int promotedCount = CountByEffectiveType(PieceType.Promoted);
+                if (promotedCount + 1 > initialCount)
+                {
+                    return false;
                 }
             }
             return true;
+        }
+
+        int GetDeckTotalValue()
+        {
+            int total = 0;
+            foreach (var id in _deck) total += GetEffectiveValue(id);
+            return total;
+        }
+
+        int CountInDeck(int defId)
+        {
+            int count = 0;
+            foreach (var id in _deck) if (id == defId) count++;
+            return count;
+        }
+
+        int CountByEffectiveType(PieceType type)
+        {
+            int count = 0;
+            foreach (var id in _deck)
+            {
+                if (GetEffectiveType(id) == type) count++;
+            }
+            return count;
+        }
+
+        int GetEffectiveValue(int defId)
+        {
+            if (_state != null) return _state.GetEffectiveValue(defId);
+            return ConfigTable.Find<PieceDef>(defId)?.value ?? 0;
+        }
+
+        PieceType GetEffectiveType(int defId)
+        {
+            if (_state != null) return _state.GetEffectiveType(defId);
+            var def = ConfigTable.Find<PieceDef>(defId);
+            return def != null ? def.pieceType : PieceType.Initial;
+        }
+
+        void SetCardBlocked(GameObject card, bool blocked)
+        {
+            if (card == null) return;
+            var cg = card.GetComponent<CanvasGroup>();
+            if (cg == null) cg = card.gameObject.AddComponent<CanvasGroup>();
+            cg.alpha = blocked ? 0.5f : 1f;
         }
 
         // ====== 出战 ======
@@ -310,9 +377,10 @@ namespace TheLaw.UI
                 if (card != null) Destroy(card);
             }
             _deckCards.Clear();
-            for (int i = 0; i < _deck.Count; i++)
+            var displayOrder = GetDeckDisplayOrder();
+            foreach (var deckId in displayOrder)
             {
-                var def = ConfigTable.Find<PieceDef>(_deck[i]);
+                var def = ConfigTable.Find<PieceDef>(deckId);
                 if (def == null || _cardTemplate == null) continue;
                 var go = Instantiate(_cardTemplate, _deckContent);
                 go.name = $"DeckCard_{def.Id}_{def.displayName}";
@@ -341,64 +409,122 @@ namespace TheLaw.UI
             }
         }
 
-        /// <summary>出战卡点击：出队 + 牌池对应 Toggle 回弹（isOn=false）。信息显示由悬停（CardHover）负责。</summary>
-        void OnDeckCardClick(int defId, GameObject card)
+        /// <summary>出战展示顺序：同种棋子相邻（按首次入队顺序分组，保持不同种类相对顺序）。</summary>
+        IEnumerable<int> GetDeckDisplayOrder()
         {
-            _deck.Remove(defId);
-            // 牌池卡 Toggle 回弹（索引 = defId 在 _sortedDefs 中的位置）
-            for (int i = 0; i < _sortedDefs.Count && i < _poolToggles.Count; i++)
+            var groups = new List<int>();
+            var seen = new HashSet<int>();
+            foreach (var id in _deck)
             {
-                if (_sortedDefs[i].Id == defId && _poolToggles[i] != null && _poolToggles[i].isOn)
+                if (seen.Add(id)) groups.Add(id);
+            }
+            foreach (var groupId in groups)
+            {
+                foreach (var id in _deck)
                 {
-                    _poolToggles[i].isOn = false;
-                    break;
+                    if (id == groupId) yield return id;
                 }
             }
-            RebuildDeck();
-            RefreshLimits();
-            RefreshPoolAvailability(); // 出队后恢复可选中性（数量/价值腾出空间）
-            // 点击出队不碰信息区（悬停驱动）
+        }
+
+        /// <summary>出战卡点击：出队（等价右键减）。信息显示由悬停（CardHover）负责。</summary>
+        void OnDeckCardClick(int defId, GameObject card)
+        {
+            RemoveFromDeck(defId);
         }
 
         // ====== 限制显示 ======
 
-        /// <summary>刷新数量/价值 tag（模板复制或代码创建——见 EnsureTags）。</summary>
+        /// <summary>刷新数量/价值/复数/升变 tag（模板复制或代码创建——见 EnsureTags）。</summary>
         void RefreshLimits()
         {
             EnsureTags();
-            int total = 0;
-            foreach (var id in _deck) total += ConfigTable.Find<PieceDef>(id).value;
+            int total = GetDeckTotalValue();
             if (_tagSize != null)
                 _tagSize.text = _deckSizeLimit > 0 ? $"数量 {_deck.Count}/{_deckSizeLimit}" : $"数量 {_deck.Count}";
             if (_tagValue != null)
                 _tagValue.text = _valueLimit > 0 ? $"价值 {total}/{_valueLimit}" : $"价值 {total}";
+            if (_tagDuplicate != null)
+                _tagDuplicate.text = _allowDuplicate ? "可复数" : "";
+            if (_tagPromote != null)
+            {
+                if (_promoteLimitByInitial)
+                {
+                    int initial = CountByEffectiveType(PieceType.Initial);
+                    int promoted = CountByEffectiveType(PieceType.Promoted);
+                    _tagPromote.text = $"初始 {initial}｜升变 {promoted}（升变≤初始）";
+                }
+                else
+                {
+                    _tagPromote.text = "";
+                }
+            }
         }
 
         /// <summary>
-        /// 构筑限制 tag：优先用 Grp_DeckLimit 下已有实例作模板（复制一份）；无模板则代码创建两个 TMP。
+        /// 构筑限制 tag：优先用 Grp_DeckLimit 下已有实例作模板（复制多份）；无模板则代码创建。
         /// 注：Tag_DeckLimit 预制体未注册 Addressables，运行时无法按地址加载——双保险。
         /// </summary>
         void EnsureTags()
         {
-            if (_tagSize != null && _tagValue != null) return;
             if (_limitRoot == null) return;
+            if (_tagSize != null && _tagValue != null && _tagDuplicate != null && _tagPromote != null) return;
+            var template = _limitRoot.childCount > 0 ? _limitRoot.GetChild(0).gameObject : null;
+            var templateTxt = template != null
+                ? template.GetComponent<TMP_Text>() ?? template.GetComponentInChildren<TMP_Text>()
+                : null;
+
             if (_tagSize == null)
             {
-                var template = _limitRoot.childCount > 0 ? _limitRoot.GetChild(0).gameObject : null;
-                if (template != null)
+                if (templateTxt != null)
                 {
-                    _tagSize = template.GetComponent<TMP_Text>();
-                    if (_tagSize == null) _tagSize = template.GetComponentInChildren<TMP_Text>();
-                    var clone = Instantiate(template, _limitRoot);
-                    clone.name = "Tag_DeckValue";
-                    _tagValue = clone.GetComponent<TMP_Text>();
-                    if (_tagValue == null) _tagValue = clone.GetComponentInChildren<TMP_Text>();
+                    _tagSize = templateTxt;
                     template.name = "Tag_DeckSize";
                 }
+                else
+                {
+                    _tagSize = CreateTagText("Tag_DeckSize");
+                }
             }
-            // 无模板兜底：代码创建（样式从简——测试期可接受）
-            if (_tagSize == null) _tagSize = CreateTagText("Tag_DeckSize");
-            if (_tagValue == null) _tagValue = CreateTagText("Tag_DeckValue");
+            if (_tagValue == null)
+            {
+                if (templateTxt != null)
+                {
+                    var clone = Instantiate(template, _limitRoot);
+                    clone.name = "Tag_DeckValue";
+                    _tagValue = clone.GetComponent<TMP_Text>() ?? clone.GetComponentInChildren<TMP_Text>();
+                }
+                else
+                {
+                    _tagValue = CreateTagText("Tag_DeckValue");
+                }
+            }
+            if (_tagDuplicate == null)
+            {
+                if (templateTxt != null)
+                {
+                    var clone = Instantiate(template, _limitRoot);
+                    clone.name = "Tag_DeckDuplicate";
+                    _tagDuplicate = clone.GetComponent<TMP_Text>() ?? clone.GetComponentInChildren<TMP_Text>();
+                }
+                else
+                {
+                    _tagDuplicate = CreateTagText("Tag_DeckDuplicate");
+                }
+            }
+            if (_tagPromote == null)
+            {
+                if (templateTxt != null)
+                {
+                    var clone = Instantiate(template, _limitRoot);
+                    clone.name = "Tag_DeckPromote";
+                    _tagPromote = clone.GetComponent<TMP_Text>() ?? clone.GetComponentInChildren<TMP_Text>();
+                }
+                else
+                {
+                    _tagPromote = CreateTagText("Tag_DeckPromote");
+                }
+            }
         }
 
         TMP_Text CreateTagText(string name)
@@ -440,13 +566,13 @@ namespace TheLaw.UI
         void FillCardData(GameObject card, PieceDef def)
         {
             var bg = card.GetComponent<Image>();
-            if (bg != null) bg.color = CardTypeColors.For(def.pieceType);
+            if (bg != null) bg.color = CardTypeColors.For(GetEffectiveType(def.Id));
             var valueText = FindDeep(card.transform, "Img_PieceValue")?.GetComponentInChildren<TMP_Text>();
-            if (valueText != null) valueText.text = def.value.ToString();
+            if (valueText != null) valueText.text = GetEffectiveValue(def.Id).ToString();
             var typeText = FindDeep(card.transform, "Img_PieceType")?.GetComponentInChildren<TMP_Text>();
             if (typeText != null)
             {
-                typeText.text = def.pieceType == PieceType.Initial ? "始" : def.pieceType == PieceType.Deployable ? "部" : "升";
+                typeText.text = GetEffectiveType(def.Id) == PieceType.Initial ? "始" : GetEffectiveType(def.Id) == PieceType.Deployable ? "部" : "升";
             }
             // 程序槽图标（Grp_PieceProgramInfo 内 Piece_ProgramInfo——编辑差异优先，2026-08-11 数据链修复）
             var progRoot = FindDeep(card.transform, "Grp_PieceProgramInfo");
@@ -489,10 +615,10 @@ namespace TheLaw.UI
         internal void ShowPieceInfo(PieceDef def)
         {
             if (_infoName != null) _infoName.text = VerticalName(def.displayName);
-            if (_infoValueText != null) _infoValueText.text = def.value.ToString();
+            if (_infoValueText != null) _infoValueText.text = GetEffectiveValue(def.Id).ToString();
             if (_infoTypeText != null)
             {
-                _infoTypeText.text = def.pieceType == PieceType.Initial ? "始" : def.pieceType == PieceType.Deployable ? "部" : "升";
+                _infoTypeText.text = GetEffectiveType(def.Id) == PieceType.Initial ? "始" : GetEffectiveType(def.Id) == PieceType.Deployable ? "部" : "升";
             }
             // 程序 = 编辑差异优先（CurrentPrograms——编辑结果在此），回退 Def 默认模组（2026-08-11 数据链修复）
             List<Template> slots = null;
@@ -516,7 +642,7 @@ namespace TheLaw.UI
                 var infoImg = _pieceInfo.GetComponent<Image>();
                 if (infoImg != null)
                 {
-                    var c = CardTypeColors.For(def.pieceType);
+                    var c = CardTypeColors.For(GetEffectiveType(def.Id));
                     infoImg.color = new Color(c.r, c.g, c.b, 0.45f);
                 }
                 _pieceInfo.gameObject.SetActive(true);
@@ -582,6 +708,17 @@ namespace TheLaw.UI
                 _progTemplate = progHandle.Result;
             }
             // 重建统一由 OnShow（模板未就绪时 RebuildPoolWhenReady 等待）驱动——此处不重复触发
+        }
+
+        /// <summary>牌池卡左/右键处理组件（Toggle 销毁后的替代：左键加、右键减）。</summary>
+        public class DeckCardClickHandler : MonoBehaviour, IPointerClickHandler
+        {
+            public System.Action<PointerEventData> onClick;
+
+            public void OnPointerClick(PointerEventData eventData)
+            {
+                if (onClick != null) onClick(eventData);
+            }
         }
     }
 

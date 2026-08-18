@@ -124,4 +124,4 @@ MonoBehaviour:
   _directToBattle: 0
   _slotDescriptions: {fileID: 4900000, guid: 61641052052f35242aa0036fb7af08a7, type: 3}
   _buffDescriptions: {fileID: 0}
-  _slotValues: {fileID: 0}
+  _slotValues: {fileID: 4900000, guid: fd1b4c51f71842f45a7bc65f03c4ff5e, type: 3}

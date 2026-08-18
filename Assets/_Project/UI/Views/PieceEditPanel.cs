@@ -51,6 +51,9 @@ namespace TheLaw.UI
         private Button _undoBtn;             // Btn_Undo（单击撤一步 / 长按全部撤回）
         private UndoButtonHandler _undoHandler;
 
+        // ====== 拖拽幽灵登记（防孤儿残留：原生路径偶发不触发 OnEndDrag/OnDestroy 时兜底清理）======
+        private readonly List<GameObject> _dragGhosts = new List<GameObject>();
+
         public void Init(EditorSession editor, GameState state)
         {
             _editor = editor;
@@ -100,8 +103,39 @@ namespace TheLaw.UI
             }
         }
 
+                // ====== 拖拽幽灵登记/清理（EditorProgramDrag 调用；防孤儿残留）======
+
+        internal void RegisterDragGhost(GameObject ghost)
+        {
+            if (ghost != null && !_dragGhosts.Contains(ghost)) _dragGhosts.Add(ghost);
+        }
+
+        /// <summary>取消托管并销毁幽灵（EditorProgramDrag 的 OnEndDrag/CancelDrag 调用）。</summary>
+        internal void UnregisterDragGhost(GameObject ghost)
+        {
+            if (ghost == null) return;
+            _dragGhosts.Remove(ghost);
+            if (ghost != null) Destroy(ghost);
+        }
+
+        /// <summary>清空全部拖拽幽灵（新拖拽开始/面板隐藏/销毁时兜底——清孤儿）。</summary>
+        internal void CleanupDragGhosts()
+        {
+            foreach (var g in _dragGhosts)
+            {
+                if (g != null) Destroy(g);
+            }
+            _dragGhosts.Clear();
+        }
+
+        void OnDisable()
+        {
+            CleanupDragGhosts();
+        }
+
         void OnDestroy()
         {
+            CleanupDragGhosts();
             EventCenter.Instance.RemoveEventListener(GameEvent.ProgramEdited, OnProgramEdited);
             if (_undoHandler != null)
             {
@@ -961,8 +995,19 @@ namespace TheLaw.UI
                 ghostSource = transform; // 槽位块（Img_InfoProgram 含类型字）
             }
             if (ghostSource == null) return;
+            // 防孤儿：新拖拽开始先清面板登记的残留幽灵 + 按名清理本 canvas 下未托管幽灵（既有脏数据也清）
+            if (_panel != null) _panel.CleanupDragGhosts();
+            foreach (var orphan in UnityEngine.Object.FindObjectsOfType<GameObject>(true))
+            {
+                if ((orphan.name == "ProgDragGhost" || orphan.name == "SlotDragGhost")
+                    && orphan.transform.IsChildOf(canvas.transform))
+                {
+                    Destroy(orphan);
+                }
+            }
             _ghost = Instantiate(ghostSource.gameObject, canvas.transform);
             _ghost.name = _source == DragSource.Library ? "ProgDragGhost" : "SlotDragGhost";
+            if (_panel != null) _panel.RegisterDragGhost(_ghost);
             // 幽灵只做视觉跟随：置顶（防被其他面板盖住）+ 移除拖拽/drop/高亮组件（防自身响应事件/引用错乱）
             _ghost.transform.SetAsLastSibling();
             var ghostDrag = _ghost.GetComponent<EditorProgramDrag>();
@@ -1008,8 +1053,10 @@ namespace TheLaw.UI
         public void OnEndDrag(PointerEventData eventData)
         {
             if (_cg != null) _cg.alpha = 1f;
-            if (_ghost != null) Destroy(_ghost);
+            var g = _ghost;
             _ghost = null;
+            if (_panel != null) _panel.UnregisterDragGhost(g);
+            else if (g != null) Destroy(g);
             if (_cancelled) { _cancelled = false; ClearSnap(true); _slotTargets = null; return; } // Esc 已取消：只清理不落账
             // 落账语义（插入排序）——职责只在 OnEndDrag（Unity ReleaseMouse 顺序：OnDrop 先于 OnEndDrag，
             // 若在 OnDrop 落账会与吸附落账双触发；故 OnDrop 不落账，此处统一处理）：
@@ -1117,8 +1164,10 @@ namespace TheLaw.UI
         {
             _cancelled = true;
             if (_cg != null) _cg.alpha = 1f;
-            if (_ghost != null) Destroy(_ghost);
+            var g = _ghost;
             _ghost = null;
+            if (_panel != null) _panel.UnregisterDragGhost(g);
+            else if (g != null) Destroy(g);
             ClearSnap(true);
             _slotTargets = null;
         }

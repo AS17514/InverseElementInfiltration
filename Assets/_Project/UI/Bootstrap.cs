@@ -89,6 +89,7 @@ namespace TheLaw.UI
             CreateGameplay();
             // ④ 注册存档快照
             RegisterSnapshots();
+            SaveManager.Instance.LoadAll(); // 启动读档：音量/显示等设置跨启动生效（SettingsChanged 触发 AudioManager/ScreenSettingsApplier）
             // ⑤ 事件接线（进层/开战存档、RunEnded）
             WireEvents();
             // ⑤a 结算面板常驻创建（战斗结束 overlay——自身监听 StateChanged + PushPanel；须在战斗前就绪）
@@ -97,6 +98,8 @@ namespace TheLaw.UI
             StartCoroutine(CreateConfirmPanel());
             // ⑤a3 获取物品弹窗常驻创建（RelicObtained 统一提示——2026-08-14：取代事件面板描述区追加）
             StartCoroutine(CreateItemGettingPanel());
+            // ⑤a4 设置面板常驻创建（overlay——主菜单/战斗中入口复用；IsPausing 暂停型）
+            StartCoroutine(CreateSettingsPanel());
             // ⑤b 开局初始化（新局状态——含基础牌组手牌填充，ResetForNewRun 内完成）
             _gameState.ResetForNewRun();
             // ⑥ 进主菜单（TODO: UI 层面板）
@@ -109,6 +112,10 @@ namespace TheLaw.UI
         {
             // 单例类（首次访问自动创建）：EventCenter / SaveManager / RandomManager / SettingsSystem / AudioManager / GameState
             _gameState = GameState.Instance;
+            _ = AudioManager.Instance; // 实例化音频管理器（监听音量设置——不实例化则音量永远不生效）
+            var applierGo = new GameObject("ScreenSettingsApplier");
+            applierGo.AddComponent<ScreenSettingsApplier>(); // 显示设置（全屏/分辨率）全局应用器
+            Object.DontDestroyOnLoad(applierGo); // 常驻（跟随进程；设置跨启动生效）
             // 普通类（去单例化——显式创建）
             _uiManager = new UIManager();
             _tutorialSystem = new TutorialSystem();
@@ -258,6 +265,7 @@ namespace TheLaw.UI
                 if (GameObject.Find("BattleController") == null)
                 {
                     CreateBattleController();
+                    AudioManager.Instance.PlayBGM(TheLaw.Core.AudioRefs.BgmBattle); // 战斗 BGM（占位；切曲走交叉淡化）
                 }
             }
         }
@@ -315,6 +323,7 @@ namespace TheLaw.UI
                 _eventPanel = panel;
                 _uiManager.RegisterPanel(panel);
                 panel.Init(_eventNodeSystem);
+                panel.OnSettingsClicked += () => _uiManager.PushOverlay("Settings"); // 事件关设置入口
                 panel.ShowEvent(_pendingEventId); // 主动推首次事件数据（面板注册晚于事件广播——否则显示预制文本/选项无响应）
                 _uiManager.ShowPanel("EventPanel");
                 Debug.Log($"[Bootstrap] 事件面板已显示（event={_pendingEventId}）");
@@ -420,6 +429,7 @@ namespace TheLaw.UI
             }
             else
             {
+                AudioManager.Instance.PlayBGM(TheLaw.Core.AudioRefs.BgmMenu); // 主菜单 BGM（占位）
                 StartCoroutine(LoadMainMenu());
             }
         }
@@ -556,6 +566,7 @@ namespace TheLaw.UI
             {
                 _battlePanel = panel;
                 _uiManager.RegisterPanel(panel);
+                panel.OnSettingsClicked += () => _uiManager.PushOverlay("Settings"); // 战斗内设置入口
                 CreateBattleControllerWith(flow, panel);
             });
         }
@@ -576,6 +587,17 @@ namespace TheLaw.UI
                 _uiManager.RegisterPanel(panel);
                 panel.Init(_uiManager);
                 panel.gameObject.SetActive(false);
+            });
+        }
+
+        /// <summary>设置面板常驻创建（overlay——主菜单入口；IsPausing 暂停型冻结后台）。</summary>
+        private System.Collections.IEnumerator CreateSettingsPanel()
+        {
+            yield return LoadPanelAsync<SettingsPanel>(panel =>
+            {
+                _uiManager.RegisterPanel(panel);
+                panel.Init(_uiManager);
+                panel.gameObject.SetActive(false); // 常驻隐藏（主菜单按钮 PushOverlay 显示）
             });
         }
 
@@ -621,7 +643,7 @@ namespace TheLaw.UI
             // 按钮事件接线（面板只转发输入，流程响应在此）
             panel.OnNewGameClicked += () => { _uiManager.HidePanel("MainMenu"); StartNewGame(); };
             panel.OnContinueClicked += () => Debug.Log("[Bootstrap] 继续游戏（存档读取未接线 TODO）");
-            panel.OnSettingsClicked += () => Debug.Log("[Bootstrap] 设置（设置面板未接线 TODO）");
+            panel.OnSettingsClicked += () => { _uiManager.PushOverlay("Settings"); }; // 设置面板 overlay（主菜单之上，暂停型）
             panel.OnQuitClicked += Application.Quit;
             _uiManager.ShowPanel("MainMenu");
             Debug.Log("[Bootstrap] 主菜单已显示");

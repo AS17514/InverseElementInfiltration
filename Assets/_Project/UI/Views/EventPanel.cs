@@ -1,3 +1,4 @@
+using System;
 using System.Collections.Generic;
 using TheLaw.Core;
 using TheLaw.Data;
@@ -15,6 +16,9 @@ namespace TheLaw.UI
     public class EventPanel : PanelBase
     {
         public override string Key => "EventPanel";
+
+        // 设置按钮（Bootstrap 订阅 → PushOverlay("Settings")——面板只转发输入）
+        public event Action OnSettingsClicked;
 
         private EventNodeSystem _eventNode;
         private EventDefinition _currentEvent;
@@ -47,10 +51,28 @@ namespace TheLaw.UI
                 _exitBtn.onClick.RemoveAllListeners();
                 _exitBtn.onClick.AddListener(() => Exit());
             }
+            BindSettingsButton();
             EventCenter.Instance.AddEventListener(GameEvent.EventOpened, OnEventOpened);
             // UI 架构重构 §六：跨局残留由"新实例"保证（局结束销毁面板）——不再需要 RunEnded 重置
             // 预加载选项按钮模板（Btn_EventOption）
             StartCoroutine(LoadOptionTemplate());
+        }
+
+        /// <summary>设置按钮按名搜全层级绑定（Bootstrap 订阅事件打开 Settings overlay）。</summary>
+        void BindSettingsButton()
+        {
+            Button btn = null;
+            foreach (var b in GetComponentsInChildren<Button>(true))
+            {
+                if (b.name == "Btn_Settings") { btn = b; break; }
+            }
+            if (btn == null)
+            {
+                Debug.LogWarning("[EventPanel] 未找到设置按钮 Btn_Settings");
+                return;
+            }
+            btn.onClick.RemoveAllListeners();
+            btn.onClick.AddListener(() => OnSettingsClicked?.Invoke());
         }
 
         System.Collections.IEnumerator LoadOptionTemplate()

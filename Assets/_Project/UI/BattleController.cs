@@ -819,6 +819,7 @@ namespace TheLaw.UI
             var go = GameObject.Find($"Piece_{info.PieceId}");
             if (go != null)
             {
+                AudioManager.Instance.PlaySFX(AudioRefs.SfxMove); // 移动音效（占位——资源就绪后发声）
                 var to = PieceViewFactory.CellToWorld(info.To);
                 go.transform.DOMove(to, MoveDuration).SetEase(Ease.OutQuad);
                 yield return new WaitForSeconds(MoveWait);
@@ -833,6 +834,7 @@ namespace TheLaw.UI
             // ⚠️ 组内去重（#6 前端部分）：AOE 多目标同组并行——同一攻击者只闪一次（HashSet.Add 首次 true）
             if (_batchFlashAttackers == null || _batchFlashAttackers.Add(info.AttackerId))
             {
+                AudioManager.Instance.PlaySFX(AudioRefs.SfxAttack); // 攻击（挥击）音效——同组只播一次
                 var attacker = GameObject.Find($"Piece_{info.AttackerId}");
                 if (attacker != null)
                 {
@@ -850,6 +852,7 @@ namespace TheLaw.UI
             var go = GameObject.Find($"Piece_{info.TargetId}");
             if (go != null)
             {
+                AudioManager.Instance.PlaySFX(AudioRefs.SfxHit); // 受击音效（逐目标）
                 var sr = go.transform.Find("Portrait")?.GetComponent<SpriteRenderer>();
                 if (sr != null)
                 {
@@ -879,6 +882,7 @@ namespace TheLaw.UI
                         info.Side == Side.Player ? PieceViewFactory.TintFor(info.DefId) : PieceViewFactory.TintFor(info.DefId + 1));
                 }
             }
+            AudioManager.Instance.PlaySFX(AudioRefs.SfxDeploy); // 部署音效（占位）
             yield return new WaitForSeconds(DeployWait);
         }
 
@@ -887,6 +891,7 @@ namespace TheLaw.UI
             var go = GameObject.Find($"Piece_{info.PieceId}");
             if (go != null)
             {
+                AudioManager.Instance.PlaySFX(AudioRefs.SfxDeath); // 死亡音效（占位）
                 var sr = go.transform.Find("Portrait")?.GetComponent<SpriteRenderer>();
                 if (sr != null) sr.material.DOFade(0f, DeathFade); // material 版扩展（DOTween.dll 内）
                 go.transform.DOScale(0f, DeathFade);

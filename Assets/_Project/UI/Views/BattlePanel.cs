@@ -1,3 +1,4 @@
+using System;
 using TMPro;
 using UnityEngine;
 using UnityEngine.UI;
@@ -11,6 +12,9 @@ namespace TheLaw.UI
     public class BattlePanel : PanelBase
     {
         public override string Key => "Battle";
+
+        // 设置按钮（Bootstrap 订阅 → PushOverlay("Settings")——面板只转发输入）
+        public event Action OnSettingsClicked;
 
         public Button PhaseButton { get; private set; }
         public Button ExitButton { get; private set; }
@@ -31,6 +35,7 @@ namespace TheLaw.UI
         {
             PhaseButton = transform.Find("Btn_PhaseAction")?.GetComponent<Button>();
             ExitButton = transform.Find("Btn_Exit")?.GetComponent<Button>();
+            BindSettingsButton();
             if (PhaseButton != null)
             {
                 // 按钮文本子节点未命名——直接找子级 TMP
@@ -61,6 +66,23 @@ namespace TheLaw.UI
                 Debug.LogWarning($"[BattlePanel] 节点引用缺失：Btn={PhaseButton != null} AP={APValueText != null} Hand={HandRoot != null} EventName={(EventNameText != null)}");
             }
             Debug.Log($"[BattlePanel] 节点解析：Btn={PhaseButton != null} AP={APValueText != null} Hand={HandRoot != null} EventName={(EventNameText != null)}");
+        }
+
+        /// <summary>设置按钮可能在任何分组下——按名搜全层级绑定（Bootstrap 订阅事件打开 Settings overlay）。</summary>
+        void BindSettingsButton()
+        {
+            Button btn = null;
+            foreach (var b in GetComponentsInChildren<Button>(true))
+            {
+                if (b.name == "Btn_Settings") { btn = b; break; }
+            }
+            if (btn == null)
+            {
+                Debug.LogWarning("[BattlePanel] 未找到设置按钮 Btn_Settings");
+                return;
+            }
+            btn.onClick.RemoveAllListeners();
+            btn.onClick.AddListener(() => OnSettingsClicked?.Invoke());
         }
 
         public void SetAP(int current, int max)

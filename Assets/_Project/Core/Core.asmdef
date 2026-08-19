@@ -2,7 +2,8 @@
     "name": "Core",
     "rootNamespace": "",
     "references": [
-        "Unity.Nuget.NewtonsoftJson"
+        "Unity.Nuget.NewtonsoftJson",
+        "Unity.Addressables"
     ],
     "includePlatforms": [],
     "excludePlatforms": [],

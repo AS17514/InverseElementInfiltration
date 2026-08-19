@@ -115,7 +115,7 @@ namespace TheLaw.UI
             _ = AudioManager.Instance; // 实例化音频管理器（监听音量设置——不实例化则音量永远不生效）
             var applierGo = new GameObject("ScreenSettingsApplier");
             applierGo.AddComponent<ScreenSettingsApplier>(); // 显示设置（全屏/分辨率）全局应用器
-            Object.DontDestroyOnLoad(applierGo); // 常驻（跟随进程；设置跨启动生效）
+            DontDestroyOnLoad(applierGo); // 常驻（跟随进程；设置跨启动生效）——MonoBehaviour 直接调用（2026-08-19：原 Object. 与 using System 歧义）
             // 普通类（去单例化——显式创建）
             _uiManager = new UIManager();
             _tutorialSystem = new TutorialSystem();

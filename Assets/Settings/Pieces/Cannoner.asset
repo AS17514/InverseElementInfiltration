@@ -19,17 +19,22 @@ MonoBehaviour:
   durability: 1
   footprint: 0
   defaultFacing: 0
-  specialAbilities:
-  - {fileID: 11400000, guid: 6dcedbaef4ed3bd468db849ad89183bf, type: 2}
+  specialAbilities: []
   programSet:
   - slots:
-    - rid: 7823913851562229796
-    - rid: 7823913851562229797
+    - rid: 7823914081908686889
+    - rid: 7823914081908686890
+    - rid: 7823914081908686891
   promotionConfigId: 0
   references:
     version: 2
     RefIds:
-    - rid: 7823913851562229796
+    - rid: 7823914081908686889
+      type: {class: EffectTemplate, ns: TheLaw.Data, asm: Data}
+      data:
+        id: 3
+        abilityKey: Ability_Attach_OnAttack_Cross
+    - rid: 7823914081908686890
       type: {class: AttackTemplate, ns: TheLaw.Data, asm: Data}
       data:
         id: 10
@@ -45,7 +50,8 @@ MonoBehaviour:
         - {x: 0, y: -3}
         - {x: 1, y: -2}
         - {x: 2, y: -1}
-    - rid: 7823913851562229797
+        rangeSteps: []
+    - rid: 7823914081908686891
       type: {class: MoveTemplate, ns: TheLaw.Data, asm: Data}
       data:
         id: 9
@@ -56,3 +62,4 @@ MonoBehaviour:
               steps: 01000000
             - direction: 8
               steps: 01000000
+        jumpOffsets: []

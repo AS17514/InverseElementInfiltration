@@ -149,11 +149,11 @@ namespace TheLaw.Data
     }
 
     /// <summary>
-    /// 效果模板（效果槽——2026-08-19 数据层落地）：
-    /// 效果 = 可装备行动槽（装配 = 被动获得该能力；价值表 Effect-N）。
+    /// 效果模块（EffectTemplate——2026-08-19 数据层落地；**术语规范：模块 = 槽位内容，槽 = 4 个固定位置**）：
+    /// 效果 = 可装备模块（装配即被动获得该能力；价值表 Effect-N）。
     /// 引用特殊能力资产：abilityKey = SpecialAbilityDef 资产名（如 "Ability_ShieldBlock_OnDamaged_1"——运行时 ConfigTable 查）。
-    /// ⚠️ 执行语义（被动 vs 每次行动、生效时机、是否耗 AP）待疑问 B/前端装配交互对齐——
-    /// BattleFlow 执行遇效果槽暂跳过（占位，不落账不扣费）。
+    /// ⚠️ 执行语义（2026-08-19 确认）：**不耗 AP、被动、有模块即生效**——BattleFlow 执行遇效果模块跳过（不落账不扣费）；
+    /// 能力生效 = PieceInstance.GetAllAbilities 动态并入（装配即生效）。
     /// </summary>
     [Serializable]
     public class EffectTemplate : Template

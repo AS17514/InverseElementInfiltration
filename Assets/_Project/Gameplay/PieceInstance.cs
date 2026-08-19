@@ -97,13 +97,41 @@ namespace TheLaw.Gameplay
             return null;
         }
 
-        /// <summary>该棋子全部特殊能力（固有 + 临时）——被动修正/触发/附着的查询源。</summary>
+        /// <summary>
+        /// 该棋子全部特殊能力（固有 + 效果模块装配 + 临时）——被动修正/触发/附着的查询源。
+        /// ⚠️ 2026-08-19 效果模块"装配即生效"（策划确认：不耗 AP、被动、有模块即生效）：
+        /// 程序（实例覆盖① > 编辑差异② > Def 默认③）中的 EffectTemplate 能力动态并入——
+        /// 编辑程序后自动生效（无需重新物化）；能力引用经 ConfigTable.FindByName（abilityKey）。
+        /// ⚠️ 2026-08-19 叠加语义（用户确认"护盾可叠加"）：**不去重**——同能力资产的多个来源（内部模块 +
+        /// 外部模块——如盾兵 Effect-1 + 外部 Effect-4 护盾）按实例各计一次（护盾 1+1=2）；
+        /// 棋子固有能力已迁移为程序效果模块（abilities 字段移除——"特殊能力=行动槽"）。
+        /// </summary>
         public List<SpecialAbilityDef> GetAllAbilities()
         {
             var result = new List<SpecialAbilityDef>();
             if (def != null)
             {
                 result.AddRange(def.specialAbilities);
+            }
+            // 效果模块（装配即生效）：程序中的 EffectTemplate → 能力并入（按实例叠加——不去重）
+            var state = GameState.Instance;
+            if (state != null)
+            {
+                var program = GetProgram(state);
+                if (program != null)
+                {
+                    foreach (var slot in program)
+                    {
+                        if (slot is EffectTemplate effect && !string.IsNullOrEmpty(effect.abilityKey))
+                        {
+                            var ability = ConfigTable.FindByName<SpecialAbilityDef>(effect.abilityKey);
+                            if (ability != null)
+                            {
+                                result.Add(ability);
+                            }
+                        }
+                    }
+                }
             }
             result.AddRange(tempAbilities);
             return result;

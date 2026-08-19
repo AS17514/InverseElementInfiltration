@@ -71,7 +71,7 @@ namespace TheLaw.Data
                     if (a.id > 0) key = $"Attack-{a.id}";
                     break;
                 case EffectTemplate e:
-                    // 效果槽（2026-08-19）：价值表 Effect-N（护盾/刺客能力/炮手能力——slot-values.json 已预留）
+                    // 效果模块（2026-08-19）：价值表 Effect-N（护盾/刺客能力/炮手能力——slot-values.json 已预留）
                     if (e.id > 0) key = $"Effect-{e.id}";
                     break;
                 default:

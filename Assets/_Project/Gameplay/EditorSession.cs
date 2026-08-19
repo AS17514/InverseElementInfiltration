@@ -209,13 +209,15 @@ namespace TheLaw.Gameplay
             return result;
         }
 
-        /// <summary>内置编号判定（2026-08-19 双池模型：棋子内置槽用 Move≤9 / Attack≤11；外部模块编号 ≥10/≥12）。</summary>
+        /// <summary>内置编号判定（2026-08-19：棋子内置模块用 Move≤9 / Attack≤11 / Effect≤3（护盾/刺客能力/炮手能力——口述价）；
+        /// 外部模块编号 ≥10/≥12/≥4（效果外部模块待用户描述后定编号））。</summary>
         private static bool IsBuiltinSlot(Template slot)
         {
             switch (slot)
             {
                 case MoveTemplate m: return m.id > 0 && m.id <= 9;
                 case AttackTemplate a: return a.id > 0 && a.id <= 11;
+                case EffectTemplate e: return e.id > 0 && e.id <= 3;
                 default: return false;
             }
         }

@@ -32,8 +32,8 @@ namespace TheLaw.EditorTools
             int ok = 0;
             foreach (var file in jsonFiles)
             {
-                // slot-descriptions.json 是描述表（文案数据），不是棋子配置——跳过（防误解析报格式错误）
-                if (Path.GetFileName(file) == "slot-descriptions.json")
+                // 描述表（*descriptions.json——文案数据）不是棋子配置——跳过（防误解析报格式错误）
+                if (Path.GetFileName(file).EndsWith("-descriptions.json"))
                 {
                     continue;
                 }
@@ -137,6 +137,12 @@ namespace TheLaw.EditorTools
                 case "Arcing":
                 case "Spell":
                     template = ParsePointAttack(m);
+                    break;
+                case "Effect":
+                    // 效果模块（2026-08-19 内部效果模块——棋子默认程序最上面）：ability 内嵌定义 →
+                    // 生成能力资产（GetOrCreateAbility 指纹去重——盾兵护盾/外部 Effect-4 同资产）+ abilityKey 引用资产名
+                    var effectAbility = m.ability != null ? GetOrCreateAbility(m.ability) : null;
+                    template = new EffectTemplate { abilityKey = effectAbility != null ? effectAbility.name : null };
                     break;
                 default:
                     Debug.LogWarning($"[导入器] 未知模块类型：{m.moduleType}");
@@ -296,8 +302,11 @@ namespace TheLaw.EditorTools
             // 按能力参数生成去重名（同参数共享同一资产）
             if (a.type == "Attach")
             {
-                // ⚠️ 2026-08-13：补 attachDamage 区分——原指纹不含伤害，不同 attachDamage 的附着能力错误共享资产
-                return $"Ability_Attach_{a.attachPoint ?? "OnAttack"}_{a.attachShape ?? "Cross"}_{a.attachDamage}";
+                // ⚠️ 2026-08-13：补 attachDamage 区分——原指纹不含伤害，不同 attachDamage 的附着能力错误共享资产；
+                // ⚠️ 2026-08-19：attachDamage=0（沿用主伤害——默认）**不带后缀**（兼容旧资产名 Ability_Attach_OnAttack_Cross——
+                // 旧资产已注册 Bootstrap；避免生成 _0 孤立资产未注册导致能力查不到）；非 0 带后缀区分
+                string damageSuffix = a.attachDamage != 0 ? $"_{a.attachDamage}" : "";
+                return $"Ability_Attach_{a.attachPoint ?? "OnAttack"}_{a.attachShape ?? "Cross"}{damageSuffix}";
             }
             return $"Ability_{a.effect ?? "Effect"}_{a.triggerPoint ?? "Trigger"}_{a.amount}";
         }
@@ -383,6 +392,7 @@ namespace TheLaw.EditorTools
             public int damage;
             public bool friendlyFire;
             public List<PointJson> points;            // 抛射/法术自由点选
+            public AbilityJson ability;               // Effect：能力内嵌定义（导入器生成能力资产 + abilityKey 引用）
         }
         private class AttackRangeStepJson { public string direction; public List<int> ranges; }
 

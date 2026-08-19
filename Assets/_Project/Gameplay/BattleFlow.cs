@@ -597,9 +597,8 @@ namespace TheLaw.Gameplay
                     AdvanceSlot();
                     break;
                 case EffectTemplate effect:
-                    // ⚠️ 2026-08-19：效果槽（护盾+1 等）——数据层先行；执行语义（被动 vs 每次行动、
-                    // 生效时机、是否耗 AP）待疑问 B/前端装配交互对齐——此处占位跳过（不落账不扣费）。
-                    // 装配 = 被动获得（策划语义），程序执行序列中不产生行动。
+                    // ✅ 2026-08-19 效果模块执行语义（策划确认）：**不耗 AP、被动、有模块即生效**——
+                    // 执行序列中不产生行动（跳过不落账不扣费）；能力生效 = PieceInstance.GetAllAbilities 动态并入（装配即生效）。
                     _ctx.slotIndex++;
                     AdvanceSlot();
                     break;

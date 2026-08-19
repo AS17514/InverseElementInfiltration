@@ -605,7 +605,6 @@ namespace TheLaw.UI
             });
         }
 
-        /// <summary>结算面板常驻创建（战斗结束 overlay——自身监听 StateChanged + PushPanel/PopPanel；须在战斗前就绪）。</summary>
         /// <summary>确认面板常驻创建（通用确认 overlay——2026-08-13：编辑撤回全部等场景；IsPausing 暂停型）。</summary>
         private System.Collections.IEnumerator CreateConfirmPanel()
         {
@@ -617,6 +616,7 @@ namespace TheLaw.UI
             });
         }
 
+        /// <summary>结算面板常驻创建（战斗结束 overlay——自身监听 StateChanged + PushPanel/PopPanel；须在战斗前就绪）。</summary>
         private System.Collections.IEnumerator CreateBattleResultPanel()
         {
             yield return LoadPanelAsync<BattleResultPanel>(panel =>

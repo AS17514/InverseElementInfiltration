@@ -368,18 +368,8 @@
     },
     {
       "type": "Effect",
-      "id": 1,
+      "id": 4,
       "ability": "Ability_ShieldBlock_OnDamaged_1"
-    },
-    {
-      "type": "Effect",
-      "id": 2,
-      "ability": "Ability_ExtraAction_OnKill_1"
-    },
-    {
-      "type": "Effect",
-      "id": 3,
-      "ability": "Ability_Attach_OnAttack_Cross"
     }
   ]
 }

@@ -1,6 +1,7 @@
 using System;
 using System.Collections.Generic;
 using TheLaw.Core;
+using UnityEngine;
 
 namespace TheLaw.Data
 {
@@ -23,10 +24,15 @@ namespace TheLaw.Data
     public class WaveDef
     {
         public int startTurn;                 // 第几回合出波（间隔 3~5 回合，可调）
-        public List<int> pieceDefIds = new List<int>(); // 阵容（Def id）
+        public List<int> pieceDefIds = new List<int>(); // 阵容（Def id）——randomPool=false 时用固定阵容
+        public bool randomPool;               // 随机池模式（2026-08-19：true=从 poolType 类棋子随机抽 count 个，可重复——RandomManager 可复现；false=固定阵容）
+        public PieceType poolType;            // 随机池种类（randomPool=true 时：Initial/Deployable）
+        public int count;                     // 随机抽取数量（randomPool=true 时）
+        public List<Vector2Int> positions = new List<Vector2Int>(); // 固定站位（2026-08-19：与阵容顺序对应；空=部署区自动找位；被占用格跳过）
         public bool isLastWave;               // 最后一波：出现后再过 N 回合强制判定胜负
         public int endCountdown;              // 末波强制判定倒计时（回合数）
-        public List<WavePromotion> promotions = new List<WavePromotion>(); // 升变预告：本波第 N 个棋子将在下一波升变
+        public List<WavePromotion> promotions = new List<WavePromotion>(); // 升变预告：本波第 N 个棋子将在下一波升变（旧机制）
+        public bool autoPromote;              // 自动预告模式（2026-08-19）：本波第 1 回合结束后预告敌方场上离中心最近 2 个棋子，第 3 回合开始自动升变为随机升变棋子（RandomManager）
     }
 
     /// <summary>波次升变预告配置（波次部署时对指定棋子添加预告——下波次升变）。</summary>

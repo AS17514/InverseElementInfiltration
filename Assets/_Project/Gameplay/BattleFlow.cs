@@ -43,6 +43,7 @@ namespace TheLaw.Gameplay
         private bool _enemyTurnEndPending;   // 敌方回合结束待定——本阶段表现全部播完才切回玩家回合（动画优先）
         private bool _hadEnemyPresentation;  // 本轮敌方回合是否有表现（有→表现完即切；无→等阶段展示信号）
         private bool _deployedThisRound;     // 本轮波次是否部署（部署动画挂起点）
+        private bool _pendingAutoPromote;    // 自动预告挂起（2026-08-19：本波第 1 回合结束后预告离中心最近 2 棋子，第 3 回合随机升变）
         private int _enemyBudget; // 敌方回合行动次数预算（逐步决策——每步一个行动；2026-08-13 替代请求队列）
         private readonly HashSet<int> _actedEnemyPieces = new HashSet<int>(); // 本回合已行动的敌方棋子（① 排除——防 requests[0] 固定重复执行）
 
@@ -106,6 +107,7 @@ namespace TheLaw.Gameplay
             _enemyTurnEndPending = false;
             _hadEnemyPresentation = false;
             _deployedThisRound = false;
+            _pendingAutoPromote = false; // 新字段必须进重置清单——防跨局残留（预告挂起未消费）
             _enemyBudget = 0; // 敌方行动预算（新字段必须进重置清单——防跨局残留）
             _actedEnemyPieces.Clear(); // 已行动棋子集合（新字段必须进重置清单——防跨局残留）
         }
@@ -210,6 +212,12 @@ namespace TheLaw.Gameplay
             CheckVictory(false);
             if (_state.Phase != BattlePhase.GameOver)
             {
+                // 自动预告（2026-08-19）：本波第 1 回合结束后（敌方执行完行动）——离中心最近 2 个敌方棋子获升变预告
+                if (_pendingAutoPromote)
+                {
+                    _pendingAutoPromote = false;
+                    AnnounceAutoPromotions();
+                }
                 // 动画优先：敌方回合展示到本阶段表现全部播完（含波次部署/AI 行动动画）再切回玩家回合
                 _enemyTurnEndPending = true;
                 // ⚠️ 2026-08-12：_hadEnemyPresentation 不在此采样（串行化后采样时表现已完成、_waitingPresentation 已清，
@@ -217,6 +225,60 @@ namespace TheLaw.Gameplay
                 // 改为 WaitPresentation 表现发生时锁存（有表现即标记，不依赖采样时机）
                 TryEndEnemyTurn();
             }
+        }
+
+        /// <summary>
+        /// 自动预告（2026-08-19）：敌方场上离棋盘中心 (3.5,3.5) 最近的两个棋子获升变预告——
+        /// countdown=2（第 2 回合递减→1、第 3 回合递减→0 升变）；newDefId=0 表示升变时从升变类棋子随机（RandomManager）。
+        /// </summary>
+        private void AnnounceAutoPromotions()
+        {
+            var enemyPieces = new List<PieceInstance>();
+            foreach (var piece in _state.Pieces.Values)
+            {
+                if (piece.side == Side.Enemy)
+                {
+                    enemyPieces.Add(piece);
+                }
+            }
+            enemyPieces.Sort((a, b) => DistToCenter(a.position).CompareTo(DistToCenter(b.position)));
+            int take = Mathf.Min(2, enemyPieces.Count);
+            for (int i = 0; i < take; i++)
+            {
+                var piece = enemyPieces[i];
+                var ann = new PromoteAnnouncement
+                {
+                    pieceId = piece.Id,
+                    newDefId = 0,   // 升变时随机（RandomManager——种子相关可复现）
+                    countdown = 2,  // 本波第 3 回合开始升变
+                };
+                _state.PromoteAnnouncements.Add(ann);
+                EventCenter.Instance.EventTrigger(GameEvent.PromoteAnnounced, ann);
+            }
+        }
+
+        /// <summary>离棋盘中心 (3.5,3.5) 的曼哈顿距离。</summary>
+        private static float DistToCenter(Vector2Int cell)
+        {
+            return Mathf.Abs(cell.x - 3.5f) + Mathf.Abs(cell.y - 3.5f);
+        }
+
+        /// <summary>从升变类棋子（价值档位 Promoted）随机抽一个（RandomManager.Range——可复现）；池空返回 0。</summary>
+        private int PickRandomPromotedDef()
+        {
+            var candidates = new List<int>();
+            foreach (var def in ConfigTable.All<PieceDef>())
+            {
+                if (_state.GetEffectiveType(def.Id) == PieceType.Promoted)
+                {
+                    candidates.Add(def.Id);
+                }
+            }
+            if (candidates.Count == 0)
+            {
+                return 0;
+            }
+            return candidates[RandomManager.Instance.Range(0, candidates.Count)];
         }
 
         /// <summary>敌方回合收尾：表现全部完成才切回玩家回合——阶段切换留动画时间。</summary>
@@ -613,7 +675,16 @@ namespace TheLaw.Gameplay
                     var piece = _state.GetPiece(ann.pieceId);
                     if (piece != null && piece.side == Side.Enemy)
                     {
-                        _resolver.Resolve(new PromoteAction(ann.pieceId, ann.newDefId));
+                        // ⚠️ 2026-08-19：newDefId=0 → 自动预告模式——升变目标从升变类棋子随机（RandomManager，种子相关可复现）
+                        int targetDefId = ann.newDefId;
+                        if (targetDefId == 0)
+                        {
+                            targetDefId = PickRandomPromotedDef();
+                        }
+                        if (targetDefId != 0)
+                        {
+                            _resolver.Resolve(new PromoteAction(ann.pieceId, targetDefId));
+                        }
                     }
                 }
             }
@@ -630,12 +701,47 @@ namespace TheLaw.Gameplay
                 }
                 var deployedThisWave = new List<PieceInstance>();
                 bool anyDeployed = false;
-                foreach (var defId in wave.pieceDefIds)
+                // 阵容：固定列表 或 随机池（2026-08-19——从初始/部署类棋子随机抽 count 个，可重复；RandomManager 可复现）
+                var defIds = wave.pieceDefIds;
+                if (wave.randomPool)
                 {
-                    var cell = FindDeployCell(Side.Enemy);
+                    var candidates = new List<int>();
+                    foreach (var def in ConfigTable.All<PieceDef>())
+                    {
+                        if (_state.GetEffectiveType(def.Id) == wave.poolType)
+                        {
+                            candidates.Add(def.Id);
+                        }
+                    }
+                    if (candidates.Count == 0)
+                    {
+                        Debug.LogWarning($"[BattleFlow] 波次随机池为空（{wave.poolType}）——本波不部署");
+                        defIds = new List<int>();
+                    }
+                    else
+                    {
+                        defIds = new List<int>();
+                        for (int i = 0; i < Mathf.Max(0, wave.count); i++)
+                        {
+                            defIds.Add(candidates[RandomManager.Instance.Range(0, candidates.Count)]);
+                        }
+                    }
+                }
+                int slot = 0;
+                foreach (var defId in defIds)
+                {
+                    // 固定站位（与阵容顺序对应）；空 = 部署区自动找位；固定位被占用（前一波残留）→ 跳过该棋子
+                    var cell = wave.positions.Count > 0
+                        ? (slot < wave.positions.Count ? wave.positions[slot] : new Vector2Int(-1, -1))
+                        : FindDeployCell(Side.Enemy);
+                    slot++;
                     if (cell.x < 0)
                     {
-                        break; // 部署区无空位
+                        break; // 固定站位耗尽 / 部署区无空位
+                    }
+                    if (wave.positions.Count > 0 && (_state.Pieces.ContainsKey(cell) || _state.Obstacles.Contains(cell)))
+                    {
+                        continue; // 固定站位被占用——跳过（前一波棋子未清理）
                     }
                     var deployAction = new DeployAction(defId, Side.Enemy, cell) { waveIndex = _deployedWaveIndex }; // 打波次标（每波得分）
                     _resolver.Resolve(deployAction);
@@ -650,21 +756,29 @@ namespace TheLaw.Gameplay
                     break;
                 }
                 _deployedThisRound = true;
-                // 本波开始 → 预告下一波升变（配置的升变棋子）
-                foreach (var promo in wave.promotions)
+                // 自动预告模式（2026-08-19）：本波第 1 回合结束后预告离中心最近 2 个敌方棋子（EndEnemyTurn 触发）——此处仅挂起
+                if (wave.autoPromote)
                 {
-                    if (promo.pieceIndexInWave >= 0 && promo.pieceIndexInWave < deployedThisWave.Count)
+                    _pendingAutoPromote = true;
+                }
+                // 本波开始 → 预告下一波升变（配置的升变棋子——旧机制；autoPromote 自动预告模式时互斥跳过）
+                if (!wave.autoPromote)
+                {
+                    foreach (var promo in wave.promotions)
                     {
-                        var target = deployedThisWave[promo.pieceIndexInWave];
-                        if (target != null)
+                        if (promo.pieceIndexInWave >= 0 && promo.pieceIndexInWave < deployedThisWave.Count)
                         {
-                            _state.PromoteAnnouncements.Add(new PromoteAnnouncement
+                            var target = deployedThisWave[promo.pieceIndexInWave];
+                            if (target != null)
                             {
-                                pieceId = target.Id,
-                                newDefId = promo.toDefId,
-                                countdown = 1, // 下一波次升变
-                            });
-                            EventCenter.Instance.EventTrigger(GameEvent.PromoteAnnounced, new PromoteAnnouncement { pieceId = target.Id, newDefId = promo.toDefId, countdown = 1 });
+                                _state.PromoteAnnouncements.Add(new PromoteAnnouncement
+                                {
+                                    pieceId = target.Id,
+                                    newDefId = promo.toDefId,
+                                    countdown = 1, // 下一波次升变
+                                });
+                                EventCenter.Instance.EventTrigger(GameEvent.PromoteAnnounced, new PromoteAnnouncement { pieceId = target.Id, newDefId = promo.toDefId, countdown = 1 });
+                            }
                         }
                     }
                 }

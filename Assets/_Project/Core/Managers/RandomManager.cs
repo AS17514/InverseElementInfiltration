@@ -26,11 +26,15 @@ namespace TheLaw.Core
             _random = new Random(seed);
         }
 
-        /// <summary>[minInclusive, maxExclusive) 随机整数。</summary>
+        /// <summary>[minInclusive, maxExclusive) 随机整数。
+        /// ⚠️ 2026-08-19：改用 NextDouble 实现（原 `_random.Next(min,max)` 整数消耗与 FromJson 重放的
+        /// NextDouble 补不一致 → 读档序列漂移——记忆 #18 警告场景；同款 NextDouble 补必然对齐）。</summary>
         public int Range(int minInclusive, int maxExclusive)
         {
             _callCount++;
-            return _random.Next(minInclusive, maxExclusive);
+            int span = maxExclusive - minInclusive;
+            if (span <= 0) return minInclusive;
+            return minInclusive + (int)(_random.NextDouble() * span);
         }
 
         /// <summary>加权随机取一项（事件池抽取等）。items 空抛异常。</summary>

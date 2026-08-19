@@ -33,6 +33,7 @@ namespace TheLaw.Data
         public int endCountdown;              // 末波强制判定倒计时（回合数）
         public List<WavePromotion> promotions = new List<WavePromotion>(); // 升变预告：本波第 N 个棋子将在下一波升变（旧机制）
         public bool autoPromote;              // 自动预告模式（2026-08-19）：本波第 1 回合结束后预告敌方场上离中心最近 2 个棋子，第 3 回合开始自动升变为随机升变棋子（RandomManager）
+        public int waveScoreTarget;           // 每波达标线（2026-08-19 计分规则：该波次结算得分之和达标线；0=未配置——第 3 关旧骨架每波>0；数值策划回填）
     }
 
     /// <summary>波次升变预告配置（波次部署时对指定棋子添加预告——下波次升变）。</summary>

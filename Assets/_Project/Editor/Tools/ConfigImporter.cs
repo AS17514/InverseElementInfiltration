@@ -270,6 +270,7 @@ namespace TheLaw.EditorTools
                     endCountdown = w.endCountdown,
                     promotions = ParsePromotions(w.promotions), // 波次升变预告（2026-08-12：DTO 补字段——此前只能手动配资产，与"JSON 是权威源"公约冲突）
                     autoPromote = w.autoPromote, // 自动预告模式（2026-08-19）
+                    waveScoreTarget = w.waveScoreTarget, // 每波达标线（2026-08-19 计分规则；0=未配置）
                 };
                 // 随机池（2026-08-19：Initial/Deployable——从该类棋子随机抽 count 个，可重复）
                 if (!string.IsNullOrEmpty(w.pool))
@@ -681,7 +682,7 @@ namespace TheLaw.EditorTools
 
         private class MapJson { public string mapName; public string displayName; public string description; public List<string> floors; }
         private class FloorJson { public string floorName; public string displayName; public string description; public string victoryRule; public int targetScore; public int enemyMaxAP; public List<string> eventSequence; public List<string> eventPoolIds; public List<WaveJson> waves; }
-        private class WaveJson { public int startTurn; public List<string> pieceDefIds; public string pool; public int count; public List<PointJson> positions; public bool isLastWave; public int endCountdown; public List<WavePromotionJson> promotions; public bool autoPromote; }
+        private class WaveJson { public int startTurn; public List<string> pieceDefIds; public string pool; public int count; public List<PointJson> positions; public bool isLastWave; public int endCountdown; public List<WavePromotionJson> promotions; public bool autoPromote; public int waveScoreTarget; }
         private class WavePromotionJson { public int pieceIndexInWave; public string toDefId; }
         private class RelicsJson { public List<RelicJson> relics; }
         private class RelicJson { public string relicName; public string displayName; public string description; public List<AbilityJson> abilities; }

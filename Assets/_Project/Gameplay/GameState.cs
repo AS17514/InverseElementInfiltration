@@ -28,7 +28,12 @@ namespace TheLaw.Gameplay
         public List<int> DrawPile { get; internal set; } = new List<int>();
         public int PlayerAP { get; internal set; }
         public int PlayerAPMax { get; internal set; } = 1; // ⚠️ 2026-08-19：策划新案确认初始上限 1（能力可增加）；原 2
+        /// <summary>总得分（2026-08-19 计分规则：回合结算后的本关总得分——**不跨关累计**，ResetForBattle 清）。</summary>
         public int PlayerScore { get; internal set; }
+        /// <summary>基础得分（2026-08-19 计分规则：敌方棋子被击败 → +该棋子价值；回合结束按 基础分×倍率 结算后清零）。</summary>
+        public int BaseScore { get; internal set; }
+        /// <summary>得分倍率（2026-08-19 计分规则：默认 1；特殊效果可修改——来源未设计，字段预留；结算后复位 1）。</summary>
+        public int ScoreMultiplier { get; internal set; } = 1;
 
         // ========== 敌方 ==========
         public List<int> EnemyWavePool { get; internal set; } = new List<int>(); // 波次池（加牌落点）
@@ -153,6 +158,8 @@ namespace TheLaw.Gameplay
             DrawPile.Clear();
             PlayerAP = 0;
             PlayerScore = 0;
+            BaseScore = 0;
+            ScoreMultiplier = 1;
             EnemyWavePool.Clear();
             EnemyAP = 0;
             EnemyScore = 0;
@@ -185,8 +192,9 @@ namespace TheLaw.Gameplay
         /// 战斗态重置（每场战斗开始时调用——与 ResetForNewRun 整局重置区分）。
         /// ⚠️ 2026-08-13：跨战斗的战斗态此前从未重置（第 1 层是末层掩盖了问题）——胜利推进下一场战斗时
         /// TurnCount 继承（波次瞬发）/棋盘继承（残局）/波次分继承（结算数据串）。
-        /// 清：每场战斗重来的字段；留：整局积累的字段（手牌/积分/遗物/塔进度/回放——局内持久）。
-        /// 注：积分（PlayerScore/EnemyScore）当前保留（跨战斗累计）——语义待策划确认（待确认清单⑥），确认后调整。
+        /// 清：每场战斗重来的字段；留：整局积累的字段（手牌/遗物/塔进度/回放——局内持久）。
+        /// ⚠️ 2026-08-19（策划确认）：积分**不跨关累计**——PlayerScore/EnemyScore/BaseScore/ScoreMultiplier 每关清
+        /// （本关从 0 开始；原"跨战斗保留"注释作废——待确认清单⑥已答）。
         /// </summary>
         public void ResetForBattle()
         {
@@ -198,6 +206,10 @@ namespace TheLaw.Gameplay
             _nextPieceId = 1;
             PlayerAP = 0;
             EnemyAP = 0;
+            PlayerScore = 0;
+            EnemyScore = 0;
+            BaseScore = 0;
+            ScoreMultiplier = 1;
             WaveScores.Clear();
             PromoteAnnouncements.Clear();
             WaveEndCountdown = -1;
@@ -217,6 +229,8 @@ namespace TheLaw.Gameplay
                 PlayerAP = PlayerAP,
                 PlayerAPMax = PlayerAPMax,
                 PlayerScore = PlayerScore,
+                BaseScore = BaseScore,
+                ScoreMultiplier = ScoreMultiplier,
                 EnemyAP = EnemyAP,
                 EnemyAPMax = EnemyAPMax,
                 EnemyScore = EnemyScore,
@@ -273,6 +287,9 @@ namespace TheLaw.Gameplay
             PlayerAP = dto.PlayerAP;
             PlayerAPMax = dto.PlayerAPMax;
             PlayerScore = dto.PlayerScore;
+            BaseScore = dto.BaseScore;
+            // ⚠️ 2026-08-19：倍率缺省防御——旧档缺字段（int 默认 0）→ 结算全 0；显式 clamp ≥1
+            ScoreMultiplier = dto.ScoreMultiplier <= 0 ? 1 : dto.ScoreMultiplier;
             EnemyAP = dto.EnemyAP;
             EnemyAPMax = dto.EnemyAPMax;
             EnemyScore = dto.EnemyScore;
@@ -364,6 +381,8 @@ namespace TheLaw.Gameplay
         public int PlayerAP;
         public int PlayerAPMax;
         public int PlayerScore;
+        public int BaseScore;        // 计分：基础得分（2026-08-19）
+        public int ScoreMultiplier;  // 计分：倍率（2026-08-19——缺省 0 读档 clamp 1）
         public int EnemyAP;
         public int EnemyAPMax;
         public int EnemyScore;

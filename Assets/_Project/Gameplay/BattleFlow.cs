@@ -920,6 +920,14 @@ namespace TheLaw.Gameplay
             {
                 return;
             }
+            // ⚠️ 2026-08-19 计分规则：**回合结算**统一在此（3 入口兜底：ProcessRequest 末尾/末波强制/EndEnemyTurn——
+            // 玩家回合内全灭/末波强制结算均先入账再判定，防最后击杀分丢失）；
+            // 第 1 关（victoryRule=WipeOut——纯战斗关）**完全不结算**（2026-08-19 确认）；
+            // SettleScore 幂等（无分可结跳过——同帧多入口不重复）
+            if (_floor.victoryRule != VictoryRule.WipeOut)
+            {
+                _resolver.SettleScore(_state.WaveScores.Count - 1); // 当前波 = 已入账最后一波（未开始 = -1 → 只累总得分）
+            }
             // 玩家失败（无棋且无手牌——仅玩家侧）
             if (_state.IsPlayerDefeated())
             {
@@ -961,14 +969,22 @@ namespace TheLaw.Gameplay
             return _deployedWaveIndex >= _floor.waveDefs.Count;
         }
 
-        /// <summary>第 3 关"每波得分均达标"（骨架：每波得分 &gt; 0 视为达标——达标线数值待策划回填）。</summary>
+        /// <summary>
+        /// 第 3 关"每波得分均达标"（2026-08-19：按 WaveDef.waveScoreTarget 判断——0 = 未配置，旧骨架每波 &gt; 0；
+        /// 达标线数值待策划回填）。
+        /// </summary>
         private bool AllWavesScored()
         {
             for (int i = 0; i < _state.WaveScores.Count; i++)
             {
-                if (_state.WaveScores[i] <= 0)
+                int target = i < _floor.waveDefs.Count ? _floor.waveDefs[i].waveScoreTarget : 0;
+                if (target > 0)
                 {
-                    return false;
+                    if (_state.WaveScores[i] < target) return false;
+                }
+                else if (_state.WaveScores[i] <= 0)
+                {
+                    return false; // 未配置达标线 → 旧骨架（每波 > 0 视为达标）
                 }
             }
             return true;

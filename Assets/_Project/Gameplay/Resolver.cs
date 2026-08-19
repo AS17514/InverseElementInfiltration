@@ -285,26 +285,49 @@ namespace TheLaw.Gameplay
             _state.PiecesById.Remove(victim.Id);
 
             // 击杀积分（价值分——2026-08-15 改走推导：价值 = 生效程序槽位总和，编辑后随程序变化）
-            // + 墓地（仅玩家棋子；敌方无手牌概念）+ 每波得分累计
+            // + 墓地（仅玩家棋子；敌方无手牌概念）
+            // ⚠️ 2026-08-19 计分规则：击败敌方棋子 → **基础得分** + 该棋子价值（固定得分规则）；
+            // 总得分/波次得分由回合结算（SettleScore）统一入账（原击杀直加 PlayerScore/WaveScores 移除）
             int killValue = PieceValue.SumValue(victim.GetProgram(_state));
             if (victim.side == Side.Player)
             {
                 _state.Graveyard.Add(victim.DefId);
+                // ⚠️ EnemyScore：**无策划依据的遗留实现**（2026-08-19 确认保留——仅结算面板显示"敌方得分"，不参与任何判定；
+                // 玩家计分规则（回合计分）只有玩家侧——见 计分规则_策划口述_20260819.md）
                 _state.EnemyScore += killValue;
             }
             else
             {
-                _state.PlayerScore += killValue;
-                if (victim.waveIndex >= 0 && victim.waveIndex < _state.WaveScores.Count)
-                {
-                    _state.WaveScores[victim.waveIndex] += killValue; // 每波得分累计（第 3 关"每波达标"）
-                }
+                _state.BaseScore += killValue; // 基础得分积累（回合结束按 基础分×倍率 结算）
             }
 
             // OnKill 触发点（层差异 + 遗物 + 特殊能力——动作进待执行队列）
             OnKillTriggers(victim, killer);
 
             EventCenter.Instance.EventTrigger(GameEvent.PieceDied, new DeathInfo { PieceId = victim.Id, Side = victim.side, KillerId = killer != null ? killer.Id : -1 });
+        }
+
+        /// <summary>
+        /// 回合结算（2026-08-19 计分规则——落账唯一入口；BattleFlow.CheckVictory 开头统一调用——3 入口兜底）：
+        /// 得分 = 基础分 × 倍率 → 加算总得分（本关）+ 当前波次统计 → 基础分清零、倍率复位 1。
+        /// 幂等：基础分 0 且倍率 1（无分可结）→ 跳过（不发事件——CheckVictory 同帧多入口不重复结算）。
+        /// 波次索引防御：waveIndex 未开始/越界 → 只累总得分、跳过波次记账。
+        /// </summary>
+        public void SettleScore(int waveIndex)
+        {
+            if (_state.BaseScore == 0 && _state.ScoreMultiplier == 1)
+            {
+                return; // 无分可结（幂等——防 CheckVictory 同帧多入口重复结算）
+            }
+            int gained = _state.BaseScore * _state.ScoreMultiplier;
+            _state.PlayerScore += gained;
+            if (waveIndex >= 0 && waveIndex < _state.WaveScores.Count)
+            {
+                _state.WaveScores[waveIndex] += gained; // 波次得分 = 该波次各回合结算得分之和
+            }
+            _state.BaseScore = 0;
+            _state.ScoreMultiplier = 1;
+            EventCenter.Instance.EventTrigger(GameEvent.StateChanged, "score"); // 得分变化（前端刷新）
         }
 
         private void OnKillTriggers(PieceInstance victim, PieceInstance killer)

@@ -67,6 +67,16 @@ namespace TheLaw.UI
 
         protected override bool CloseOnBgClick => true; // 点背景 = 取消（2026-08-14）
 
+        /// <summary>
+        /// 点背景 = 取消（2026-08-19 卡死级修复）：必须走 Close（PopOverlay + GamePause.Pop）——
+        /// 原默认 OnBgClicked = Hide() 只隐藏视觉，漏 PopOverlay → 暂停计数残留 → timeScale 永久 0（世界冻结）。
+        /// 与 SettingsPanel/ItemGettingPanel 覆写模式一致。
+        /// </summary>
+        protected override void OnBgClicked()
+        {
+            Close();
+        }
+
         void OnConfirmClicked()
         {
             var cb = _onConfirm;

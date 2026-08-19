@@ -10,7 +10,7 @@ MonoBehaviour:
   m_Enabled: 1
   m_EditorHideFlags: 0
   m_Script: {fileID: 11500000, guid: 9f7d2e55ca2606a40bec93292acdb194, type: 3}
-  m_Name: Tpl_Melee_11
+  m_Name: Tpl_Move_20
   m_EditorClassIdentifier: 
-  _id: 1548456203
-  templateKey: Attack-11
+  _id: 395587860
+  templateKey: Move-20

@@ -1,5 +1,5 @@
 {
-  "_note": "槽位价值表（模板'种类+编号'→价值；键与描述表同款：Move-N / Attack-N 攻击共用编号空间）。2026-08-19 策划价值规范执行：Move-1~9/Attack-1~10 按策划口述值（冲突按策划：Attack-4=1、Move-8=4）；Attack-5 临时价解除（=1，短弓手 1+1=2 初始档）；Move-10~19/Attack-12~21 为用户模块表价值（2026-08-16）。**Effect-N = 能力/效果槽价值预留**（Effect-1 护盾=1 盾兵 / Effect-2 刺客能力=4 / Effect-3 炮手能力=5——效果槽为可装备行动槽、装备放程序最上面，交互归前端；EffectTemplate 落地时对接键）。",
+  "_note": "槽位价值表（模板'种类+编号'→价值）。**双层价格模型（2026-08-19）**：内置槽（Move-1~9/Attack-1~11——棋子默认程序，策划口述价，决定棋子价值/档位）与外部独立可装备模块（Move-10~20/Attack-12~23——编辑事件模块，v1 用户导出价）**同结构可双编号不同价**：Move-20=Move-8 结构价3、Attack-22=直射前2价2、Attack-23=直射前3价3（外部）；内置对应价保持（Move-8=4/Attack-4=1/Attack-5=1）。**Effect-N = 能力/效果槽价值预留**（Effect-1 护盾=1 盾兵 / Effect-2 刺客能力=4 / Effect-3 炮手能力=5——可装备行动槽、装配交互归前端；EffectTemplate 落地时对接键）。",
   "values": [
     { "type": "Move", "id": 1, "value": 0 },
     { "type": "Move", "id": 2, "value": 1 },
@@ -41,6 +41,9 @@
     { "type": "Attack", "id": 19, "value": 4 },
     { "type": "Attack", "id": 20, "value": 3 },
     { "type": "Attack", "id": 21, "value": 4 },
+    { "type": "Attack", "id": 22, "value": 2 },
+    { "type": "Attack", "id": 23, "value": 3 },
+    { "type": "Move", "id": 20, "value": 3 },
     { "type": "Effect", "id": 1, "value": 1 },
     { "type": "Effect", "id": 2, "value": 4 },
     { "type": "Effect", "id": 3, "value": 5 }

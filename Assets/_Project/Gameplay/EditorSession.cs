@@ -143,6 +143,61 @@ namespace TheLaw.Gameplay
             return result;
         }
 
+        /// <summary>
+        /// 编辑候选池（2026-08-19 双池模型——前端切换棋子时查询并刷新 UI）：
+        /// ① 外部共享池 = 模板库（纯外部编号模块——templates.json 已不含内置编号，外部价）
+        /// ② 本棋子"被覆盖的内置槽" = 默认程序槽中内置编号不在当前程序的槽（差集推导，零存储——
+        ///    符合原则 4：可推导不入快照；仅本棋子可见——其他棋子候选不含它，天然满足"隐藏格"语义）
+        /// 覆盖后玩家可把内置槽单独放回本棋子；还原（RestoreAll）清编辑差异后差集自然为空。
+        /// </summary>
+        public List<Template> GetEditCandidates(int defId)
+        {
+            var result = new List<Template>();
+            // ① 外部共享池（模板库——外部独立模块，所有棋子可见）
+            foreach (var template in TemplateLibrary.All())
+            {
+                result.Add(template);
+            }
+            // ② 本棋子被覆盖的内置槽（默认程序 − 当前程序）
+            var def = ConfigTable.Get<PieceDef>(defId);
+            if (def != null && def.programSet != null && def.programSet.Count > 0)
+            {
+                var current = GetCurrentProgram(defId); // 编辑差异优先；空则=默认（未编辑——内置槽仍在棋子上，无需放回）
+                foreach (var slot in def.programSet[0].slots)
+                {
+                    if (IsBuiltinSlot(slot) && !ContainsSlot(current, slot))
+                    {
+                        result.Add(slot);
+                    }
+                }
+            }
+            return result;
+        }
+
+        /// <summary>内置编号判定（2026-08-19 双池模型：棋子内置槽用 Move≤9 / Attack≤11；外部模块编号 ≥10/≥12）。</summary>
+        private static bool IsBuiltinSlot(Template slot)
+        {
+            switch (slot)
+            {
+                case MoveTemplate m: return m.id > 0 && m.id <= 9;
+                case AttackTemplate a: return a.id > 0 && a.id <= 11;
+                default: return false;
+            }
+        }
+
+        /// <summary>程序是否含同类型同编号槽（id 相同 = 同结构）。</summary>
+        private static bool ContainsSlot(List<Template> program, Template slot)
+        {
+            foreach (var s in program)
+            {
+                if (s != null && slot != null && s.GetType() == slot.GetType() && s.id > 0 && s.id == slot.id)
+                {
+                    return true;
+                }
+            }
+            return false;
+        }
+
         /// <summary>预览（棋子副本模拟，不改状态——骨架：用副本实例跑 BoardRules）。</summary>
         public void PreviewProgram(PieceDef def, List<Template> program)
         {

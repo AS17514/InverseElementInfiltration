@@ -10,7 +10,7 @@ MonoBehaviour:
   m_Enabled: 1
   m_EditorHideFlags: 0
   m_Script: {fileID: 11500000, guid: 9f7d2e55ca2606a40bec93292acdb194, type: 3}
-  m_Name: Tpl_Arcing_6
+  m_Name: Tpl_DirectFire_23
   m_EditorClassIdentifier: 
-  _id: 943188073
-  templateKey: Attack-6
+  _id: 2011912229
+  templateKey: Attack-23

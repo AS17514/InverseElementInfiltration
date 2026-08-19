@@ -129,6 +129,11 @@ namespace TheLaw.Gameplay
                             {
                                 result.Add(ability);
                             }
+                            else
+                            {
+                                // ⚠️ 2026-08-19 防御（评审加固）：能力资产名是静默字符串契约——查不到打 Warning（防静默失效）
+                                UnityEngine.Debug.LogWarning($"[PieceInstance] 效果模块能力资产缺失：{effect.abilityKey}（棋子 {DefId}——检查导入/注册）");
+                            }
                         }
                     }
                 }

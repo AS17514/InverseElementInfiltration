@@ -114,6 +114,20 @@ namespace TheLaw.EditorTools
             {
                 SetId(piece, StableHash(assetName)); // 稳定 Id（按资产名哈希——幂等：已有 Id 不重设）
             }
+            // ⚠️ 2026-08-19 防御（评审加固）：旧资产双轨检测——固有能力（specialAbilities）与程序效果模块并存
+            // （未重跑导入的旧棋子资产仍带 abilities → GetAllAbilities 双计——如旧盾兵 2 护盾）——重导入即清空，检测告警
+            if (abilities.Count > 0 && piece.programSet.Count > 0)
+            {
+                bool hasEffectModule = false;
+                foreach (var slot in piece.programSet[0].slots)
+                {
+                    if (slot is EffectTemplate) { hasEffectModule = true; break; }
+                }
+                if (hasEffectModule)
+                {
+                    Debug.LogWarning($"[导入器] {dto.pieceName}：固有能力与程序效果模块并存（{abilities.Count} 个能力）——请确认已迁移（能力应只由效果模块表达）");
+                }
+            }
             EditorUtility.SetDirty(piece); // 增量更新必须标脏（新建资产 CreateAsset 已标）
             Debug.Log($"[导入器] {(created ? "新建" : "更新")}：{dto.pieceName}（{assetName}，模块 {(piece.programSet.Count > 0 ? piece.programSet[0].slots.Count : 0)} 个，能力 {abilities.Count} 个，Id={piece.Id}）");
             return true;

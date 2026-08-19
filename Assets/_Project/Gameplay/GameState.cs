@@ -22,10 +22,12 @@ namespace TheLaw.Gameplay
         public Dictionary<int, PieceInstance> PiecesById { get; internal set; } = new Dictionary<int, PieceInstance>();
 
         // ========== 玩家 ==========
-        public List<int> Hand { get; internal set; } = new List<int>();      // 手牌（Def id 列表，最多 12）
+        public List<int> Hand { get; internal set; } = new List<int>();      // 手牌（Def id 列表——抽牌堆抽出）
         public List<int> Graveyard { get; internal set; } = new List<int>(); // 墓地（不算手牌）
+        /// <summary>抽牌堆（2026-08-19 策划确认新概念）：构筑牌组中【部署/升变】种类棋子；第一回合自动抽 4 + 1 AP 抽 1 行动。</summary>
+        public List<int> DrawPile { get; internal set; } = new List<int>();
         public int PlayerAP { get; internal set; }
-        public int PlayerAPMax { get; internal set; } = 2; // 初始 2、每回合回满、回合末清零
+        public int PlayerAPMax { get; internal set; } = 1; // ⚠️ 2026-08-19：策划新案确认初始上限 1（能力可增加）；原 2
         public int PlayerScore { get; internal set; }
 
         // ========== 敌方 ==========
@@ -37,6 +39,14 @@ namespace TheLaw.Gameplay
         // ========== 程序 ==========
         public Dictionary<int, List<Template>> CurrentPrograms { get; internal set; } = new Dictionary<int, List<Template>>(); // ② 种类级表（只存编辑差异）
         public HashSet<int> EditingDefs { get; internal set; } = new HashSet<int>(); // 编辑态标记（实时编辑——防半截程序进战斗）
+
+        // ========== 编辑会话（2026-08-19：两方案切换 + 编辑事件候选）==========
+        /// <summary>hide 模式：本棋子被替换/移除的外部模块（候选区隐藏；存档字段——还原时清空恢复展示）。show 模式恒空。</summary>
+        public Dictionary<int, List<Template>> HiddenModules { get; internal set; } = new Dictionary<int, List<Template>>();
+        /// <summary>编辑事件三选一：未修改基础棋子候选（defId，三类型各 1——最多 3；编辑事件触发时抽取）。</summary>
+        public List<int> EditCandidates { get; internal set; } = new List<int>();
+        /// <summary>编辑事件外部候选模块（移动/攻击/效果各随机 2——RandomManager 种子相关；GetEditCandidates ①部分优先）。</summary>
+        public List<Template> EditModuleCandidates { get; internal set; } = new List<Template>();
 
         // ========== 局内 ==========
         public List<RelicDef> Relics { get; internal set; } = new List<RelicDef>();
@@ -103,15 +113,16 @@ namespace TheLaw.Gameplay
         }
 
         /// <summary>
-        /// 玩家判负（无己方棋子 且 无手牌——仅玩家侧；敌方是 AI 测试员不吃此规则）。
+        /// 玩家判负（无己方棋子 且 手牌空 且 抽牌堆空——仅玩家侧；敌方是 AI 测试员不吃此规则）。
         /// ⚠️ 2026-08-13：原 `Pieces.Count == 0` 未按阵营过滤——玩家被清盘+手牌打光时敌方在场不判负，
         /// 只能空过回合等末波兜底（延迟失败）。改为按 side==Player 过滤（"棋盘无棋"=玩家的棋——架构原意）。
+        /// ⚠️ 2026-08-19（策划确认）：抽牌堆有牌 → 不判负——玩家仍可花 1 AP 抽牌翻盘（判负三条件：无棋+手牌空+抽牌堆空）。
         /// </summary>
         public bool IsPlayerDefeated()
         {
-            if (Hand.Count > 0)
+            if (Hand.Count > 0 || (DrawPile != null && DrawPile.Count > 0))
             {
-                return false; // 还有牌能部署——不判负
+                return false; // 还有牌能部署/能抽——不判负
             }
             foreach (var piece in Pieces.Values)
             {
@@ -139,6 +150,7 @@ namespace TheLaw.Gameplay
             PiecesById.Clear();
             Hand.Clear();
             Graveyard.Clear();
+            DrawPile.Clear();
             PlayerAP = 0;
             PlayerScore = 0;
             EnemyWavePool.Clear();
@@ -146,6 +158,9 @@ namespace TheLaw.Gameplay
             EnemyScore = 0;
             CurrentPrograms.Clear();
             EditingDefs.Clear();
+            HiddenModules.Clear();
+            EditCandidates.Clear();
+            EditModuleCandidates.Clear();
             Relics.Clear();
             WaveScores.Clear();
             PromoteAnnouncements.Clear();
@@ -207,9 +222,13 @@ namespace TheLaw.Gameplay
                 EnemyScore = EnemyScore,
                 Hand = new List<int>(Hand),
                 Graveyard = new List<int>(Graveyard),
+                DrawPile = new List<int>(DrawPile),
                 EnemyWavePool = new List<int>(EnemyWavePool),
                 CurrentPrograms = CurrentPrograms,
                 EditingDefs = new List<int>(EditingDefs),
+                HiddenModules = HiddenModules,
+                EditCandidates = new List<int>(EditCandidates),
+                EditModuleCandidates = EditModuleCandidates,
                 Relics = Relics.ConvertAll(r => r.Id),
                 WaveScores = new List<int>(WaveScores),
                 PromoteAnnouncements = PromoteAnnouncements,
@@ -259,9 +278,13 @@ namespace TheLaw.Gameplay
             EnemyScore = dto.EnemyScore;
             Hand = dto.Hand ?? new List<int>();
             Graveyard = dto.Graveyard ?? new List<int>();
+            DrawPile = dto.DrawPile ?? new List<int>();
             EnemyWavePool = dto.EnemyWavePool ?? new List<int>();
             CurrentPrograms = dto.CurrentPrograms ?? new Dictionary<int, List<Template>>();
             EditingDefs = dto.EditingDefs != null ? new HashSet<int>(dto.EditingDefs) : new HashSet<int>();
+            HiddenModules = dto.HiddenModules ?? new Dictionary<int, List<Template>>();
+            EditCandidates = dto.EditCandidates ?? new List<int>();
+            EditModuleCandidates = dto.EditModuleCandidates ?? new List<Template>();
             Relics = new List<RelicDef>();
             if (dto.Relics != null)
             {
@@ -346,9 +369,13 @@ namespace TheLaw.Gameplay
         public int EnemyScore;
         public List<int> Hand;
         public List<int> Graveyard;
+        public List<int> DrawPile;   // 抽牌堆（2026-08-19）
         public List<int> EnemyWavePool;
         public Dictionary<int, List<Template>> CurrentPrograms;
         public List<int> EditingDefs;
+        public Dictionary<int, List<Template>> HiddenModules;   // 编辑会话 hide 模式（2026-08-19）
+        public List<int> EditCandidates;                        // 编辑事件三选一候选（defId）
+        public List<Template> EditModuleCandidates;             // 编辑事件 6 候选模块
         public List<int> Relics;
         public List<int> WaveScores;
         public List<PromoteAnnouncement> PromoteAnnouncements;

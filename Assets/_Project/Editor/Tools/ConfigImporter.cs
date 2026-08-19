@@ -359,7 +359,7 @@ namespace TheLaw.EditorTools
             {
                 // ⚠️ 2026-08-13：key 统一"种类前缀+编号"（与描述表/编号体系同构）——原用具体类型前缀（"Melee-1"）
                 // 与描述表 "Attack-1" 不一致（攻击类统一 Attack 前缀、移动类 Move 前缀）
-                string key = t.type == "Move" ? $"Move-{t.id}" : $"Attack-{t.id}";
+                string key = t.type == "Move" ? $"Move-{t.id}" : t.type == "Effect" ? $"Effect-{t.id}" : $"Attack-{t.id}";
                 string assetPath = $"{ConfigAssetsDir}/Tpl_{t.type}_{t.id}.asset";
                 var def = LoadOrCreate<TemplateDef>(assetPath, $"Tpl_{t.type}_{t.id}"); // 增量：已存在更新不删建
                 def.templateKey = key;
@@ -427,6 +427,9 @@ namespace TheLaw.EditorTools
                         }
                     }
                     return atk;
+                case "Effect":
+                    // 效果槽（2026-08-19 数据层）：引用特殊能力资产（abilityKey = 资产名——运行时 ConfigTable 查）
+                    return new EffectTemplate { id = t.id, abilityKey = t.ability };
                 default:
                     Debug.LogWarning($"[配置导入器] 未知模板类型：{t.type}");
                     return null;
@@ -658,7 +661,7 @@ namespace TheLaw.EditorTools
         private class TemplatesJson { public List<TemplateJson> templates; }
         private class TemplateJson
         {
-            public string type;                 // Move/Melee/MeleeAOE/DirectFire/Arcing/Spell
+            public string type;                 // Move/Melee/MeleeAOE/DirectFire/Arcing/Spell/Effect
             public int id;                      // 种类内编号（与棋子内联模块/描述表 key 同构）
             public List<TplPathJson> paths;     // Move
             public List<PointJson> jumpOffsets; // Move 跳跃落点（2026-08-16）
@@ -668,6 +671,7 @@ namespace TheLaw.EditorTools
             public int damage;
             public bool friendlyFire;
             public List<PointJson> points;      // 抛射/法术自由点选
+            public string ability;              // Effect：特殊能力资产名（abilityKey）
         }
         private class AttackRangeStepJson { public string direction; public List<int> ranges; }
         private class TplPathJson { public List<TplSegmentJson> segments; }

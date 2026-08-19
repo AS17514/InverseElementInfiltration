@@ -44,6 +44,10 @@ namespace TheLaw.UI
                 case AttackTemplate a:
                     if (a.id <= 0) return null;
                     return _table.TryGetValue($"Attack-{a.id}", out var dd) ? dd : null;
+                case EffectTemplate e:
+                    // 效果槽（2026-08-19 数据层）：描述表 Effect-N
+                    if (e.id <= 0) return null;
+                    return _table.TryGetValue($"Effect-{e.id}", out var ed) ? ed : null;
                 default:
                     return null;
             }
@@ -58,6 +62,8 @@ namespace TheLaw.UI
                     return m.id > 0 ? $"Move-{m.id}" : FeatureByStructure(m);
                 case AttackTemplate a:
                     return a.id > 0 ? $"Attack-{a.id}" : FeatureByStructure(a);
+                case EffectTemplate e:
+                    return e.id > 0 ? $"Effect-{e.id}" : "Effect";
                 default:
                     return "Skip";
             }

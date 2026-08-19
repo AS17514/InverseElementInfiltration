@@ -70,6 +70,10 @@ namespace TheLaw.Data
                     // 攻击模板共用编号空间（与描述表一致：Attack-N，跨 mode 不重复编号）
                     if (a.id > 0) key = $"Attack-{a.id}";
                     break;
+                case EffectTemplate e:
+                    // 效果槽（2026-08-19）：价值表 Effect-N（护盾/刺客能力/炮手能力——slot-values.json 已预留）
+                    if (e.id > 0) key = $"Effect-{e.id}";
+                    break;
                 default:
                     break; // SkipTemplate 等（新规则无跳过槽——价值 0）
             }

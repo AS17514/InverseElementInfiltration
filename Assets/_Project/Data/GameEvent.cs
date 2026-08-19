@@ -21,6 +21,7 @@ namespace TheLaw.Data
         WaveAnnounced,         // 波次预告（波次号, 阵容）
         PromoteAnnounced,      // 敌方升变预告（pieceId, newDefId, 倒计时）
         EventOpened,           // 事件关打开（携带 CurrentEventId——UI 打开事件界面）
+        EditCandidatesDrawn,   // 编辑事件候选就绪（2026-08-19：三选一棋子 + 6 候选模块已抽取——UI 显示三选一；查询 GameState.EditCandidates/EditModuleCandidates）
         ExtraActionGranted,    // 免费行动资格授予（携带棋子 Id——UI 显示"免费行动"标记）
         BuffsChanged,          // 棋子 buff 变化（携带棋子 Id——UI 刷新该棋子的 buff 标记；查询 BuffDisplay.GetBuffs）
 

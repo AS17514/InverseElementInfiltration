@@ -133,6 +133,17 @@ namespace TheLaw.Gameplay
 
         public void StartPlayerTurn()
         {
+            // ⚠️ 2026-08-19 抽牌堆机制（策划确认）：第一回合（TurnCount==0）开始——
+            // ① 手牌中【部署/升变】种类转入抽牌堆（初始种类已全摆完——Placement 校验兜底）
+            // ② 自动抽 4 张（抽牌堆 → 手牌）；此后靠"1 AP 抽 1"行动补充
+            if (_state.TurnCount == 0)
+            {
+                _resolver.SetupDrawPile();
+                for (int n = 0; n < 4 && _state.DrawPile.Count > 0; n++)
+                {
+                    _resolver.DrawCard();
+                }
+            }
             _state.PlayerAP = _state.PlayerAPMax;
             ChangePhase(BattlePhase.PlayerTurn);
             _floorRules.OnTurnStart(_state, _resolver);
@@ -340,6 +351,7 @@ namespace TheLaw.Gameplay
         public void OnPlayerRequestDeploy(DeployRequest request) => ProcessRequest(request, Side.Player);
         public void OnPlayerRequestPromote(PromoteRequest request) => ProcessRequest(request, Side.Player);
         public void OnPlayerRequestExecute(ExecuteRequest request) => ProcessRequest(request, Side.Player);
+        public void OnPlayerRequestDraw(DrawCardRequest request) => ProcessRequest(request, Side.Player);
 
         private void ProcessRequest(Request request, Side side)
         {
@@ -401,6 +413,14 @@ namespace TheLaw.Gameplay
                                 EventCenter.Instance.EventTrigger(GameEvent.BuffsChanged, execute.pieceId);
                             }
                             ExecutePiece(execute.pieceId, free, side); // 玩家逐槽选择 / AI 自动选（内部按 side 分流）
+                        }
+                        break;
+                    case DrawCardRequest:
+                        // 抽牌行动（2026-08-19 策划确认）：1 AP 抽 1 张；抽牌堆空 → 拒绝（无操作不扣费）
+                        if (side == Side.Player && _state.DrawPile != null && _state.DrawPile.Count > 0)
+                        {
+                            _resolver.DrawCard();
+                            DeductActionPoint(request.free, side);
                         }
                         break;
                 }
@@ -536,9 +556,29 @@ namespace TheLaw.Gameplay
                         }
                         if (playerTargets.Count == 0)
                         {
-                            _resolver.Resolve(new SkipAction(piece.Id, SkipReason.NoTarget));
-                            _ctx.slotIndex++;
-                            AdvanceSlot();
+                            // ✅ 2026-08-19 策划确认（"就是空放"）：敌方无玩家目标 → **空放**（攻击空格——挥空动画）。
+                            // 选空格挥空（不打己方——候选可能含敌方棋子）；候选无空格（全是己方格）→ 仍 Skip
+                            Vector2Int? emptyCell = null;
+                            foreach (var cell in aiAttackOptions)
+                            {
+                                if (_state.GetPieceAt(cell) == null)
+                                {
+                                    emptyCell = cell;
+                                    break;
+                                }
+                            }
+                            if (emptyCell != null)
+                            {
+                                _resolver.Resolve(_intentResolver.ResolveAttack(_state, piece, emptyCell.Value, attack)); // 空格挥空（DamageDealt TargetId=-1——UI 挥空动画）
+                                _ctx.slotIndex++;
+                                WaitPresentation();
+                            }
+                            else
+                            {
+                                _resolver.Resolve(new SkipAction(piece.Id, SkipReason.NoTarget)); // 无空格可挥（候选全是己方格）
+                                _ctx.slotIndex++;
+                                AdvanceSlot();
+                            }
                         }
                         else
                         {
@@ -553,6 +593,13 @@ namespace TheLaw.Gameplay
                     // ⚠️ 2026-08-15：新规则行动槽仅移动/攻击/效果（无跳过槽——不可编排）；
                     // 本分支为兼容保留（运行时自动跳过 NoMove/NoTarget 仍走 SkipAction——执行兜底不可删）
                     _resolver.Resolve(new SkipAction(piece.Id, SkipReason.NoMove));
+                    _ctx.slotIndex++;
+                    AdvanceSlot();
+                    break;
+                case EffectTemplate effect:
+                    // ⚠️ 2026-08-19：效果槽（护盾+1 等）——数据层先行；执行语义（被动 vs 每次行动、
+                    // 生效时机、是否耗 AP）待疑问 B/前端装配交互对齐——此处占位跳过（不落账不扣费）。
+                    // 装配 = 被动获得（策划语义），程序执行序列中不产生行动。
                     _ctx.slotIndex++;
                     AdvanceSlot();
                     break;

@@ -51,4 +51,13 @@ namespace TheLaw.Data
             this.pieceId = pieceId;
         }
     }
+
+    /// <summary>抽牌请求（2026-08-19 策划确认新行动：玩家消耗 1 AP 从抽牌堆抽 1 张到手牌；抽牌堆空 → 拒绝）。</summary>
+    [Serializable]
+    public class DrawCardRequest : Request
+    {
+        public DrawCardRequest()
+        {
+        }
+    }
 }

@@ -28,5 +28,5 @@ MonoBehaviour:
       relicName: 
   deckSizeLimit: 12
   totalValueLimit: 30
-  allowDuplicate: 0
-  promoteLimitByInitial: 0
+  allowDuplicate: 1
+  promoteLimitByInitial: 1

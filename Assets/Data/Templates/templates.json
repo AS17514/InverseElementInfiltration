@@ -365,6 +365,21 @@
       "range": 3,
       "damage": 1,
       "friendlyFire": true
+    },
+    {
+      "type": "Effect",
+      "id": 1,
+      "ability": "Ability_ShieldBlock_OnDamaged_1"
+    },
+    {
+      "type": "Effect",
+      "id": 2,
+      "ability": "Ability_ExtraAction_OnKill_1"
+    },
+    {
+      "type": "Effect",
+      "id": 3,
+      "ability": "Ability_Attach_OnAttack_Cross"
     }
   ]
 }

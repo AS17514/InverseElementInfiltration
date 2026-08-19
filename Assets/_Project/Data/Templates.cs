@@ -149,6 +149,26 @@ namespace TheLaw.Data
     }
 
     /// <summary>
+    /// 效果模板（效果槽——2026-08-19 数据层落地）：
+    /// 效果 = 可装备行动槽（装配 = 被动获得该能力；价值表 Effect-N）。
+    /// 引用特殊能力资产：abilityKey = SpecialAbilityDef 资产名（如 "Ability_ShieldBlock_OnDamaged_1"——运行时 ConfigTable 查）。
+    /// ⚠️ 执行语义（被动 vs 每次行动、生效时机、是否耗 AP）待疑问 B/前端装配交互对齐——
+    /// BattleFlow 执行遇效果槽暂跳过（占位，不落账不扣费）。
+    /// </summary>
+    [Serializable]
+    public class EffectTemplate : Template
+    {
+        public string abilityKey; // 特殊能力资产名（templates.json ability 字段；导入器原样填写）
+
+        public EffectTemplate() { }
+
+        public EffectTemplate(string abilityKey)
+        {
+            this.abilityKey = abilityKey;
+        }
+    }
+
+    /// <summary>
     /// 空操作槽（主动编排的"什么都不做"）。
     /// ⚠️ 2026-08-15 策划新案：行动槽仅移动/攻击/效果三类——**无跳过槽**。本类保留不删：
     /// ① 运行时自动跳过机制（BattleFlow 无路可走/无目标 → SkipAction）仍依赖执行分支；

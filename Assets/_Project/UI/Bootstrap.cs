@@ -40,6 +40,8 @@ namespace TheLaw.UI
         [Header("槽位价值表（模板→价值——棋子价值/类型推导，2026-08-15 策划新案）")]
         [SerializeField] private TextAsset _slotValues;
 
+        // 编辑规则配置（edit-config.json——Resources 自动加载，无需拖拽字段；见 EditConfig.AutoLoad）
+
         // 普通类实例（去单例化后由 Bootstrap 创建并持有；规则层行为类显式传递避免网状耦合）
         private static Bootstrap _instance; // 静态实例标记：防重（双实例并存时先到者存活，后到者自毁）
         private UIManager _uiManager;
@@ -85,6 +87,8 @@ namespace TheLaw.UI
             BuffDescTable.Load(_buffDescriptions);
             // ②d 槽位价值表（数据驱动——棋子价值/类型推导；未加载 = 推导按 0 降级 + 警告）
             PieceValue.Load(_slotValues);
+            // ②e 编辑规则配置（被替换模块展示策略两方案切换——Resources 自动加载，免拖拽；未找到 = show 模式）
+            EditConfig.AutoLoad();
             // ③ 创建规则层（依赖注入）
             CreateGameplay();
             // ④ 注册存档快照

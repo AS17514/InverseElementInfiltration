@@ -94,6 +94,8 @@
       "description": "战斗前最后的整备点。\n你可以调整随身的棋子牌组，为接下来的战斗做准备。",
       "deckSizeLimit": 12,
       "totalValueLimit": 30,
+      "allowDuplicate": true,
+      "promoteLimitByInitial": true,
       "options": [
         {
           "optionId": "start_deck",

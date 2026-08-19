@@ -418,7 +418,8 @@ namespace TheLaw.Gameplay
                     else if (t == PieceType.Promoted) promotedCount++;
                 }
             }
-            if (sizeLimit > 0 && effective.Count > sizeLimit) return false;
+            // ⚠️ 2026-08-19：必须**选满**（策划确认"构筑事件中必须构筑满 12 个棋子"）——原为上限型（Count ≤ sizeLimit 通过）
+            if (sizeLimit > 0 && effective.Count != sizeLimit) return false;
             if (valueLimit > 0 && totalValue > valueLimit) return false;
             if (ev.promoteLimitByInitial && promotedCount > initialCount) return false; // 升变数量 ≤ 初始数量
 
@@ -429,6 +430,36 @@ namespace TheLaw.Gameplay
             _state.Hand.AddRange(effective); // 顺序 = 入参顺序（可复数模式下含重复）
             EventCenter.Instance.EventTrigger(GameEvent.HandChanged, _state.Hand);
             return true;
+        }
+
+        /// <summary>
+        /// 抽牌堆初始化（2026-08-19 策划确认：第一回合开始前调用——手牌中【部署/升变】种类棋子转入抽牌堆；
+        /// 初始种类已由 Placement 阶段全部部署完——校验兜底）。落账纪律：唯一写入口。
+        /// </summary>
+        public void SetupDrawPile()
+        {
+            for (int i = _state.Hand.Count - 1; i >= 0; i--)
+            {
+                if (_state.GetEffectiveType(_state.Hand[i]) != PieceType.Initial)
+                {
+                    _state.DrawPile.Add(_state.Hand[i]);
+                    _state.Hand.RemoveAt(i);
+                }
+            }
+            EventCenter.Instance.EventTrigger(GameEvent.HandChanged, _state.Hand);
+        }
+
+        /// <summary>抽 1 张（2026-08-19：抽牌堆尾 → 手牌；抽牌堆空 = 无操作——调用方先校验）。</summary>
+        public void DrawCard()
+        {
+            if (_state.DrawPile == null || _state.DrawPile.Count == 0)
+            {
+                return;
+            }
+            int defId = _state.DrawPile[_state.DrawPile.Count - 1];
+            _state.DrawPile.RemoveAt(_state.DrawPile.Count - 1);
+            _state.Hand.Add(defId);
+            EventCenter.Instance.EventTrigger(GameEvent.HandChanged, _state.Hand);
         }
 
         /// <summary>敌方波次池增强（加牌落点：敌方无手牌——增强未来波次阵容）。</summary>

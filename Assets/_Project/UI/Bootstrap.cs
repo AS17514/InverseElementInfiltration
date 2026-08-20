@@ -81,6 +81,8 @@ namespace TheLaw.UI
             CreateManagers();
             // ② 加载配置（TODO: Addressables）
             LoadConfigs();
+            // ②a 预加载棋子美术立绘（Addressables——缺资源回退占位）
+            PieceViewFactory.PreloadPortraits();
             // ②b 程序块描述表（数据驱动——UI 槽位描述）
             SlotDescTable.Load(_slotDescriptions);
             // ②c buff 描述表（数据驱动——UI buff 区显示名）

@@ -436,7 +436,7 @@ namespace TheLaw.UI
             {
                 var piece = kv.Value;
                 if (GameObject.Find($"Piece_{piece.Id}") != null) continue;
-                PieceViewFactory.CreatePieceView(piece.Id, piece.side, piece.position,
+                PieceViewFactory.CreatePieceView(piece.Id, piece.DefId, piece.side, piece.position,
                     piece.side == Side.Player ? PieceViewFactory.TintFor(piece.DefId) : PieceViewFactory.TintFor(piece.DefId + 1));
             }
         }
@@ -878,7 +878,7 @@ namespace TheLaw.UI
                 }
                 else
                 {
-                    PieceViewFactory.CreatePieceView(info.PieceId, info.Side, info.Cell,
+                    PieceViewFactory.CreatePieceView(info.PieceId, info.DefId, info.Side, info.Cell,
                         info.Side == Side.Player ? PieceViewFactory.TintFor(info.DefId) : PieceViewFactory.TintFor(info.DefId + 1));
                 }
             }
@@ -1713,7 +1713,7 @@ namespace TheLaw.UI
             _dragDefId = defId;
             _dragCard = card;
             PieceViewFactory.EnsureSprites();
-            _previewPiece = PieceViewFactory.CreatePieceView(-1, Side.Player, new Vector2Int(-9, -9),
+            _previewPiece = PieceViewFactory.CreatePieceView(-1, defId, Side.Player, new Vector2Int(-9, -9),
                 PieceViewFactory.TintFor(defId));
             SetPreviewAlpha(0.6f);
             // 预览无阴影：单位尚未真正在场

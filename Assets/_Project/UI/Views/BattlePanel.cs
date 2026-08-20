@@ -21,6 +21,9 @@ namespace TheLaw.UI
         public TMP_Text PhaseButtonText { get; private set; }
         public TMP_Text APValueText { get; private set; }
         public TMP_Text EventNameText { get; private set; }
+        public Button DrawButton { get; private set; }
+        public TMP_Text DrawPileCountText { get; private set; }
+        public TMP_Text DrawCostText { get; private set; }
         public Slider TurnProgressSlider { get; private set; } // Sld_TurnProgress（回合进度条）
         public RectTransform WaveNodesRoot { get; private set; } // Grp_WaveNodes（波次节点容器）
         public RectTransform HandRoot { get; private set; }
@@ -43,6 +46,10 @@ namespace TheLaw.UI
                 if (tmp != null) PhaseButtonText = tmp;
             }
             APValueText = transform.Find("Grp_AP/Txt_APValue")?.GetComponent<TMP_Text>();
+            DrawButton = (transform.Find("Grp_DrawPile/Btn_Draw") ?? FindDeep("Btn_Draw"))?.GetComponent<Button>();
+            DrawPileCountText = (transform.Find("Grp_DrawPile/Txt_DrawPileCount") ?? FindDeep("Txt_DrawPileCount"))?.GetComponent<TMP_Text>();
+            DrawCostText = (transform.Find("Grp_DrawPile/Txt_DrawCost") ?? FindDeep("Txt_DrawCost"))?.GetComponent<TMP_Text>();
+            if (DrawCostText != null) DrawCostText.text = "1 AP";
             EventNameText = transform.Find("Grp_TopBar/Txt_EventName")?.GetComponent<TMP_Text>();
             if (EventNameText == null)
             {
@@ -65,10 +72,19 @@ namespace TheLaw.UI
             {
                 Debug.LogWarning($"[BattlePanel] 节点引用缺失：Btn={PhaseButton != null} AP={APValueText != null} Hand={HandRoot != null} EventName={(EventNameText != null)}");
             }
-            Debug.Log($"[BattlePanel] 节点解析：Btn={PhaseButton != null} AP={APValueText != null} Hand={HandRoot != null} EventName={(EventNameText != null)}");
+            Debug.Log($"[BattlePanel] 节点解析：Btn={PhaseButton != null} AP={APValueText != null} Hand={HandRoot != null} EventName={(EventNameText != null)} Draw={(DrawButton != null)} DrawCount={(DrawPileCountText != null)}");
         }
 
         /// <summary>设置按钮可能在任何分组下——按名搜全层级绑定（Bootstrap 订阅事件打开 Settings overlay）。</summary>
+        Transform FindDeep(string nodeName)
+        {
+            foreach (var t in GetComponentsInChildren<Transform>(true))
+            {
+                if (t.name == nodeName) return t;
+            }
+            return null;
+        }
+
         void BindSettingsButton()
         {
             Button btn = null;
@@ -83,6 +99,13 @@ namespace TheLaw.UI
             }
             btn.onClick.RemoveAllListeners();
             btn.onClick.AddListener(() => OnSettingsClicked?.Invoke());
+        }
+
+        public void SetDrawPile(int remaining, bool interactable)
+        {
+            if (DrawCostText != null) DrawCostText.text = "1 AP";
+            if (DrawPileCountText != null) DrawPileCountText.text = $"剩余 {Mathf.Max(0, remaining)}";
+            if (DrawButton != null) DrawButton.interactable = interactable;
         }
 
         public void SetAP(int current, int max)

@@ -91,6 +91,10 @@ namespace TheLaw.UI
             {
                 _nextBtn.onClick.RemoveAllListeners();
                 _nextBtn.onClick.AddListener(OnConfirm);
+                // Button 不可交互时自身不会触发 onClick；额外接收指针点击，给牌数不足的明确提示。
+                var disabledClick = _nextBtn.GetComponent<DisabledConfirmClickHandler>();
+                if (disabledClick == null) disabledClick = _nextBtn.gameObject.AddComponent<DisabledConfirmClickHandler>();
+                disabledClick.onClick = WarnIfDeckSizeIncomplete;
             }
         }
 
@@ -452,13 +456,15 @@ namespace TheLaw.UI
                 {
                     int initial = CountByEffectiveType(PieceType.Initial);
                     int promoted = CountByEffectiveType(PieceType.Promoted);
-                    _tagPromote.text = $"初始 {initial}｜升变 {promoted}（升变≤初始）";
+                    _tagPromote.text = $"初始 {initial}｜升变 {promoted}（升变不超过初始）";
                 }
                 else
                 {
                     _tagPromote.text = "";
                 }
             }
+            if (_nextBtn != null)
+                _nextBtn.interactable = _deckSizeLimit <= 0 || _deck.Count == _deckSizeLimit;
         }
 
         /// <summary>
@@ -544,6 +550,7 @@ namespace TheLaw.UI
         void OnConfirm()
         {
             if (_resolver == null) return;
+            if (WarnIfDeckSizeIncomplete()) return;
             if (_deck.Count == 0)
             {
                 Debug.LogWarning("[DeckBuild] 出战牌组为空——无法确认");
@@ -558,6 +565,13 @@ namespace TheLaw.UI
             {
                 Debug.LogWarning("[DeckBuild] 构筑校验失败（规则层拒绝）——保持编辑态");
             }
+        }
+
+        bool WarnIfDeckSizeIncomplete()
+        {
+            if (_deckSizeLimit <= 0 || _deck.Count == _deckSizeLimit) return false;
+            Debug.LogWarning($"[DeckBuild] 出战牌组必须恰好 {_deckSizeLimit} 张，当前 {_deck.Count} 张——无法确认");
+            return true;
         }
 
         // ====== 卡片数据填充（Piece_Card：Bg/Portrait/BaseInfo(类型·足迹·价值)/ProgramInfo）======
@@ -666,6 +680,8 @@ namespace TheLaw.UI
             {
                 case MoveTemplate: return "移";
                 case AttackTemplate: return "攻";
+                case EffectTemplate: return "效";
+                case SkipTemplate: return "跳";
                 default: return "跳";
             }
         }
@@ -678,6 +694,8 @@ namespace TheLaw.UI
             {
                 case MoveTemplate: return "移：移动";
                 case AttackTemplate: return "攻：攻击";
+                case EffectTemplate: return "效：被动效果";
+                case SkipTemplate: return "跳：跳过";
                 default: return "跳：跳过";
             }
         }
@@ -708,6 +726,18 @@ namespace TheLaw.UI
                 _progTemplate = progHandle.Result;
             }
             // 重建统一由 OnShow（模板未就绪时 RebuildPoolWhenReady 等待）驱动——此处不重复触发
+        }
+
+        /// <summary>确认按钮置灰时仍接收点击，用于提示牌数必须达到精确限制。</summary>
+        public class DisabledConfirmClickHandler : MonoBehaviour, IPointerClickHandler
+        {
+            public System.Func<bool> onClick;
+
+            public void OnPointerClick(PointerEventData eventData)
+            {
+                var button = GetComponent<Button>();
+                if (button != null && !button.interactable && onClick != null) onClick();
+            }
         }
 
         /// <summary>牌池卡左/右键处理组件（Toggle 销毁后的替代：左键加、右键减）。</summary>

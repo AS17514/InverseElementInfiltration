@@ -156,6 +156,8 @@ namespace TheLaw.UI
         List<Vector2Int> _cellOptions = new List<Vector2Int>();
         GameObject _highlightRoot;   // 移动可选格高亮容器
         int _selectedPieceId = -1;
+        // 敌方升变预告可能早于 Piece View 创建：按 pieceId 缓存，视觉出现后补应用。
+        readonly Dictionary<int, PromoteAnnouncement> _pendingPromotionWarnings = new Dictionary<int, PromoteAnnouncement>();
 
         // 表现队列（帧缓冲合并同槽事件）
         readonly List<System.Func<IEnumerator>> _presentations = new List<System.Func<IEnumerator>>();
@@ -185,11 +187,14 @@ namespace TheLaw.UI
             EventCenter.Instance.RemoveEventListener(GameEvent.DamageDealt, OnDamageDealt);
             EventCenter.Instance.RemoveEventListener(GameEvent.PieceDeployed, OnPieceDeployed);
             EventCenter.Instance.RemoveEventListener(GameEvent.PieceDied, OnPieceDied);
+            EventCenter.Instance.RemoveEventListener(GameEvent.PiecePromoted, OnPiecePromoted);
+            EventCenter.Instance.RemoveEventListener(GameEvent.PromoteAnnounced, OnPromoteAnnounced);
             EventCenter.Instance.RemoveEventListener(GameEvent.StateChanged, OnStateChanged);
             EventCenter.Instance.RemoveEventListener(GameEvent.BuffsChanged, OnBuffsChanged);
             EventCenter.Instance.RemoveEventListener(GameEvent.ExtraActionGranted, OnBuffsChanged);
             if (_handPosTween != null) _handPosTween.Kill();
             if (_handSizeTween != null) _handSizeTween.Kill();
+            _pendingPromotionWarnings.Clear();
             // 遗物按钮监听对称清理（L1——不依赖下个 BC 的 Init RemoveAllListeners 兜底）
             if (_relicBtn != null) _relicBtn.onClick.RemoveListener(ToggleRelicList);
             // UI 架构重构 §五：面板局内复用——只解绑不销毁（面板生命周期归 Bootstrap：局结束统一销毁）
@@ -241,6 +246,8 @@ namespace TheLaw.UI
             EventCenter.Instance.AddEventListener(GameEvent.DamageDealt, OnDamageDealt);
             EventCenter.Instance.AddEventListener(GameEvent.PieceDeployed, OnPieceDeployed);
             EventCenter.Instance.AddEventListener(GameEvent.PieceDied, OnPieceDied);
+            EventCenter.Instance.AddEventListener(GameEvent.PiecePromoted, OnPiecePromoted);
+            EventCenter.Instance.AddEventListener(GameEvent.PromoteAnnounced, OnPromoteAnnounced);
             EventCenter.Instance.AddEventListener(GameEvent.StateChanged, OnStateChanged);
             EventCenter.Instance.AddEventListener(GameEvent.BuffsChanged, OnBuffsChanged); // buff 变化 → 刷新选中棋子信息面板
             EventCenter.Instance.AddEventListener(GameEvent.ExtraActionGranted, OnBuffsChanged); // 免费行动授予同刷新
@@ -257,6 +264,11 @@ namespace TheLaw.UI
             {
                 _panel.PhaseButton.onClick.RemoveAllListeners();
                 _panel.PhaseButton.onClick.AddListener(OnPhaseButtonClicked);
+            }
+            if (_panel.DrawButton != null)
+            {
+                _panel.DrawButton.onClick.RemoveAllListeners();
+                _panel.DrawButton.onClick.AddListener(OnDrawButtonClicked);
             }
             if (_panel.ExitButton != null)
             {
@@ -439,6 +451,14 @@ namespace TheLaw.UI
                 PieceViewFactory.CreatePieceView(piece.Id, piece.DefId, piece.side, piece.position,
                     piece.side == Side.Player ? PieceViewFactory.TintFor(piece.DefId) : PieceViewFactory.TintFor(piece.DefId + 1));
             }
+            if (_state.PromoteAnnouncements != null)
+            {
+                foreach (var announcement in _state.PromoteAnnouncements)
+                {
+                    if (announcement != null) CacheOrApplyPromotionWarning(announcement);
+                }
+            }
+            ApplyPendingPromotionWarnings();
         }
 
         void Update()
@@ -695,6 +715,7 @@ namespace TheLaw.UI
             _awaitingCell = false;
             _selectResultDirty = false;
             RefreshAP();
+            RefreshDrawPile();
         }
 
         /// <summary>表现组播完后：镜像推进下一槽（规则层已 AdvanceSlot 到等待/结束）。</summary>
@@ -741,6 +762,7 @@ namespace TheLaw.UI
                 _batchFlashAttackers = null;
             }
             _presentationPlaying = false;
+            RefreshDrawPile();
             EventCenter.Instance.EventTrigger(GameEvent.PresentationFinished);
             if (_executing) AdvanceAfterPresentation();
         }
@@ -791,6 +813,9 @@ namespace TheLaw.UI
         void OnPieceDied(object data)
         {
             var info = (DeathInfo)data;
+            _pendingPromotionWarnings.Remove(info.PieceId);
+            var dyingView = FindPromotionView(info.PieceId);
+            if (dyingView != null) dyingView.HideWarning();
             // 选中单位死亡：清选中 + 清高亮（防残留高亮指向死棋子）
             if (info.PieceId == _selectedPieceId)
             {
@@ -798,6 +823,71 @@ namespace TheLaw.UI
                 ClearHighlights();
             }
             EnqueuePresentation(() => PlayDeath(info));
+        }
+
+        void OnPromoteAnnounced(object data)
+        {
+            if (data is PromoteAnnouncement announcement) CacheOrApplyPromotionWarning(announcement);
+        }
+
+        void OnPiecePromoted(object data)
+        {
+            if (!(data is PromoteInfo info)) return;
+            _pendingPromotionWarnings.Remove(info.PieceId);
+            var pieceView = GameObject.Find($"Piece_{info.PieceId}");
+            if (pieceView != null)
+            {
+                PieceViewFactory.UpdatePortrait(pieceView, info.NewDefId);
+                var outline = FindPromotionView(info.PieceId);
+                if (outline != null) outline.PlayPromotionFlash();
+            }
+            if (info.PieceId == _selectedPieceId)
+            {
+                var piece = _state.GetPiece(info.PieceId);
+                if (piece != null) FillInfo(piece.def, piece);
+                PreviewRange(info.PieceId);
+            }
+            RebuildHand();
+        }
+
+        void CacheOrApplyPromotionWarning(PromoteAnnouncement announcement)
+        {
+            if (announcement == null) return;
+            var outline = FindPromotionView(announcement.pieceId);
+            if (outline == null)
+            {
+                _pendingPromotionWarnings[announcement.pieceId] = announcement;
+                return;
+            }
+            _pendingPromotionWarnings.Remove(announcement.pieceId);
+            outline.ShowWarning();
+        }
+
+        void ApplyPendingPromotionWarnings()
+        {
+            if (_pendingPromotionWarnings.Count == 0) return;
+            var ids = new List<int>(_pendingPromotionWarnings.Keys);
+            foreach (var pieceId in ids)
+            {
+                if (_pendingPromotionWarnings.TryGetValue(pieceId, out var announcement))
+                    CacheOrApplyPromotionWarning(announcement);
+            }
+        }
+
+        PromotionOutlineView FindPromotionView(int pieceId)
+        {
+            var pieceView = GameObject.Find($"Piece_{pieceId}");
+            var portrait = pieceView != null ? pieceView.transform.Find("Portrait") : null;
+            if (portrait == null) return null;
+            var outline = portrait.GetComponent<PromotionOutlineView>();
+            if (outline == null)
+            {
+                var renderer = portrait.GetComponent<SpriteRenderer>();
+                if (renderer == null) return null;
+                outline = portrait.gameObject.AddComponent<PromotionOutlineView>();
+                outline.Initialize(renderer);
+            }
+            return outline;
         }
 
         /// <summary>buff 变化（护盾/免费行动/临时能力）：目标是当前选中棋子 → 刷新信息面板（Txt_Other buff 区实时更新）。</summary>
@@ -882,6 +972,8 @@ namespace TheLaw.UI
                         info.Side == Side.Player ? PieceViewFactory.TintFor(info.DefId) : PieceViewFactory.TintFor(info.DefId + 1));
                 }
             }
+            if (_pendingPromotionWarnings.TryGetValue(info.PieceId, out var pendingWarning))
+                CacheOrApplyPromotionWarning(pendingWarning);
             AudioManager.Instance.PlaySFX(AudioRefs.SfxDeploy); // 部署音效（占位）
             yield return new WaitForSeconds(DeployWait);
         }
@@ -1077,13 +1169,23 @@ namespace TheLaw.UI
                 new Vector2(sd.x, targetH), 0.2f); // 独立跟踪（面板销毁/阶段切换时一并 Kill）
         }
 
+        PieceType GetEffectiveType(PieceDef def)
+        {
+            return _state != null ? _state.GetEffectiveType(def.Id) : def.pieceType;
+        }
+
+        int GetEffectiveValue(PieceDef def)
+        {
+            return _state != null ? _state.GetEffectiveValue(def.Id) : def.value;
+        }
+
         /// <summary>手牌是否还有初始棋子（摆放前置判断）。</summary>
         bool HasInitialInHand()
         {
             foreach (var defId in _state.Hand)
             {
                 var def = ConfigTable.Find<PieceDef>(defId);
-                if (def != null && def.pieceType == PieceType.Initial) return true;
+                if (def != null && GetEffectiveType(def) == PieceType.Initial) return true;
             }
             return false;
         }
@@ -1091,6 +1193,7 @@ namespace TheLaw.UI
         void OnAPChanged(object data)
         {
             RefreshAP();
+            RefreshDrawPile();
         }
 
         /// <summary>通用状态通知（规则层字符串信号——如 placement-incomplete：摆放未完成拒绝结束）。</summary>
@@ -1100,6 +1203,7 @@ namespace TheLaw.UI
             {
                 RefreshPhaseButton(); // 刷新按钮状态（提示继续摆放）
             }
+            RefreshDrawPile();
         }
 
         void OnHandChanged(object data)
@@ -1107,6 +1211,7 @@ namespace TheLaw.UI
             if (data == null) return; // AddToEnemyWavePool 也发 HandChanged(null)——敌方侧变化不重建玩家手牌
             RebuildHand();
             RefreshPhaseButton(); // 手牌变化 → 摆放前置状态可能变化（按钮可用性）
+            RefreshDrawPile();
         }
 
         // ========== UI 刷新 ==========
@@ -1115,6 +1220,30 @@ namespace TheLaw.UI
             RefreshPhaseButton();
             RefreshAP();
             RebuildHand();
+            RefreshDrawPile();
+        }
+
+        void RefreshDrawPile()
+        {
+            if (_panel == null || _state == null) return;
+            int remaining = _state.DrawPile != null ? _state.DrawPile.Count : 0;
+            bool canDraw = _state.Phase == BattlePhase.PlayerTurn
+                && _state.PlayerAP >= 1
+                && remaining > 0
+                && !_executing
+                && !_presentationPlaying;
+            _panel.SetDrawPile(remaining, canDraw);
+        }
+
+        void OnDrawButtonClicked()
+        {
+            if (_flow == null || _state == null) return;
+            RefreshDrawPile();
+            int remaining = _state.DrawPile != null ? _state.DrawPile.Count : 0;
+            if (_state.Phase != BattlePhase.PlayerTurn || _state.PlayerAP < 1
+                || remaining <= 0 || _executing || _presentationPlaying) return;
+            _flow.OnPlayerRequestDraw(new DrawCardRequest());
+            RefreshDrawPile();
         }
 
         void RefreshPhaseButton()
@@ -1244,8 +1373,9 @@ namespace TheLaw.UI
             // 名称带阵营：士兵(友) / 士兵(敌)（2026-08-11：阵营并入名称）
             string sideTag = piece != null ? (piece.side == Side.Player ? "(友)" : "(敌)") : "";
             Set(_infoName, $"{def.displayName}{sideTag}");
-            Set(_infoType, def.pieceType == PieceType.Initial ? "初始" : def.pieceType == PieceType.Deployable ? "部署" : "升变");
-            Set(_infoValue, def.value.ToString());
+            var effectiveType = GetEffectiveType(def);
+            Set(_infoType, effectiveType == PieceType.Initial ? "初始" : effectiveType == PieceType.Deployable ? "部署" : "升变");
+            Set(_infoValue, GetEffectiveValue(def).ToString());
             Set(_infoDurability, piece != null ? $"{piece.durability}/{def.durability}" : def.durability.ToString());
             var abilities = new List<string>();
             foreach (var a in def.specialAbilities) abilities.Add(DisplayNames.OfAbilityType(a.type)); // 中文映射（2026-08-11：防英文枚举泄漏）
@@ -1357,8 +1487,32 @@ namespace TheLaw.UI
                     return MoveDescNatural(m);
                 case AttackTemplate a:
                     return AttackDescNatural(a);
+                case EffectTemplate e:
+                    return EffectDescNatural(e);
+                case SkipTemplate:
+                    return "跳：跳过本回合行动";
                 default:
                     return "跳：跳过本回合行动";
+            }
+        }
+
+        /// <summary>效果描述：效果模块装配即被动生效；描述表未命中时按能力配置生成。</summary>
+        static string EffectDescNatural(EffectTemplate effect)
+        {
+            if (effect == null || string.IsNullOrEmpty(effect.abilityKey)) return "效：装配后被动生效";
+            var ability = ConfigTable.FindByName<SpecialAbilityDef>(effect.abilityKey);
+            if (ability == null) return "效：装配后被动生效";
+            switch (ability.type)
+            {
+                case SpecialAbilityType.Passive:
+                    string sign = ability.passiveValue >= 0 ? "+" : "";
+                    return $"效：被动，{DisplayNames.OfPassiveTarget(ability.passiveTarget)}{sign}{ability.passiveValue}";
+                case SpecialAbilityType.Trigger:
+                    return $"效：被动，{DisplayNames.OfTriggerPoint(ability.triggerPoint)}时触发{DisplayNames.OfTriggerEffect(ability.triggerEffect)}";
+                case SpecialAbilityType.Attach:
+                    return $"效：被动，{DisplayNames.OfAttachPoint(ability.attachPoint)}附加效果";
+                default:
+                    return "效：装配后被动生效";
             }
         }
 
@@ -1592,15 +1746,16 @@ namespace TheLaw.UI
 
         void FillCard(GameObject card, PieceDef def, int index)
         {
+            var effectiveType = GetEffectiveType(def);
             // 卡背景色按种类标识（低饱和度：初始=绿 / 部署=蓝 / 升变=红）
             var bg = card.GetComponent<Image>();
-            if (bg != null) bg.color = CardTypeColors.For(def.pieceType);
+            if (bg != null) bg.color = CardTypeColors.For(effectiveType);
             var nameText = FindCardNode(card.transform, "Txt_InfoName")?.GetComponent<TMP_Text>();
             if (nameText != null) nameText.text = VerticalName(def.displayName); // 竖排（一字一行）
             var valueText = FindCardNode(card.transform, "Img_InfoValue")?.GetComponentInChildren<TMP_Text>();
-            if (valueText != null) valueText.text = def.value.ToString();
+            if (valueText != null) valueText.text = GetEffectiveValue(def).ToString();
             var typeText = FindCardNode(card.transform, "Img_InfoType")?.GetComponentInChildren<TMP_Text>();
-            if (typeText != null) typeText.text = def.pieceType == PieceType.Initial ? "始" : def.pieceType == PieceType.Deployable ? "部" : "升";
+            if (typeText != null) typeText.text = effectiveType == PieceType.Initial ? "始" : effectiveType == PieceType.Deployable ? "部" : "升";
             // 程序描述 + 槽位显隐（未配置的块/解释隐藏；每个槽填各自的单槽描述）
             // 程序 = 编辑差异优先（CurrentPrograms——编辑结果在此），回退 Def 默认模组（2026-08-11 数据链修复）
             int slotCount = 0;
@@ -1632,13 +1787,15 @@ namespace TheLaw.UI
             }
         }
 
-        /// <summary>槽位图标字符（移/攻/跳）。</summary>
+        /// <summary>槽位图标字符（移/攻/效/跳）。</summary>
         static string SlotTypeCharStatic(Template t)
         {
             switch (t)
             {
                 case MoveTemplate: return "移";
                 case AttackTemplate: return "攻";
+                case EffectTemplate: return "效";
+                case SkipTemplate: return "跳";
                 default: return "跳";
             }
         }
@@ -1686,9 +1843,10 @@ namespace TheLaw.UI
             // 阶段限定种类（与规则层 IsDeployAllowed 一致）：Placement=初始 / PlayerTurn=部署；升变牌靠升变操作上场不可部署
             var def = ConfigTable.Find<PieceDef>(defId);
             if (def == null) return false;
+            var effectiveType = GetEffectiveType(def);
             bool typeOk = _state.Phase == BattlePhase.Placement
-                ? def.pieceType == PieceType.Initial
-                : def.pieceType == PieceType.Deployable;
+                ? effectiveType == PieceType.Initial
+                : effectiveType == PieceType.Deployable;
             // 执行中/表现播放中禁止拖拽（防时序错乱）
             return typeOk && !_executing && !_presentationPlaying
                 && (_state.Phase == BattlePhase.Placement || _state.Phase == BattlePhase.PlayerTurn);

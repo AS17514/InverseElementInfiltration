@@ -42,6 +42,7 @@ namespace TheLaw.UI
         private EditorSession _editor;
         private GameState _state;
         private int _selectedDefId = -1;
+        private int _editableDefId = -1; // 本次编辑事件唯一允许写入的棋子
         private List<Template> _slotTemplates = new List<Template>(); // 当前选中棋子的程序（编辑副本）
         private List<bool> _slotLocked = new List<bool>();            // 槽位锁定标记（与 _slotTemplates 同步位移——模板原始程序块）
 
@@ -60,13 +61,27 @@ namespace TheLaw.UI
             _state = state;
         }
 
+        /// <summary>设置本次编辑事件唯一可写棋子；其他棋子仅允许查看。</summary>
+        public void SetEditableDefId(int defId)
+        {
+            _editableDefId = defId;
+            _selectedDefId = -1;
+            _slotTemplates.Clear();
+            _slotLocked.Clear();
+        }
+
+        private bool CanEditSelected()
+        {
+            return _editableDefId >= 0 && _selectedDefId == _editableDefId && _editor != null;
+        }
+
         private void Awake()
         {
             ResolveNodes();
             BuildProgramLibrary();
             RefreshPieceList();
             RefreshProgramList();
-            // 程序编辑落账 → 刷新程序库数量（Txt_ProgramCount——随拖入拖出实时变化）
+            // 程序编辑落账 → 刷新棋子卡面与详情。
             EventCenter.Instance.AddEventListener(GameEvent.ProgramEdited, OnProgramEdited);
             // Btn_Next：编辑完成 → 下一步（新局=进战斗 / 事件关=EventCompleted 推进）
             // 路径跟随 2026-08-11 面板重构：Grp/Grp_R/Grp_Low/Btn_Next（旧 Grp_L/Grp_Top 已不存在）
@@ -151,7 +166,7 @@ namespace TheLaw.UI
         /// <summary>单击：撤销当前选中棋子上一步（无栈无操作——按钮置灰已防）。</summary>
         void OnUndoClicked()
         {
-            if (_selectedDefId < 0 || _editor == null) return;
+            if (!CanEditSelected()) return;
             _editor.Undo(_selectedDefId);
             var def = ConfigTable.Find<PieceDef>(_selectedDefId);
             if (def != null)
@@ -168,7 +183,7 @@ namespace TheLaw.UI
         /// ⚠️ 2026-08-16：与 RefreshUndoButton 同条件守卫——未选中/无撤销栈时即使事件漏进也不弹框。</summary>
         void OnUndoLongPressed()
         {
-            if (_selectedDefId < 0 || _editor == null || !_editor.CanUndo(_selectedDefId)) return;
+            if (!CanEditSelected() || !_editor.CanUndo(_selectedDefId)) return;
             var confirm = FindObjectOfType<ConfirmPanel>(true);
             if (confirm != null)
             {
@@ -184,7 +199,7 @@ namespace TheLaw.UI
         /// 曾跳过重置 → 信息区/选中残留；现统一为"重新开始编辑"状态：清选中/清槽/隐藏信息区）。</summary>
         void RestoreAllAndReset()
         {
-            if (_editor == null) return;
+            if (!CanEditSelected()) return;
             _editor.RestoreAll();
             _selectedDefId = -1; // 清选中（重新开始编辑）
             _slotTemplates.Clear();
@@ -198,7 +213,7 @@ namespace TheLaw.UI
         void RefreshUndoButton()
         {
             if (_undoBtn == null) return;
-            _undoBtn.interactable = _selectedDefId >= 0 && _editor != null && _editor.CanUndo(_selectedDefId);
+            _undoBtn.interactable = CanEditSelected() && _editor.CanUndo(_selectedDefId);
         }
 
         /// <summary>悬停提示浮窗：Addressables 加载通用 TipPanel 预制体（2026-08-13——与行为描述浮窗共用；Txt_Desc 写提示文本）。</summary>
@@ -221,18 +236,17 @@ namespace TheLaw.UI
         void OnNext()
         {
             // 编辑完成 → 结束编辑会话（清全部 EditingDefs 标记——防残留进存档）+ 通知 TowerFlow 推进
-            if (_editor != null)
+            if (!CanEditSelected())
             {
-                foreach (var defId in new List<int>(_state.EditingDefs))
-                {
-                    if (!_editor.EndEdit(defId))
-                    {
-                        // 空程序（至少 1 槽校验失败——2026-08-12 修复）：提示并保持编辑态，防"废棋子"进战斗
-                        var def = ConfigTable.Find<PieceDef>(defId);
-                        Debug.LogWarning($"[PieceEdit] {def?.displayName ?? defId.ToString()} 程序为空——无法完成编辑，请至少保留 1 个程序块");
-                        return;
-                    }
-                }
+                Debug.LogWarning("[PieceEdit] 尚未选择本次编辑事件指定棋子——无法完成编辑");
+                return;
+            }
+            if (!_editor.EndEdit(_editableDefId))
+            {
+                // 空程序（至少 1 槽校验失败——2026-08-12 修复）：提示并保持编辑态，防"废棋子"进战斗
+                var def = ConfigTable.Find<PieceDef>(_editableDefId);
+                Debug.LogWarning($"[PieceEdit] {def?.displayName ?? _editableDefId.ToString()} 程序为空——无法完成编辑，请至少保留 1 个程序块");
+                return;
             }
             gameObject.SetActive(false);
             EventCenter.Instance.EventTrigger(GameEvent.EventCompleted, _state != null ? _state.CurrentEventId : null); // 推进（携带事件 id——TowerFlow 校验匹配；防重复信号跳节点）
@@ -388,14 +402,37 @@ namespace TheLaw.UI
                 _progTemplate = progHandle.Result; // 缓存模板（RefreshPieceCardProgram 动态增删用）
             }
             foreach (Transform child in _pieceContent) Destroy(child.gameObject);
-            // 类型优先（初始→部署→升变）+ 同类型价值升序（全场景统一排序——CardTypeColors.SortPieces）
+            // 类型优先（初始→部署→升变）+ 同类型有效价值升序（程序编辑可能改变类型/价值）
             var defs = new List<PieceDef>(ConfigTable.All<PieceDef>());
-            CardTypeColors.SortPieces(defs);
+            defs.Sort((a, b) =>
+            {
+                int typeOrder = CardTypeColors.TypeOrder(GetEffectiveType(a))
+                    .CompareTo(CardTypeColors.TypeOrder(GetEffectiveType(b)));
+                return typeOrder != 0
+                    ? typeOrder
+                    : GetEffectiveValue(a).CompareTo(GetEffectiveValue(b));
+            });
             foreach (var def in defs)
             {
                 var go = Instantiate(cardHandle.Result, _pieceContent);
                 go.name = $"PieceCard_{def.name}";
                 FillPieceCard(go, def, progHandle.Result, group);
+            }
+            // 三选一已确认：进入面板后自动选中唯一可编辑棋子；其他卡仍可切换查看信息。
+            if (_editableDefId >= 0)
+            {
+                var editableDef = ConfigTable.Find<PieceDef>(_editableDefId);
+                if (editableDef != null)
+                {
+                    foreach (Transform card in _pieceContent)
+                    {
+                        if (card.name != $"PieceCard_{editableDef.name}") continue;
+                        var toggle = card.GetComponent<Toggle>();
+                        if (toggle != null) toggle.SetIsOnWithoutNotify(true);
+                        SelectPiece(_editableDefId);
+                        break;
+                    }
+                }
             }
             // 滚动位置归零（跨局打开不残留旧滚动）
             var scroll = _pieceContent.GetComponentInParent<ScrollRect>();
@@ -404,18 +441,7 @@ namespace TheLaw.UI
 
         void FillPieceCard(GameObject go, PieceDef def, GameObject progTemplate, ToggleGroup group)
         {
-            // 背景种类色（与手牌一致）
-            var bg = go.GetComponent<Image>();
-            if (bg != null) bg.color = CardTypeColors.For(def.pieceType);
-            // 价值数字
-            var valueText = FindDeep(go.transform, "Img_PieceValue")?.GetComponentInChildren<TMP_Text>();
-            if (valueText != null) valueText.text = def.value.ToString();
-            // 类型文字（有 Text 子级才填）
-            var typeText = FindDeep(go.transform, "Img_PieceType")?.GetComponentInChildren<TMP_Text>();
-            if (typeText != null)
-            {
-                typeText.text = def.pieceType == PieceType.Initial ? "始" : def.pieceType == PieceType.Deployable ? "部" : "升";
-            }
+            FillPieceCardBase(go, def);
             // 程序图标区：每槽放一个 Piece_ProgramInfo（Text=移/攻/跳——缩略图显示，非吸附位点）
             var progRoot = FindDeep(go.transform, "Grp_PieceProgramInfo");
             if (progRoot != null && progTemplate != null)
@@ -504,6 +530,34 @@ namespace TheLaw.UI
             return slotIndex >= 0 && slotIndex < _slotLocked.Count && _slotLocked[slotIndex];
         }
 
+        /// <summary>按有效类型/价值刷新棋子卡面基础信息。</summary>
+        void FillPieceCardBase(GameObject card, PieceDef def)
+        {
+            var effectiveType = GetEffectiveType(def);
+            var bg = card.GetComponent<Image>();
+            if (bg != null) bg.color = CardTypeColors.For(effectiveType);
+
+            var valueText = FindDeep(card.transform, "Img_PieceValue")?.GetComponentInChildren<TMP_Text>();
+            if (valueText != null) valueText.text = GetEffectiveValue(def).ToString();
+
+            var typeText = FindDeep(card.transform, "Img_PieceType")?.GetComponentInChildren<TMP_Text>();
+            if (typeText != null) typeText.text = PieceTypeChar(effectiveType);
+        }
+
+        /// <summary>刷新指定棋子卡面的有效类型、价值和颜色。</summary>
+        void RefreshPieceCardBase(int defId)
+        {
+            if (_pieceContent == null) return;
+            var def = ConfigTable.Find<PieceDef>(defId);
+            if (def == null) return;
+            foreach (Transform card in _pieceContent)
+            {
+                if (card.name != $"PieceCard_{def.name}") continue;
+                FillPieceCardBase(card.gameObject, def);
+                return;
+            }
+        }
+
         /// <summary>刷新棋子卡面程序图标（Grp_PieceProgramInfo 内 Piece_ProgramInfo）——编辑后按当前程序数动态增删缩略图。</summary>
         void RefreshPieceCardProgram(int defId)
         {
@@ -582,86 +636,44 @@ namespace TheLaw.UI
                 // 拖拽源：程序库块（Library 模式——复制放置，原卡不消耗）
                 var drag = go.AddComponent<EditorProgramDrag>();
                 drag.Init(this, slot, EditorProgramDrag.DragSource.Library, -1);
+                drag.SetDraggable(CanEditSelected());
             }
         }
 
-        /// <summary>填充程序库卡（Program_Card 预制体）：类型图标字 + 数量 + 描述。
-        /// 数量 = 该模板 id 在全部棋子程序中的出现次数（库存数；模板库独有=0；单张不显示）。</summary>
+        private void RefreshProgramDragPermission()
+        {
+            if (_programContent == null) return;
+            bool allowed = CanEditSelected();
+            foreach (var drag in _programContent.GetComponentsInChildren<EditorProgramDrag>(true))
+            {
+                drag.SetDraggable(allowed);
+            }
+        }
+
+        /// <summary>填充程序库卡（Program_Card 预制体）：类型图标字 + 程序块价值 + 描述。</summary>
         void FillProgramCard(GameObject go, Template slot)
         {
             var desc = FindDeep(go.transform, "Txt_ProgramDesc")?.GetComponent<TMP_Text>();
             if (desc != null) desc.text = SlotDetailDescStatic(slot);
             var typeTxt = FindDeep(go.transform, "Img_ProgramType")?.GetComponentInChildren<TMP_Text>();
             if (typeTxt != null) typeTxt.text = SlotTypeChar(slot);
-            var count = FindDeep(go.transform, "Txt_ProgramCount")?.GetComponent<TMP_Text>();
-            if (count != null)
-            {
-                int n = CountInPieces(slot);
-                // 优化显示：仅多张（≥2）显示 ×N——单张/无库存不占位
-                count.text = n >= 2 ? $"×{n}" : "";
-            }
+            var value = FindDeep(go.transform, "Txt_ProgramCount")?.GetComponent<TMP_Text>();
+            if (value != null) value.text = PieceValue.GetValue(slot).ToString();
         }
 
-        /// <summary>
-        /// 统计模板（类型+id）在全部棋子**当前程序**（默认 + CurrentPrograms 编辑差异）中的出现次数。
-        /// 匹配键 = FeatureOf（类型+编号）——id 跨类型共享（Move-4/DirectFire-4 同 id=4），裸 id 统计会串。
-        /// </summary>
-        int CountInPieces(Template slot)
-        {
-            string key = SlotDescTable.FeatureOf(slot);
-            int n = 0;
-            foreach (var def in ConfigTable.All<PieceDef>())
-            {
-                List<Template> prog;
-                if (_state != null && _state.TryGetCurrentProgram(def.Id, out var edited))
-                {
-                    prog = edited; // 编辑差异优先
-                }
-                else if (def.programSet != null && def.programSet.Count > 0)
-                {
-                    prog = def.programSet[0].slots; // 默认程序
-                }
-                else
-                {
-                    continue;
-                }
-                if (prog == null) continue;
-                foreach (var s in prog)
-                {
-                    if (s != null && SlotDescTable.FeatureOf(s) == key) n++;
-                }
-            }
-            return n;
-        }
-
-        /// <summary>程序编辑落账（ProgramEdited 事件）→ 程序库卡数量文本刷新（不重建卡片——拖拽中安全）。</summary>
+        /// <summary>程序编辑落账（ProgramEdited 事件）→ 刷新有效卡面与详情。</summary>
         void OnProgramEdited(object data)
         {
-            if (_programContent == null) return;
-            foreach (Transform child in _programContent)
+            if (data is int editedDefId)
             {
-                var card = child.gameObject;
-                if (card == null) continue;
-                var count = FindDeep(card.transform, "Txt_ProgramCount")?.GetComponent<TMP_Text>();
-                if (count == null) continue;
-                // 卡名 Prog_{FeatureOf} 反查模板（BuildProgramList 命名约定）——无法反查则跳过
-                string name = card.name;
-                if (!name.StartsWith("Prog_")) continue;
-                var slot = FindSlotByFeature(name.Substring(5));
-                if (slot == null) continue;
-                int n = CountInPieces(slot);
-                count.text = n >= 2 ? $"×{n}" : "";
+                RefreshPieceCardBase(editedDefId);
+                RefreshPieceCardProgram(editedDefId);
+                if (_selectedDefId == editedDefId)
+                {
+                    var def = ConfigTable.Find<PieceDef>(editedDefId);
+                    if (def != null) FillPieceInfo(def);
+                }
             }
-        }
-
-        /// <summary>按卡名（Prog_Move-1 等）反查程序库模板。</summary>
-        Template FindSlotByFeature(string feature)
-        {
-            foreach (var slot in _programLibrary)
-            {
-                if (SlotDescTable.FeatureOf(slot) == feature) return slot;
-            }
-            return null;
         }
 
         /// <summary>程序库 GridLayout 列宽适配：cellSize.x×列数+spacing 超出 Content 宽 → 缩 cellSize 到能放 2 列（保持网格布局语义）。</summary>
@@ -707,10 +719,14 @@ namespace TheLaw.UI
             _selectedDefId = defId;
             var def = ConfigTable.Find<PieceDef>(defId);
             if (def == null) return;
-            _editor.BeginEdit(defId); // 编辑会话：记录初始快照
+            if (CanEditSelected())
+            {
+                _editor.BeginEdit(defId); // 编辑会话：记录初始快照
+            }
             _slotTemplates = GetCurrentProgram(def);
             InitLockedFlags(def);
             FillPieceInfo(def);
+            RefreshProgramDragPermission();
             RefreshUndoButton(); // 新选中：检查该棋子是否有可撤销历史
         }
 
@@ -734,12 +750,10 @@ namespace TheLaw.UI
 
         void FillPieceInfo(PieceDef def)
         {
+            var effectiveType = GetEffectiveType(def);
             if (_infoName != null) _infoName.text = VerticalName(def.displayName);
-            if (_infoValueText != null) _infoValueText.text = def.value.ToString();
-            if (_infoTypeText != null)
-            {
-                _infoTypeText.text = def.pieceType == PieceType.Initial ? "始" : def.pieceType == PieceType.Deployable ? "部" : "升";
-            }
+            if (_infoValueText != null) _infoValueText.text = GetEffectiveValue(def).ToString();
+            if (_infoTypeText != null) _infoTypeText.text = PieceTypeChar(effectiveType);
             for (int i = 0; i < 4; i++)
             {
                 // 槽位节点常显（未拥有的空槽也可作为吸附位点——2026-08-11 需求：空位也可拖入插入）
@@ -751,7 +765,7 @@ namespace TheLaw.UI
                     // 锁定/空槽时禁拖（OnBeginDrag 拦截），有块非锁定时重新 Init（刷新 template/sourceSlot）
                     var slotDrag = _slotImages[i].GetComponent<EditorProgramDrag>();
                     if (slotDrag == null) slotDrag = _slotImages[i].gameObject.AddComponent<EditorProgramDrag>();
-                    bool draggable = has && !_slotLocked[i];
+                    bool draggable = CanEditSelected() && has && !_slotLocked[i];
                     slotDrag.SetDraggable(draggable);
                     if (draggable)
                     {
@@ -788,7 +802,7 @@ namespace TheLaw.UI
                 var infoImg = _pieceInfo.GetComponent<Image>();
                 if (infoImg != null)
                 {
-                    var c = CardTypeColors.For(def.pieceType);
+                    var c = CardTypeColors.For(effectiveType);
                     infoImg.color = new Color(c.r, c.g, c.b, 0.45f);
                 }
                 _pieceInfo.gameObject.SetActive(true);
@@ -809,7 +823,7 @@ namespace TheLaw.UI
         /// </summary>
         public bool InsertProgram(int to, Template template)
         {
-            if (_selectedDefId < 0 || template == null) return false;
+            if (!CanEditSelected() || template == null) return false;
             if (_slotTemplates.Count >= MaxProgramSlots)
             {
                 // 满槽：替换目标槽（索引必须在 0..Count-1 内）
@@ -835,7 +849,7 @@ namespace TheLaw.UI
         /// </summary>
         public bool MoveProgram(int from, int to)
         {
-            if (_selectedDefId < 0 || from < 0 || from >= _slotTemplates.Count) return false;
+            if (!CanEditSelected() || from < 0 || from >= _slotTemplates.Count) return false;
             if (_slotLocked[from]) return false; // 锁定块不可拖出
             if (from == to) return false;
             to = Mathf.Clamp(to, 0, _slotTemplates.Count); // 允许 == Count（空缺末尾）
@@ -867,7 +881,7 @@ namespace TheLaw.UI
         /// <summary>移除槽位块（拖出到空白）。锁定块不可移除。</summary>
         public bool RemoveProgramAt(int index)
         {
-            if (_selectedDefId < 0 || index < 0 || index >= _slotTemplates.Count) return false;
+            if (!CanEditSelected() || index < 0 || index >= _slotTemplates.Count) return false;
             if (_slotLocked[index]) return false;
             _slotTemplates.RemoveAt(index);
             _slotLocked.RemoveAt(index); // 锁定标记同步
@@ -877,7 +891,7 @@ namespace TheLaw.UI
 
         void CommitProgram()
         {
-            if (_selectedDefId < 0) return;
+            if (!CanEditSelected()) return;
             _editor.EditProgram(_selectedDefId, new List<Template>(_slotTemplates));
             RefreshUndoButton(); // 编辑后必有可撤销历史 → 亮
             var def = ConfigTable.Find<PieceDef>(_selectedDefId);
@@ -889,12 +903,31 @@ namespace TheLaw.UI
         }
 
         // ====== 工具 ======
+        int GetEffectiveValue(PieceDef def)
+        {
+            if (def == null) return 0;
+            return _state != null ? _state.GetEffectiveValue(def.Id) : def.value;
+        }
+
+        PieceType GetEffectiveType(PieceDef def)
+        {
+            if (def == null) return PieceType.Initial;
+            return _state != null ? _state.GetEffectiveType(def.Id) : def.pieceType;
+        }
+
+        static string PieceTypeChar(PieceType type)
+        {
+            return type == PieceType.Initial ? "始" : type == PieceType.Deployable ? "部" : "升";
+        }
+
         static string SlotTypeChar(Template t)
         {
             switch (t)
             {
                 case MoveTemplate: return "移";
                 case AttackTemplate: return "攻";
+                case EffectTemplate: return "效";
+                case SkipTemplate: return "跳";
                 default: return "跳";
             }
         }
@@ -908,6 +941,8 @@ namespace TheLaw.UI
             {
                 case MoveTemplate: return "移：移动";
                 case AttackTemplate: return "攻：攻击";
+                case EffectTemplate: return "效：被动效果";
+                case SkipTemplate: return "跳：跳过";
                 default: return "跳：跳过";
             }
         }

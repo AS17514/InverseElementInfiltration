@@ -78,6 +78,8 @@ namespace TheLaw.UI
             sr.sprite = PortraitFor(defId);
             sr.color = Color.white; // 美术立绘原色直出，不做阵营/种类颜色叠加（tint 仅占位期用）
             sr.sortingOrder = (int)(-cell.y * 100f) + 400;
+            var promotionOutline = portrait.AddComponent<PromotionOutlineView>();
+            promotionOutline.Initialize(sr);
             portrait.transform.localScale = new Vector3(1f / 6f, 1f / 6f, 1f / 6f);
             // 伪2D 朝向：相机固定 → 创建时算一次角度（绕 X 倾斜对准相机，锁 Y/Z）
             var cam = Camera.main;
@@ -105,6 +107,16 @@ namespace TheLaw.UI
         }
 
         /// <summary>defId → 美术立绘（按 PieceDef 资产名查缓存；未预载/缺失回退占位白框）。</summary>
+        public static bool UpdatePortrait(GameObject pieceView, int defId)
+        {
+            if (pieceView == null) return false;
+            var portrait = pieceView.transform.Find("Portrait");
+            var renderer = portrait != null ? portrait.GetComponent<SpriteRenderer>() : null;
+            if (renderer == null) return false;
+            renderer.sprite = PortraitFor(defId);
+            return true;
+        }
+
         static Sprite PortraitFor(int defId)
         {
             var def = ConfigTable.Find<PieceDef>(defId);

@@ -32,6 +32,11 @@ MonoBehaviour:
     m_ReadOnly: 0
     m_SerializedLabels: []
     FlaggedDuringContentUpdateRestriction: 0
+  - m_GUID: 29bf12b147abb444e8f60bcf197798f0
+    m_Address: EditCandidatePanel
+    m_ReadOnly: 0
+    m_SerializedLabels: []
+    FlaggedDuringContentUpdateRestriction: 0
   - m_GUID: 3b0caba795573fc4a973caff89fd1a3b
     m_Address: DeckBuildPanel
     m_ReadOnly: 0

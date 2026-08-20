@@ -57,6 +57,7 @@ namespace TheLaw.UI
         private Func<BattleFlow> _battleFlowFactory; // 战斗级工厂（每场战斗创建新 BattleFlow——无状态可常驻）
         private EditorSession _editorSession;   // 整局级"进入创建、离开销毁"（2026-08-13——每局创建/销毁，防跨局残留）
         private PieceEditPanel _pieceEditPanel; // 棋子编辑面板（新局入口——编辑完成进战斗）
+        private EditCandidatePanel _editCandidatePanel; // 编辑事件三选一面板（局内）
         private EventPanel _eventPanel;         // 事件关面板（EventOpened 显示）
         private DeckBuildPanel _deckBuildPanel; // 牌组构筑面板（StateChanged("deck") 显示）
         private EventNodeSystem _eventNodeSystem;
@@ -204,6 +205,7 @@ namespace TheLaw.UI
         private void RefreshSessionPanelRefs()
         {
             if (_eventPanel != null) _eventPanel.Init(_eventNodeSystem);
+            if (_editCandidatePanel != null) _editCandidatePanel.Init(_gameState);
             if (_pieceEditPanel != null) _pieceEditPanel.Init(_editorSession, _gameState);
             if (_deckBuildPanel != null) _deckBuildPanel.Init(_resolver, _gameState);
         }
@@ -248,6 +250,8 @@ namespace TheLaw.UI
             EventCenter.Instance.AddEventListener(GameEvent.StateChanged, OnStateChanged);
             // 事件关：EventOpened → 显示事件面板（选项交互 → EventCompleted 推进）
             EventCenter.Instance.AddEventListener(GameEvent.EventOpened, OnEventOpened);
+            // 编辑事件：后端抽取三选一候选 → 显示候选面板（替代旧 StateChanged("edit")）
+            EventCenter.Instance.AddEventListener(GameEvent.EditCandidatesDrawn, OnEditCandidatesDrawn);
             // 战斗开始：TowerFlow 开战（Phase→Placement）→ 创建战斗控制器
             EventCenter.Instance.AddEventListener(GameEvent.PhaseChanged, OnPhaseChanged);
             // TODO: 进层/开战存档（SaveManager.SaveAll 触发时机——关键事件存档）
@@ -260,6 +264,7 @@ namespace TheLaw.UI
             EventCenter.Instance.RemoveEventListener(GameEvent.RunEnded, OnRunEnded);
             EventCenter.Instance.RemoveEventListener(GameEvent.StateChanged, OnStateChanged);
             EventCenter.Instance.RemoveEventListener(GameEvent.EventOpened, OnEventOpened);
+            EventCenter.Instance.RemoveEventListener(GameEvent.EditCandidatesDrawn, OnEditCandidatesDrawn);
             EventCenter.Instance.RemoveEventListener(GameEvent.PhaseChanged, OnPhaseChanged);
         }
 
@@ -285,6 +290,16 @@ namespace TheLaw.UI
         {
             _pendingEventId = data as string;
             OpenEventPanel();
+        }
+
+        private void OnEditCandidatesDrawn(object data)
+        {
+            if (_gameState == null || _gameState.EditCandidates == null || _gameState.EditCandidates.Count == 0)
+            {
+                Debug.LogWarning("[Bootstrap] 收到 EditCandidatesDrawn 但候选为空");
+                return;
+            }
+            OpenEditCandidatePanel();
         }
 
         /// <summary>
@@ -472,10 +487,17 @@ namespace TheLaw.UI
         {
             if (_uiManager == null) return; // 防御：编译重载中间态
             _uiManager.HidePanel("PieceEdit");
+            _uiManager.HidePanel("EditCandidatePanel");
             _uiManager.HidePanel("DeckBuild");
             _uiManager.HidePanel("EventPanel");
             _uiManager.HidePanel("Battle");
             if (_pieceEditPanel != null) { DestroyImmediate(_pieceEditPanel.gameObject); _pieceEditPanel = null; }
+            if (_editCandidatePanel != null)
+            {
+                _editCandidatePanel.OnCandidateConfirmed -= OnEditCandidateConfirmed;
+                DestroyImmediate(_editCandidatePanel.gameObject);
+                _editCandidatePanel = null;
+            }
             if (_deckBuildPanel != null) { DestroyImmediate(_deckBuildPanel.gameObject); _deckBuildPanel = null; }
             if (_eventPanel != null) { DestroyImmediate(_eventPanel.gameObject); _eventPanel = null; }
             if (_battlePanel != null) { DestroyImmediate(_battlePanel.gameObject); _battlePanel = null; }
@@ -494,26 +516,65 @@ namespace TheLaw.UI
             Debug.Log($"[Bootstrap] 进入爬塔：层 {_gameState.CurrentFloor}，节点 {_gameState.CurrentNodeIndex}/{_gameState.NodeStates.Count}");
         }
 
-        /// <summary>打开棋子编辑面板（事件关模式——StateChanged("edit") 驱动；Btn_Next 发 EventCompleted 推进）。</summary>
-        private void OpenPieceEditor()
+        private void OpenEditCandidatePanel()
         {
-            if (_pieceEditPanel == null)
+            if (_editCandidatePanel == null)
             {
-                StartCoroutine(LoadPieceEditPanel());
+                StartCoroutine(LoadEditCandidatePanel());
             }
             else
             {
+                _uiManager.ShowPanel("EditCandidatePanel");
+            }
+        }
+
+        private System.Collections.IEnumerator LoadEditCandidatePanel()
+        {
+            yield return LoadPanelAsync<EditCandidatePanel>(panel =>
+            {
+                _editCandidatePanel = panel;
+                _uiManager.RegisterPanel(panel);
+                panel.Init(_gameState);
+                panel.OnCandidateConfirmed += OnEditCandidateConfirmed;
+                _uiManager.ShowPanel("EditCandidatePanel");
+                Debug.Log("[Bootstrap] 编辑候选面板已显示");
+            });
+        }
+
+        private void OnEditCandidateConfirmed(int defId)
+        {
+            if (_editorSession == null || !_editorSession.ConfirmEditPiece(defId))
+            {
+                Debug.LogWarning($"[Bootstrap] 编辑候选确认失败：defId={defId}");
+                _editCandidatePanel?.Show();
+                return;
+            }
+            _uiManager.HidePanel("EditCandidatePanel");
+            OpenPieceEditor(defId);
+        }
+
+        /// <summary>打开棋子编辑面板（事件关模式——候选卡点击确认后进入）。</summary>
+        private void OpenPieceEditor(int editableDefId = -1)
+        {
+            if (_pieceEditPanel == null)
+            {
+                StartCoroutine(LoadPieceEditPanel(editableDefId));
+            }
+            else
+            {
+                _pieceEditPanel.SetEditableDefId(editableDefId);
                 _uiManager.ShowPanel("PieceEdit");
             }
         }
 
-        private System.Collections.IEnumerator LoadPieceEditPanel()
+        private System.Collections.IEnumerator LoadPieceEditPanel(int editableDefId)
         {
             yield return LoadPanelAsync<PieceEditPanel>(panel =>
             {
                 _pieceEditPanel = panel;
                 _uiManager.RegisterPanel(panel);
                 panel.Init(_editorSession, _gameState);
+                panel.SetEditableDefId(editableDefId);
                 _uiManager.ShowPanel("PieceEdit");
                 Debug.Log("[Bootstrap] 棋子编辑界面已显示（事件模式）");
             });

@@ -22,10 +22,11 @@ namespace TheLaw.Gameplay
         public Dictionary<int, PieceInstance> PiecesById { get; internal set; } = new Dictionary<int, PieceInstance>();
 
         // ========== 玩家 ==========
-        public List<int> Hand { get; internal set; } = new List<int>();      // 手牌（Def id 列表——抽牌堆抽出）
+        /// <summary>手牌（牌列表——棋子牌 Card(defId) / 麻将牌 Card(value)——抽牌堆抽出；2026-08-20 牌结构改造）。</summary>
+        public List<Card> Hand { get; internal set; } = new List<Card>();
         public List<int> Graveyard { get; internal set; } = new List<int>(); // 墓地（不算手牌）
-        /// <summary>抽牌堆（2026-08-19 策划确认新概念）：构筑牌组中【部署/升变】种类棋子；第一回合自动抽 4 + 1 AP 抽 1 行动。</summary>
-        public List<int> DrawPile { get; internal set; } = new List<int>();
+        /// <summary>抽牌堆（2026-08-19 策划确认新概念）：构筑牌组【部署/升变】棋子 + 麻将玩法 18 张麻将牌；第一回合自动抽 4 + 1 AP 抽 1 行动。</summary>
+        public List<Card> DrawPile { get; internal set; } = new List<Card>();
         public int PlayerAP { get; internal set; }
         public int PlayerAPMax { get; internal set; } = 1; // ⚠️ 2026-08-19：策划新案确认初始上限 1（能力可增加）；原 2
         /// <summary>总得分（2026-08-19 计分规则：回合结算后的本关总得分——**不跨关累计**，ResetForBattle 清）。</summary>
@@ -54,6 +55,17 @@ namespace TheLaw.Gameplay
         public List<Template> EditModuleCandidates { get; internal set; } = new List<Template>();
 
         // ========== 局内 ==========
+        /// <summary>玩法激活集合（2026-08-20：本关已激活的玩法——"mahjong"/"element"等；改变规则事件选择玩法后加入；机制后议，先用配置/进关填入占位）。</summary>
+        public HashSet<string> ActiveStyles { get; internal set; } = new HashSet<string>();
+
+        // ========== 麻将玩法（2026-08-20——玩法机制区）==========
+        /// <summary>牌山（麻将玩法：数字队列——最多 2 个；敌方棋子被击败/己方麻将牌被破坏/摸切填入；第 3 个填入时先判定刻子/顺子）。</summary>
+        public List<int> MahjongScore { get; internal set; } = new List<int>();
+        /// <summary>番数（麻将玩法：刻子/顺子成形 → +1；和牌消耗清空）。</summary>
+        public int FanCount { get; internal set; }
+        /// <summary>麻将墙体（2026-08-20：格 → 点数——1×2 竖两格各记一条；攻击命中墙体格 → 整墙破坏 + 填牌山点数 + 基础分 +1；阻挡移动穿过/直射路径——与 Obstacles 合并判定）。</summary>
+        public Dictionary<Vector2Int, ObstacleData> MahjongWalls { get; internal set; } = new Dictionary<Vector2Int, ObstacleData>();
+
         public List<RelicDef> Relics { get; internal set; } = new List<RelicDef>();
         public List<int> WaveScores { get; internal set; } = new List<int>();     // 每波得分（第 3 关"每波达标"）
         public List<PromoteAnnouncement> PromoteAnnouncements { get; internal set; } = new List<PromoteAnnouncement>();
@@ -71,6 +83,15 @@ namespace TheLaw.Gameplay
         public List<ConcreteAction> ReplayLog { get; internal set; } = new List<ConcreteAction>();
 
         // ========== 查询（只读，供 BoardRules/UI）==========
+
+        /// <summary>玩法是否激活（2026-08-20：麻将"mahjong"/属性"element"）。</summary>
+        public bool IsStyleActive(string style) => ActiveStyles != null && ActiveStyles.Contains(style);
+
+        /// <summary>
+        /// 棋盘格是否障碍（2026-08-20 统一入口：普通障碍 Obstacles ∪ 麻将墙体 MahjongWalls——决策记录_牌数据结构与玩法语义）。
+        /// 移动阻挡 + 直射阻挡共用；以后新增障碍源 = 在此加一行，查询点收拢。
+        /// </summary>
+        public bool IsBlocked(Vector2Int cell) => Obstacles.Contains(cell) || (MahjongWalls != null && MahjongWalls.ContainsKey(cell));
 
         public PieceInstance GetPiece(int pieceId) => PiecesById.TryGetValue(pieceId, out var p) ? p : null;
 
@@ -175,6 +196,10 @@ namespace TheLaw.Gameplay
             CurrentEventId = null;
             DrawnEventIds.Clear();
             FreeExecutes.Clear();
+            MahjongScore.Clear(); // 麻将状态随整局重置（ResetForBattle 同样清）
+            FanCount = 0;
+            MahjongWalls.Clear();
+            ActiveStyles.Clear(); // 玩法激活随整局重置（跨关累积——ResetForBattle 不清）
             CurrentFloor = 0;
             CurrentNodeIndex = 0;
             NodeStates.Clear();
@@ -184,7 +209,7 @@ namespace TheLaw.Gameplay
             // 初始手牌 = 基础牌组：全部已注册棋子（当前 12 个 = 4 初始 + 4 部署 + 4 升变——构筑事件后续限定）
             foreach (var def in ConfigTable.All<PieceDef>())
             {
-                Hand.Add(def.Id);
+                Hand.Add(Card.Piece(def.Id));
             }
         }
 
@@ -213,6 +238,10 @@ namespace TheLaw.Gameplay
             WaveScores.Clear();
             PromoteAnnouncements.Clear();
             WaveEndCountdown = -1;
+            // 麻将玩法状态每关清（牌山/番数/墙体随战斗重置）
+            MahjongScore.Clear();
+            FanCount = 0;
+            MahjongWalls.Clear();
         }
 
         // ========== ISnapshot（经 DTO——Vector2Int/PieceDef 引用不可直接序列化）==========
@@ -234,9 +263,9 @@ namespace TheLaw.Gameplay
                 EnemyAP = EnemyAP,
                 EnemyAPMax = EnemyAPMax,
                 EnemyScore = EnemyScore,
-                Hand = new List<int>(Hand),
+                Hand = new List<Card>(Hand),
                 Graveyard = new List<int>(Graveyard),
-                DrawPile = new List<int>(DrawPile),
+                DrawPile = new List<Card>(DrawPile),
                 EnemyWavePool = new List<int>(EnemyWavePool),
                 CurrentPrograms = CurrentPrograms,
                 EditingDefs = new List<int>(EditingDefs),
@@ -250,6 +279,10 @@ namespace TheLaw.Gameplay
                 CurrentEventId = CurrentEventId,
                 DrawnEventIds = new List<string>(DrawnEventIds),
                 FreeExecutes = new List<int>(FreeExecutes),
+                ActiveStyles = new List<string>(ActiveStyles),
+                MahjongScore = new List<int>(MahjongScore),
+                FanCount = FanCount,
+                MahjongWalls = MahjongWalls,
                 CurrentFloor = CurrentFloor,
                 CurrentNodeIndex = CurrentNodeIndex,
                 NodeStates = new List<NodeState>(NodeStates),
@@ -272,6 +305,7 @@ namespace TheLaw.Gameplay
                     IsDeployed = piece.isDeployed,
                     ShieldCount = piece.shieldCount,
                     WaveIndex = piece.waveIndex, // 波次标（2026-08-13 补——原 DTO 缺字段，读档后每波得分链路断）
+                    Element = piece.element,     // 属性玩法（2026-08-20——读档恢复）
                 });
             }
             // TypeNameHandling.Auto：多态基类（Template/ConcreteAction）序列化需写类型名，否则反序列化丢失子类
@@ -293,9 +327,9 @@ namespace TheLaw.Gameplay
             EnemyAP = dto.EnemyAP;
             EnemyAPMax = dto.EnemyAPMax;
             EnemyScore = dto.EnemyScore;
-            Hand = dto.Hand ?? new List<int>();
+            Hand = dto.Hand ?? new List<Card>();
             Graveyard = dto.Graveyard ?? new List<int>();
-            DrawPile = dto.DrawPile ?? new List<int>();
+            DrawPile = dto.DrawPile ?? new List<Card>();
             EnemyWavePool = dto.EnemyWavePool ?? new List<int>();
             CurrentPrograms = dto.CurrentPrograms ?? new Dictionary<int, List<Template>>();
             EditingDefs = dto.EditingDefs != null ? new HashSet<int>(dto.EditingDefs) : new HashSet<int>();
@@ -320,6 +354,10 @@ namespace TheLaw.Gameplay
             CurrentEventId = dto.CurrentEventId;
             DrawnEventIds = dto.DrawnEventIds ?? new List<string>();
             FreeExecutes = dto.FreeExecutes != null ? new HashSet<int>(dto.FreeExecutes) : new HashSet<int>();
+            ActiveStyles = dto.ActiveStyles != null ? new HashSet<string>(dto.ActiveStyles) : new HashSet<string>();
+            MahjongScore = dto.MahjongScore ?? new List<int>();
+            FanCount = dto.FanCount;
+            MahjongWalls = dto.MahjongWalls ?? new Dictionary<Vector2Int, ObstacleData>();
             CurrentFloor = dto.CurrentFloor;
             CurrentNodeIndex = dto.CurrentNodeIndex;
             NodeStates = dto.NodeStates ?? new List<NodeState>();
@@ -347,6 +385,7 @@ namespace TheLaw.Gameplay
                         isDeployed = pdto.IsDeployed,
                         shieldCount = pdto.ShieldCount,
                         waveIndex = pdto.WaveIndex, // 波次标（2026-08-13 补：第 3 关每波得分依赖——原 DTO 缺字段读档归 -1）
+                        element = pdto.Element,     // 属性（2026-08-20——缺省 None）
                     };
                     foreach (var abilityId in pdto.TempAbilities)
                     {
@@ -386,9 +425,9 @@ namespace TheLaw.Gameplay
         public int EnemyAP;
         public int EnemyAPMax;
         public int EnemyScore;
-        public List<int> Hand;
+        public List<Card> Hand;          // 牌（棋子牌/麻将牌——2026-08-20 牌结构改造）
         public List<int> Graveyard;
-        public List<int> DrawPile;   // 抽牌堆（2026-08-19）
+        public List<Card> DrawPile;      // 抽牌堆（牌——2026-08-20）
         public List<int> EnemyWavePool;
         public Dictionary<int, List<Template>> CurrentPrograms;
         public List<int> EditingDefs;
@@ -402,6 +441,10 @@ namespace TheLaw.Gameplay
         public string CurrentEventId;
         public List<string> DrawnEventIds;
         public List<int> FreeExecutes;
+        public List<string> ActiveStyles;   // 玩法激活（2026-08-20）
+        public List<int> MahjongScore;       // 麻将牌山（2026-08-20）
+        public int FanCount;                 // 麻将番数（2026-08-20）
+        public Dictionary<Vector2Int, ObstacleData> MahjongWalls; // 麻将墙体（2026-08-20）
         public int CurrentFloor;
         public int CurrentNodeIndex;
         public List<NodeState> NodeStates;
@@ -425,5 +468,6 @@ namespace TheLaw.Gameplay
         public bool IsDeployed;
         public int ShieldCount;
         public int WaveIndex; // 所属波次（2026-08-13 补——每波得分按此累计）
+        public Element Element; // 属性玩法（2026-08-20）
     }
 }

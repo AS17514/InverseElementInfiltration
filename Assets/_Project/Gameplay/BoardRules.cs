@@ -26,14 +26,14 @@ namespace TheLaw.Gameplay
 
         public bool IsCellPassable(GameState state, Vector2Int cell)
         {
-            // 落点可通行 = 界内 + 无障碍物 + 无棋子占用（落点不可重叠）
-            return IsInsideBoard(cell) && !state.Obstacles.Contains(cell) && !IsCellOccupied(state, cell);
+            // 落点可通行 = 界内 + 无障碍物（含麻将墙——2026-08-20 统一 IsBlocked）+ 无棋子占用（落点不可重叠）
+            return IsInsideBoard(cell) && !state.IsBlocked(cell) && !IsCellOccupied(state, cell);
         }
 
-        /// <summary>路径格可通行 = 界内 + 无障碍物（棋子可穿过——路径经过棋子不阻挡）。</summary>
+        /// <summary>路径格可通行 = 界内 + 无障碍物（棋子可穿过——路径经过棋子不阻挡；2026-08-20 统一 IsBlocked 含麻将墙）。</summary>
         public bool IsPathCellPassable(GameState state, Vector2Int cell)
         {
-            return IsInsideBoard(cell) && !state.Obstacles.Contains(cell);
+            return IsInsideBoard(cell) && !state.IsBlocked(cell);
         }
 
         public bool IsPathClear(GameState state, PieceInstance piece, Vector2Int to)
@@ -179,8 +179,8 @@ namespace TheLaw.Gameplay
                             if (inRange) result.Add(cursor); // 群攻：范围内全部被攻击，不截断
                             continue;
                         }
-                        // 近战/直射：障碍截断 + 首个棋子截断（目标并截断）
-                        if (state.Obstacles.Contains(cursor)) break;
+                        // 近战/直射：障碍截断 + 首个棋子截断（目标并截断；2026-08-20 统一 IsBlocked 含麻将墙）
+                        if (state.IsBlocked(cursor)) break;
                         if (inRange) result.Add(cursor);
                         if (IsCellOccupied(state, cursor)) break;
                     }
@@ -207,8 +207,8 @@ namespace TheLaw.Gameplay
                     if (template.mode == AttackMode.DirectFire || template.mode == AttackMode.Melee)
                     {
                         // 直射/近战（2026-08-16：近战 range>1 语义同直射——逐格、首个棋子/障碍截断；range=1 无差别）：
-                        // 障碍物格截断（不可达）；棋子格 = 目标并截断（第一个可攻击物阻挡）
-                        if (state.Obstacles.Contains(cursor))
+                        // 障碍物格截断（不可达）；棋子格 = 目标并截断（第一个可攻击物阻挡；2026-08-20 统一 IsBlocked 含麻将墙）
+                        if (state.IsBlocked(cursor))
                         {
                             break;
                         }

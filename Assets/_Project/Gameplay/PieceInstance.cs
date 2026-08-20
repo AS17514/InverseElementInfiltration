@@ -24,6 +24,7 @@ namespace TheLaw.Gameplay
         public bool isDeployed;                 // 是否已部署上场
         public int waveIndex = -1;              // 所属波次（-1=非波次棋子；每波得分按此累计）
         public int shieldCount;                 // 剩余护盾（抵挡伤害用，一次性不恢复；入快照）
+        public Element element = Element.None;  // 属性（2026-08-20「属性」玩法——创建时随机/复制牌带属性；None=无属性）
 
         public PieceInstance(PieceDef def, Side side, Vector2Int position)
         {

@@ -60,4 +60,39 @@ namespace TheLaw.Data
         {
         }
     }
+
+    /// <summary>麻将·打出墙体请求（2026-08-20 麻将玩法：耗 1 AP；手牌麻将牌 → 棋盘 1×2 竖两格墙体）。</summary>
+    [Serializable]
+    public class PlayMahjongRequest : Request
+    {
+        public int mahjongValue;    // 手牌中的麻将牌点数（1~9）
+        public Vector2Int cell;     // 墙体放置格（1×2 竖——本格 + 下格）
+
+        public PlayMahjongRequest(int mahjongValue, Vector2Int cell)
+        {
+            this.mahjongValue = mahjongValue;
+            this.cell = cell;
+        }
+    }
+
+    /// <summary>麻将·摸切请求（2026-08-20：手牌麻将填入牌山 + 抽一张牌；1 AP）。</summary>
+    [Serializable]
+    public class MochiRequest : Request
+    {
+        public int mahjongValue;    // 手牌中的麻将牌点数
+
+        public MochiRequest(int mahjongValue)
+        {
+            this.mahjongValue = mahjongValue;
+        }
+    }
+
+    /// <summary>麻将·和牌请求（2026-08-20：手牌有雀头（任意两牌价值相同）且番数 &gt; 0 → 1 AP → 倍率+番数、番数清零）。</summary>
+    [Serializable]
+    public class HuRequest : Request
+    {
+        public HuRequest()
+        {
+        }
+    }
 }

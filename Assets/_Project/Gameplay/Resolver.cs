@@ -89,13 +89,46 @@ namespace TheLaw.Gameplay
             var target = _state.GetPieceAt(action.targetCell);
             int targetId = target != null ? target.Id : -1; // 死亡前记录——HandleDeath 会从 Pieces 移除
             bool died = false;
+            bool elementHit = false; // 属性玩法触发（相克击败/相生无伤——表现区分用）
             if (target != null)
             {
-                died = ModifyDurability(target, -damage, piece); // killer = 攻击者
+                // ⚠️ 2026-08-20「属性」玩法：攻击命中按属性判定相克/相生（仅双方棋子且双方有属性——麻将牌/无属性不判）
+                if (_state.IsStyleActive("element") && piece.element != Element.None && target.element != Element.None)
+                {
+                    if (ElementRules.IsCountering(piece.element, target.element))
+                    {
+                        // 相克：直接击败（无视护盾/抗性——伤害打穿护盾+承伤）+ 基础得分 + 棋盘上同属性棋子数量
+                        int bypass = target.durability + target.shieldCount + 1;
+                        died = ModifyDurability(target, -bypass, piece);
+                        _state.BaseScore += CountSameElementOnBoard(piece.element);
+                        elementHit = true;
+                    }
+                    else if (ElementRules.IsGenerating(piece.element, target.element))
+                    {
+                        // 相生：不造成任何伤害 + 获得目标复制牌入手牌（属性相同）
+                        _state.Hand.Add(Card.Piece(target.DefId, target.element));
+                        EventCenter.Instance.EventTrigger(GameEvent.HandChanged, _state.Hand);
+                        elementHit = true;
+                        // died 保持 false（无伤害）
+                    }
+                    else
+                    {
+                        died = ModifyDurability(target, -damage, piece); // 无关：正常伤害
+                    }
+                }
+                else
+                {
+                    died = ModifyDurability(target, -damage, piece); // killer = 攻击者
+                }
+            }
+            else if (_state.IsStyleActive(Mahjong.StyleId) && _state.MahjongWalls.ContainsKey(action.targetCell))
+            {
+                // ⚠️ 2026-08-20 麻将：攻击命中墙体格（无棋子目标）——选了即破坏（整墙 + 填牌山点数 + 基础分 +1）
+                BreakMahjongWall(action.targetCell);
             }
 
             // 附着结算（Attach/OnAttack：如十字额外伤害——范围额外结算）
-            ResolveAttachOnAttack(piece, action.targetCell, action.template, damage);
+            ResolveAttachOnAttack(piece, action.targetCell, action.template, elementHit ? 0 : damage);
 
             // 发事件（UI 表现依据：攻击者/目标/伤害/是否死亡）
             EventCenter.Instance.EventTrigger(GameEvent.DamageDealt, new DamageInfo
@@ -103,10 +136,21 @@ namespace TheLaw.Gameplay
                 AttackerId = piece.Id,
                 TargetId = targetId,
                 TargetCell = action.targetCell,
-                Damage = damage,
+                Damage = elementHit && !died ? 0 : damage, // 相生无伤（Damage=0——前端"柔"表现）；相克改用实际（已死——Damage 仍显示原数值）
                 TargetDied = died,
                 FriendlyFire = action.template.friendlyFire,
             });
+        }
+
+        /// <summary>棋盘上同属性棋子数量（2026-08-20 相克击杀得分用——"棋盘上与攻击棋子属性相同的棋子数量"，含攻击者自身）。</summary>
+        private int CountSameElementOnBoard(Element element)
+        {
+            int count = 0;
+            foreach (var p in _state.Pieces.Values)
+            {
+                if (p != null && p.element == element) count++;
+            }
+            return count;
         }
 
         /// <summary>
@@ -215,13 +259,42 @@ namespace TheLaw.Gameplay
                 Id = _state.AllocatePieceId(),
                 waveIndex = action.waveIndex, // 波次标（每波得分累计用）
             };
+            // ⚠️ 2026-08-20「属性」玩法：创建时分配属性（一方应含双方棋子——部署/波次都经此）
+            // 复制牌（Card 带属性，"属性相同"）优先用牌属性；否则激活玩法时随机（金木水火土）
+            if (_state.IsStyleActive("element"))
+            {
+                piece.element = CardElementFromHand(action.pieceDefId);
+                if (piece.element == Element.None)
+                {
+                    piece.element = RandomElement();
+                }
+            }
             if (action.side == Side.Player)
             {
-                _state.Hand.Remove(action.pieceDefId); // 玩家部署：手牌打出
+                _state.Hand.RemoveAll(c => c.IsPiece && c.defId == action.pieceDefId); // 玩家部署：手牌打出（棋子牌）
             }
             _state.Pieces[action.cell] = piece;
             _state.PiecesById[piece.Id] = piece;
             EventCenter.Instance.EventTrigger(GameEvent.PieceDeployed, new DeployInfo { PieceId = piece.Id, DefId = action.pieceDefId, Side = action.side, Cell = action.cell });
+        }
+
+        /// <summary>手牌中该 defId 的带属性牌（复制牌"属性相同"）——有则返回牌属性，无则 None（2026-08-20）。</summary>
+        private Element CardElementFromHand(int defId)
+        {
+            foreach (var card in _state.Hand)
+            {
+                if (card.IsPiece && card.defId == defId && card.element != Element.None)
+                {
+                    return card.element;
+                }
+            }
+            return Element.None;
+        }
+
+        /// <summary>随机属性（金木水火土——RandomManager 种子相关可复现；属性玩法激活时用）。</summary>
+        private static Element RandomElement()
+        {
+            return (Element)(RandomManager.Instance.Range(1, 6)); // 1=Gold ~ 5=Earth（0=None 跳过）
         }
 
         private void ResolvePromote(PromoteAction action)
@@ -232,11 +305,29 @@ namespace TheLaw.Gameplay
                 return;
             }
             var newDef = ConfigTable.Get<PieceDef>(action.newDefId);
+            var oldDefId = piece.DefId;      // 升变前 def（相生复制牌用——被升变棋子）
+            var oldElement = piece.element;  // 升变前属性（相克/相生判定用——旧棋子 vs 新棋子）
             piece.def = newDef;
             piece.ApplyDefProperties(); // 承伤+护盾按新身体重算（2026-08-12：护盾此前漏算——升变丢新身体护盾；统一初始化路径）
+            // ⚠️ 2026-08-20「属性」玩法：升变 = 新身体 → 属性重随机（激活玩法时）；
+            // 相克/相生判定（升变棋子 vs 被升变棋子属性）：
+            //   相克 → 倍率 +1（当回合——结算后复位 1）；相生 → 被升变棋子的复制牌入手牌（属性 = 旧属性）
+            if (_state.IsStyleActive("element"))
+            {
+                piece.element = RandomElement();
+                if (ElementRules.IsCountering(piece.element, oldElement))
+                {
+                    _state.ScoreMultiplier += 1; // 升变相克：倍率 +1
+                }
+                else if (ElementRules.IsGenerating(piece.element, oldElement))
+                {
+                    _state.Hand.Add(Card.Piece(oldDefId, oldElement)); // 复制牌：属性 = 旧属性
+                    EventCenter.Instance.EventTrigger(GameEvent.HandChanged, _state.Hand);
+                }
+            }
             if (piece.side == Side.Player)
             {
-                _state.Hand.Remove(action.newDefId); // 升变牌打出（手牌减一）——仅玩家（敌方无手牌）
+                _state.Hand.RemoveAll(c => c.IsPiece && c.defId == action.newDefId); // 升变牌打出（手牌减一）——仅玩家（敌方无手牌）
             }
             EventCenter.Instance.EventTrigger(GameEvent.PiecePromoted, new PromoteInfo { PieceId = piece.Id, NewDefId = action.newDefId });
         }
@@ -299,12 +390,122 @@ namespace TheLaw.Gameplay
             else
             {
                 _state.BaseScore += killValue; // 基础得分积累（回合结束按 基础分×倍率 结算）
+                // ⚠️ 2026-08-20 麻将玩法：敌方棋子被击败 → 该牌价值数字填入牌山（刻/顺判定——番数）
+                if (_state.IsStyleActive(Mahjong.StyleId))
+                {
+                    PushMahjongScore(killValue);
+                }
             }
 
             // OnKill 触发点（层差异 + 遗物 + 特殊能力——动作进待执行队列）
             OnKillTriggers(victim, killer);
 
             EventCenter.Instance.EventTrigger(GameEvent.PieceDied, new DeathInfo { PieceId = victim.Id, Side = victim.side, KillerId = killer != null ? killer.Id : -1 });
+        }
+
+        // ========== 麻将玩法（2026-08-20——落账唯一入口）==========
+
+        /// <summary>
+        /// 麻将：数字填入牌山（破坏/摸切/敌方棋子被击败）。
+        /// 牌山 ≤2：第 3 个填入时**先判定**（在移除之前）——3 个组成刻子/顺子 → 番数 +1、清空牌山；不组 → 移除最早（牌山回到 ≤2）。
+        /// </summary>
+        public void PushMahjongScore(int value)
+        {
+            if (value <= 0) return;
+            _state.MahjongScore.Add(value);
+            if (_state.MahjongScore.Count >= 3)
+            {
+                if (Mahjong.IsTripletOrSequence(_state.MahjongScore))
+                {
+                    _state.FanCount += 1;      // 刻子/顺子成形 → 番数 +1
+                    _state.MahjongScore.Clear();
+                }
+                else
+                {
+                    _state.MahjongScore.RemoveAt(0); // 不组 → 移出最早填入的（牌山保持 ≤2）
+                }
+            }
+            EventCenter.Instance.EventTrigger(GameEvent.StateChanged, "mahjong-score"); // 牌山/番数变化（前端刷新）
+        }
+
+        /// <summary>
+        /// 麻将：打出墙体（耗 AP——BattleFlow 校验；1×2 竖＝(x,y)+(x,y+1) 两格，非敌方部署区/空/无墙）。
+        /// 手牌移除该麻将牌；两格各记点数（MahjongWalls——阻挡/破坏用）。
+        /// </summary>
+        public bool PlayMahjongWall(Card mahjongCard, Vector2Int cell)
+        {
+            if (!mahjongCard.IsMahjong) return false;
+            var second = cell + Vector2Int.down; // 竖 = 纵向（dy+1——y 轴向下为正：Unity 坐标 y+ 向下？——现有棋盘 x=列 y=行，上=+y？——统一：竖 = (x,y)+(x,y+1)）
+            if (_state.Pieces.ContainsKey(cell) || _state.Pieces.ContainsKey(second)
+                || _state.MahjongWalls.ContainsKey(cell) || _state.MahjongWalls.ContainsKey(second)
+                || IsEnemyDeployZone(cell) || IsEnemyDeployZone(second))
+            {
+                return false;
+            }
+            _state.MahjongWalls[cell] = new ObstacleData(mahjongCard.value);
+            _state.MahjongWalls[second] = new ObstacleData(mahjongCard.value);
+            RemoveOneMahjongFromHand(mahjongCard.value); // 手牌移除该麻将牌（同点数多张——只移除一张）
+            EventCenter.Instance.EventTrigger(GameEvent.StateChanged, "mahjong-wall");
+            return true;
+        }
+
+        /// <summary>敌方部署区判定（最上 2 行 = dy 7/6？——按现有部署区：见 BattleFlow.IsValidDeployCell——简化：敌方上半区拒绝墙）。</summary>
+        private static bool IsEnemyDeployZone(Vector2Int cell)
+        {
+            return cell.y >= 6; // 布局：y 越大越靠"前方"（敌方部署区最上 2 行）——与 BattleFlow 敌方部署区一致
+        }
+
+        /// <summary>
+        /// 麻将：墙体被破坏（攻击命中墙体格——选了即破坏 → 移除整墙（两格）→ 填牌山点数 + 基础得分 +1）。
+        /// </summary>
+        public void BreakMahjongWall(Vector2Int cell)
+        {
+            if (!_state.MahjongWalls.TryGetValue(cell, out var wall))
+            {
+                return;
+            }
+            // 移除整墙（两格——竖墙配对：同列上下格）
+            var second = _state.MahjongWalls.ContainsKey(cell + Vector2Int.down)
+                ? cell + Vector2Int.down
+                : cell + Vector2Int.up;
+            _state.MahjongWalls.Remove(cell);
+            _state.MahjongWalls.Remove(second);
+            PushMahjongScore(wall.value);       // 破坏 → 填牌山点数
+            _state.BaseScore += 1;              // 破坏 → 基础得分 +1
+            EventCenter.Instance.EventTrigger(GameEvent.StateChanged, "mahjong-wall");
+        }
+
+        /// <summary>
+        /// 麻将：摸切（手牌行动）——手牌麻将牌填入牌山 + 抽一张牌。
+        /// 抽一张 = 从抽牌堆（DrawCard）；手牌移除该麻将。
+        /// </summary>
+        public void MochiCut(Card mahjongCard)
+        {
+            if (!mahjongCard.IsMahjong) return;
+            RemoveOneMahjongFromHand(mahjongCard.value);
+            PushMahjongScore(mahjongCard.value);
+            DrawCard();
+        }
+
+        /// <summary>手牌移除一张指定点数的麻将牌（Card 值语义——同点数多张只去一张）。</summary>
+        private void RemoveOneMahjongFromHand(int value)
+        {
+            int idx = _state.Hand.FindIndex(c => c.IsMahjong && c.value == value);
+            if (idx >= 0) _state.Hand.RemoveAt(idx);
+        }
+
+        /// <summary>
+        /// 麻将：和牌（手牌行动——1 AP）——条件（BattleFlow 校验）：手牌存在雀头（任意两牌价值相同——不限麻将牌）且番数 &gt; 0。
+        /// 效果：本回合倍率 + 番数、番数清零。
+        /// 返回是否成功（触发了和牌）。
+        /// </summary>
+        public bool Hu(int fanToUse)
+        {
+            if (fanToUse <= 0) return false;
+            _state.ScoreMultiplier += fanToUse; // 倍率 + 番数（当回合——结算后复位 1）
+            _state.FanCount = 0;                // 番数清零
+            EventCenter.Instance.EventTrigger(GameEvent.StateChanged, "mahjong-hu");
+            return true;
         }
 
         /// <summary>
@@ -376,10 +577,17 @@ namespace TheLaw.Gameplay
             EventCenter.Instance.EventTrigger(GameEvent.ProgramEdited, defId);
         }
 
-        /// <summary>玩家手牌加牌（事件 AddPiece 效果）。</summary>
+        /// <summary>玩家手牌加牌（事件 AddPiece 效果；2026-08-20 牌结构——棋子牌入牌）。</summary>
         public void AddToHand(int defId)
         {
-            _state.Hand.Add(defId);
+            _state.Hand.Add(Card.Piece(defId));
+            EventCenter.Instance.EventTrigger(GameEvent.HandChanged, _state.Hand);
+        }
+
+        /// <summary>玩家手牌加牌（带属性——属性玩法复制牌"属性相同"；麻将牌非棋子不带属性请用 AddMahjongToHand）。</summary>
+        public void AddToHand(Card card)
+        {
+            _state.Hand.Add(card);
             EventCenter.Instance.EventTrigger(GameEvent.HandChanged, _state.Hand);
         }
 
@@ -449,8 +657,9 @@ namespace TheLaw.Gameplay
             // 通过校验：整组替换手牌（落账纪律——唯一写入口）
             // ⚠️ 2026-08-13：按入参顺序写入（原 AddRange(seen) 迭代 HashSet——顺序不确定；
             // 去重校验仍由 seen 完成，顺序按玩家选择顺序——存档往返一致）
+            // ⚠️ 2026-08-20 牌结构：构筑只选棋子牌 → 转 Card（无属性）
             _state.Hand.Clear();
-            _state.Hand.AddRange(effective); // 顺序 = 入参顺序（可复数模式下含重复）
+            _state.Hand.AddRange(effective.ConvertAll(id => Card.Piece(id))); // 顺序 = 入参顺序（可复数模式下含重复）
             EventCenter.Instance.EventTrigger(GameEvent.HandChanged, _state.Hand);
             return true;
         }
@@ -461,11 +670,22 @@ namespace TheLaw.Gameplay
         /// </summary>
         public void SetupDrawPile()
         {
+            // ⚠️ 2026-08-20 麻将玩法：战斗开始 18 张麻将牌放进抽牌堆（与棋子牌混合——第一回合抽 4/摸切可抽到）
+            if (_state.IsStyleActive(Mahjong.StyleId))
+            {
+                foreach (var tile in Mahjong.Tiles())
+                {
+                    _state.DrawPile.Add(tile);
+                }
+            }
             for (int i = _state.Hand.Count - 1; i >= 0; i--)
             {
-                if (_state.GetEffectiveType(_state.Hand[i]) != PieceType.Initial)
+                var card = _state.Hand[i];
+                // 非初始棋子牌转抽牌堆（麻将牌 IsMahjong 亦转——本应直接进抽牌堆，此处防御）；
+                // 初始棋子牌已由 Placement 阶段全部署（校验兜底）
+                if (!card.IsPiece || _state.GetEffectiveType(card.defId) != PieceType.Initial)
                 {
-                    _state.DrawPile.Add(_state.Hand[i]);
+                    _state.DrawPile.Add(card);
                     _state.Hand.RemoveAt(i);
                 }
             }
@@ -479,9 +699,9 @@ namespace TheLaw.Gameplay
             {
                 return;
             }
-            int defId = _state.DrawPile[_state.DrawPile.Count - 1];
+            var card = _state.DrawPile[_state.DrawPile.Count - 1];
             _state.DrawPile.RemoveAt(_state.DrawPile.Count - 1);
-            _state.Hand.Add(defId);
+            _state.Hand.Add(card);
             EventCenter.Instance.EventTrigger(GameEvent.HandChanged, _state.Hand);
         }
 

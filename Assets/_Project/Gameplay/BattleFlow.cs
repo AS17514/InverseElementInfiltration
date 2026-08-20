@@ -120,9 +120,10 @@ namespace TheLaw.Gameplay
             }
             // 前置条件：手牌中不得还有初始棋子——必须摆完全部起始棋子才能结束摆放（防"跳过摆放"）
             // ⚠️ 2026-08-15：类型 = 价值档位推导（初始 = 0-3 档；编辑跨档后种类随价值变化）
-            foreach (var defId in _state.Hand)
+            // ⚠️ 2026-08-20 牌结构：仅棋子牌参与（麻将牌非棋子跳过）
+            foreach (var card in _state.Hand)
             {
-                if (_state.GetEffectiveType(defId) == PieceType.Initial)
+                if (card.IsPiece && _state.GetEffectiveType(card.defId) == PieceType.Initial)
                 {
                     EventCenter.Instance.EventTrigger(GameEvent.StateChanged, "placement-incomplete"); // 通知 UI 继续摆放
                     return;
@@ -352,6 +353,9 @@ namespace TheLaw.Gameplay
         public void OnPlayerRequestPromote(PromoteRequest request) => ProcessRequest(request, Side.Player);
         public void OnPlayerRequestExecute(ExecuteRequest request) => ProcessRequest(request, Side.Player);
         public void OnPlayerRequestDraw(DrawCardRequest request) => ProcessRequest(request, Side.Player);
+        public void OnPlayerRequestPlayMahjong(PlayMahjongRequest request) => ProcessRequest(request, Side.Player);
+        public void OnPlayerRequestMochi(MochiRequest request) => ProcessRequest(request, Side.Player);
+        public void OnPlayerRequestHu(HuRequest request) => ProcessRequest(request, Side.Player);
 
         private void ProcessRequest(Request request, Side side)
         {
@@ -396,7 +400,7 @@ namespace TheLaw.Gameplay
                         bool promoteValid = piece != null && piece.side == side
                             && _state.GetEffectiveType(piece.DefId) != PieceType.Promoted
                             && promoteDef != null && _state.GetEffectiveType(promoteDef.Id) == PieceType.Promoted
-                            && _state.Hand.Contains(promote.newDefId);
+                            && HasPieceInHand(promote.newDefId);
                         if (promoteValid)
                         {
                             _resolver.Resolve(new PromoteAction(promote.pieceId, promote.newDefId));
@@ -421,6 +425,39 @@ namespace TheLaw.Gameplay
                         {
                             _resolver.DrawCard();
                             DeductActionPoint(request.free, side);
+                        }
+                        break;
+                    case PlayMahjongRequest pm:
+                        // 麻将·打出墙体（2026-08-20）：手牌有该麻将牌 + 墙体放置合法 → 1 AP
+                        if (side == Side.Player && _state.IsStyleActive(Mahjong.StyleId)
+                            && HasMahjongInHand(pm.mahjongValue))
+                        {
+                            // 从手牌取第一张该点数的麻将牌（Card 构造）
+                            var mahjongCard = Card.Mahjong(pm.mahjongValue);
+                            if (_resolver.PlayMahjongWall(mahjongCard, pm.cell))
+                            {
+                                DeductActionPoint(request.free, side);
+                            }
+                        }
+                        break;
+                    case MochiRequest mo:
+                        // 麻将·摸切（2026-08-20）：手牌有该麻将牌 → 填牌山 + 抽一张；1 AP
+                        if (side == Side.Player && _state.IsStyleActive(Mahjong.StyleId)
+                            && HasMahjongInHand(mo.mahjongValue))
+                        {
+                            _resolver.MochiCut(Card.Mahjong(mo.mahjongValue));
+                            DeductActionPoint(request.free, side);
+                        }
+                        break;
+                    case HuRequest:
+                        // 麻将·和牌（2026-08-20）：手牌有雀头（任意两牌价值相同）且番数 > 0 → 1 AP → 倍率+番数、番数清零
+                        if (side == Side.Player && _state.IsStyleActive(Mahjong.StyleId)
+                            && _state.FanCount > 0 && HasHuHeadInHand())
+                        {
+                            if (_resolver.Hu(_state.FanCount))
+                            {
+                                DeductActionPoint(request.free, side);
+                            }
                         }
                         break;
                 }
@@ -890,7 +927,54 @@ namespace TheLaw.Gameplay
             {
                 return false; // 部署阶段只能放部署棋子（升变棋子靠升变操作上场）
             }
-            return _state.Hand.Contains(def.Id); // 手牌持有（防重复部署）
+            return HasPieceInHand(def.Id); // 手牌持有（防重复部署）
+        }
+
+        /// <summary>手牌是否持有该棋子的牌（2026-08-20 牌结构：仅棋子牌——麻将牌不算持有棋子）。</summary>
+        private bool HasPieceInHand(int defId)
+        {
+            foreach (var card in _state.Hand)
+            {
+                if (card.IsPiece && card.defId == defId) return true;
+            }
+            return false;
+        }
+
+        /// <summary>手牌是否有该点数的麻将牌（2026-08-20 麻将：打出/摸切用）。</summary>
+        private bool HasMahjongInHand(int value)
+        {
+            foreach (var card in _state.Hand)
+            {
+                if (card.IsMahjong && card.value == value) return true;
+            }
+            return false;
+        }
+
+        /// <summary>
+        /// 手牌是否存在雀头（2026-08-20 麻将和牌条件：**任意两牌价值相同**——不限麻将牌：
+        /// 麻将牌价值 = 点数；棋子牌价值 = 棋子价值（GetEffectiveValue）。
+        /// </summary>
+        private bool HasHuHeadInHand()
+        {
+            for (int i = 0; i < _state.Hand.Count; i++)
+            {
+                for (int j = i + 1; j < _state.Hand.Count; j++)
+                {
+                    if (CardValue(_state.Hand[i]) == CardValue(_state.Hand[j]))
+                    {
+                        return true; // 两张价值相同 → 雀头
+                    }
+                }
+            }
+            return false;
+        }
+
+        /// <summary>牌的价值（雀头判定用）：麻将牌 = 点数；棋子牌 = 棋子价值（生效程序推导）。</summary>
+        private int CardValue(Card card)
+        {
+            if (card.IsMahjong) return card.value;
+            if (card.IsPiece) return _state.GetEffectiveValue(card.defId);
+            return 0;
         }
 
         private bool IsValidDeployCell(Side side, Vector2Int cell)

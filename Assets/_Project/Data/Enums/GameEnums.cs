@@ -19,6 +19,20 @@ namespace TheLaw.Data
         Promoted,    // 升变：手牌中预置的升变牌，替换使用
     }
 
+    /// <summary>
+    /// 属性（2026-08-20「属性」玩法——金木水火土；None = 无属性（基础玩法/牌不带属性））。
+    /// 麻将牌不视为棋子 → 不携带属性（始终 None）；复制牌带属性（"属性相同"——Card.element → 棋子实例）。
+    /// </summary>
+    public enum Element
+    {
+        None,   // 无属性（基础玩法 / 麻将牌）
+        Gold,   // 金
+        Wood,   // 木
+        Water,  // 水
+        Fire,   // 火
+        Earth,  // 土
+    }
+
     /// <summary>朝向（初始=defaultFacing，默认 Up=向前）。</summary>
     public enum Facing
     {

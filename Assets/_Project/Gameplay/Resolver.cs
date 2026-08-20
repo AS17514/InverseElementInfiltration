@@ -386,6 +386,11 @@ namespace TheLaw.Gameplay
                 // ⚠️ EnemyScore：**无策划依据的遗留实现**（2026-08-19 确认保留——仅结算面板显示"敌方得分"，不参与任何判定；
                 // 玩家计分规则（回合计分）只有玩家侧——见 计分规则_策划口述_20260819.md）
                 _state.EnemyScore += killValue;
+                // ⚠️ 2026-08-20 敌方击杀扣分（策划口述——第 3/4 关可用，按关开关）：我方棋子被**敌方棋子**击败 → 本关总得分 - 该棋子价值
+                if (killer != null && killer.side == Side.Enemy && (_state.CurrentFloorConfig?.scoreDeductEnabled ?? false))
+                {
+                    DeductScoreForPlayerLose(victim);
+                }
             }
             else
             {
@@ -531,6 +536,19 @@ namespace TheLaw.Gameplay
             EventCenter.Instance.EventTrigger(GameEvent.StateChanged, "score"); // 得分变化（前端刷新）
         }
 
+        /// <summary>
+        /// 敌方击杀扣分（2026-08-20 策划口述——第 3/4 关可用，按关开关 FloorConfig.scoreDeductEnabled）：
+        /// 我方棋子被**敌方棋子**击败 → 本关总得分 - 该棋子价值（clamp 0——总得分不下负）。
+        /// **接口**：独立封装，供后续任何"被敌方击败扣分"调用点复用（HandleDeath 已挂）。
+        /// </summary>
+        public void DeductScoreForPlayerLose(PieceInstance lostPiece)
+        {
+            if (lostPiece == null || lostPiece.side != Side.Player) return;
+            int value = PieceValue.SumValue(lostPiece.GetProgram(_state)); // 被击败棋子价值（生效程序推导）
+            _state.PlayerScore = Mathf.Max(0, _state.PlayerScore - value); // 扣本关总得分（clamp 0）
+            EventCenter.Instance.EventTrigger(GameEvent.StateChanged, "score"); // 得分变化（前端刷新）
+        }
+
         private void OnKillTriggers(PieceInstance victim, PieceInstance killer)
         {
             // 特殊能力（OnKill + ExtraAction）：【击杀者】获得免费执行资格（方案 B——不立即执行，
@@ -628,9 +646,13 @@ namespace TheLaw.Gameplay
             }
 
             int sizeLimit = ev.deckSizeLimit;
-            int valueLimit = ev.totalValueLimit;
+            // ⚠️ 死代码（测试占位机制——2026-08-20 用户拍板废除）：构筑"总价值 ≤ 上限"限制。
+            // 原本只是测试阶段占位（events.json deck_standard 的 totalValueLimit:30）；正式规则 = 满 12 张 +
+            // 可重复 + 升变≤初始（无价值上限）。保留 valueLimit/totalValue 变量与累计仅为可读性（不再校验）——
+            // 有关接口（EventDefinition.totalValueLimit / 前端总价值 tag / BuildDeck 价值校验）全部废除。
+            int valueLimit = ev.totalValueLimit; // 死代码：不再生效（原占位限制值——保留字段兼容旧配置）
 
-            int totalValue = 0;
+            int totalValue = 0; // 死代码：原价值累计（保留——不再用于校验）
             int initialCount = 0;
             int promotedCount = 0;
             foreach (var id in effective)
@@ -640,7 +662,7 @@ namespace TheLaw.Gameplay
                 {
                     return false; // 牌组含未知棋子——配置缺失当场拒绝
                 }
-                // ⚠️ 2026-08-15：总价值走推导（生效程序槽位总和——编辑差异生效；原 def.value 改为"默认价值"语义）
+                // ⚠️ 死代码：totalValue 累计不再参与校验（价值上限已废除——见上）；保留计算仅供注释参考
                 totalValue += _state.GetEffectiveValue(id);
                 if (ev.promoteLimitByInitial)
                 {
@@ -651,7 +673,7 @@ namespace TheLaw.Gameplay
             }
             // ⚠️ 2026-08-19：必须**选满**（策划确认"构筑事件中必须构筑满 12 个棋子"）——原为上限型（Count ≤ sizeLimit 通过）
             if (sizeLimit > 0 && effective.Count != sizeLimit) return false;
-            if (valueLimit > 0 && totalValue > valueLimit) return false;
+            // 死代码（2026-08-20 废除）：价值上限校验——不再执行（原：if (valueLimit > 0 && totalValue > valueLimit) return false;）
             if (ev.promoteLimitByInitial && promotedCount > initialCount) return false; // 升变数量 ≤ 初始数量
 
             // 通过校验：整组替换手牌（落账纪律——唯一写入口）
@@ -692,15 +714,16 @@ namespace TheLaw.Gameplay
             EventCenter.Instance.EventTrigger(GameEvent.HandChanged, _state.Hand);
         }
 
-        /// <summary>抽 1 张（2026-08-19：抽牌堆尾 → 手牌；抽牌堆空 = 无操作——调用方先校验）。</summary>
+        /// <summary>抽 1 张（2026-08-20：从抽牌堆**随机**抽一张 → 手牌——策划确认；抽牌堆空 = 无操作——调用方先校验；RandomManager 种子相关可复现）。</summary>
         public void DrawCard()
         {
             if (_state.DrawPile == null || _state.DrawPile.Count == 0)
             {
                 return;
             }
-            var card = _state.DrawPile[_state.DrawPile.Count - 1];
-            _state.DrawPile.RemoveAt(_state.DrawPile.Count - 1);
+            int idx = RandomManager.Instance.Range(0, _state.DrawPile.Count); // 随机抽
+            var card = _state.DrawPile[idx];
+            _state.DrawPile.RemoveAt(idx);
             _state.Hand.Add(card);
             EventCenter.Instance.EventTrigger(GameEvent.HandChanged, _state.Hand);
         }

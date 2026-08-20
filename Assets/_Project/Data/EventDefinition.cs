@@ -13,7 +13,12 @@ namespace TheLaw.Data
 
         // ====== 牌组构筑限制（DeckBuild 事件用；0 = 无限制）======
         public int deckSizeLimit;        // 牌组牌数上限（0 = 不限制）
-        public int totalValueLimit;      // 牌组总价值上限（0 = 不限制）
+        /// <summary>
+        /// ⚠️ 死代码（2026-08-20 用户拍板废除）：牌组总价值上限——测试阶段占位机制（events.json deck_standard totalValueLimit:30）。
+        /// 正式规则 = 满 12 张 + 可重复 + 升变≤初始（**无价值上限**）——BuildDeck 不再校验此字段；
+        /// 字段保留仅为旧配置兼容/可读（有关接口已废除）。
+        /// </summary>
+        public int totalValueLimit;      // 死代码：不再生效（原价值上限——保留字段）
 
         // ====== 构筑规则开关（2026-08-15 策划新案——事件级配置；默认 false = 旧行为兼容）======
         public bool allowDuplicate;          // 允许同种棋子复数编入（false = 去重——旧行为）

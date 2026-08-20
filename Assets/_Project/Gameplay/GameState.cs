@@ -76,6 +76,8 @@ namespace TheLaw.Gameplay
 
         // ========== 爬塔 ==========
         public int CurrentFloor { get; internal set; }
+        /// <summary>当前关卡配置（FloorConfig 引用——2026-08-20 进层时 TowerFlow 设置；运行时只读，不入存档——续档经 EnterFloor 重设）。</summary>
+        public FloorConfig CurrentFloorConfig { get; internal set; }
         public int CurrentNodeIndex { get; internal set; }
         public List<NodeState> NodeStates { get; internal set; } = new List<NodeState>();
 

@@ -13,6 +13,7 @@ namespace TheLaw.Data
     {
         public VictoryRule victoryRule;                       // 胜利规则（1关全灭/2关波次或分/3关每波达标/4关双条件）
         public int targetScore;                               // 目标分数（2/3/4 关用；数值待策划回填）
+        public bool scoreDeductEnabled;                        // 敌方击杀扣分开关（2026-08-20：我方棋子被敌方棋子击败 → 本关总得分 - 价值；第 3/4 关配置启用——策划口述）
         public List<WaveDef> waveDefs = new List<WaveDef>();  // 波次定义（按回合触发）
         public int enemyMaxAP = 3;                            // 敌方每回合行动次数上限（随关卡变化）
         public List<string> eventSequence = new List<string>(); // 事件节点类型序列（固定顺序：如 [ability, edit, deck]——与 eventPoolIds 顺序对应）

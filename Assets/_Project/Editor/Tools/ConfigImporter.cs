@@ -251,6 +251,7 @@ namespace TheLaw.EditorTools
             var floor = LoadOrCreate<FloorConfig>(assetPath, $"Floor_{dto.floorName}"); // 增量：已存在更新不删建
             floor.victoryRule = ParseEnum(dto.victoryRule, VictoryRule.WipeOut);
             floor.targetScore = dto.targetScore;
+            floor.scoreDeductEnabled = dto.scoreDeductEnabled; // 敌方击杀扣分开关（2026-08-20）
             floor.enemyMaxAP = dto.enemyMaxAP;
             floor.eventSequence = dto.eventSequence ?? new List<string>();
             // 事件池引用：JSON 裸名 → 资产名（幂等补 Pool_ 前缀——与池条目 eventId 补 Event_ 前缀同一契约）
@@ -681,7 +682,7 @@ namespace TheLaw.EditorTools
         private class PointJson { public int dx; public int dy; }
 
         private class MapJson { public string mapName; public string displayName; public string description; public List<string> floors; }
-        private class FloorJson { public string floorName; public string displayName; public string description; public string victoryRule; public int targetScore; public int enemyMaxAP; public List<string> eventSequence; public List<string> eventPoolIds; public List<WaveJson> waves; }
+        private class FloorJson { public string floorName; public string displayName; public string description; public string victoryRule; public int targetScore; public bool scoreDeductEnabled; public int enemyMaxAP; public List<string> eventSequence; public List<string> eventPoolIds; public List<WaveJson> waves; }
         private class WaveJson { public int startTurn; public List<string> pieceDefIds; public string pool; public int count; public List<PointJson> positions; public bool isLastWave; public int endCountdown; public List<WavePromotionJson> promotions; public bool autoPromote; public int waveScoreTarget; }
         private class WavePromotionJson { public int pieceIndexInWave; public string toDefId; }
         private class RelicsJson { public List<RelicJson> relics; }

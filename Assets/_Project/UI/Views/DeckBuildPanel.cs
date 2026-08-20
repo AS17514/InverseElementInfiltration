@@ -153,11 +153,12 @@ namespace TheLaw.UI
             _infoPortrait = portrait != null ? portrait.GetComponent<Image>() : null;
         }
 
-        /// <summary>构筑限制：当前事件 EventDefinition 的 deckSizeLimit/totalValueLimit（0=无限制）。判空防御（Init 前不应调用）。</summary>
+        /// <summary>构筑限制：当前事件 EventDefinition 的 deckSizeLimit / 复数 / 升变≤初始（0=无限制）。
+        /// ⚠️ 死代码（2026-08-20 废除）：totalValueLimit 价值上限——测试占位机制，正式规则无价值上限（保留读取仅兼容旧配置，不再用于校验/显示）。判空防御（Init 前不应调用）。</summary>
         void LoadLimits()
         {
             _deckSizeLimit = 0;
-            _valueLimit = 0;
+            _valueLimit = 0; // 死代码：价值上限已废除——不再生效
             _allowDuplicate = false;
             _promoteLimitByInitial = false;
             if (_state == null) return; // Init 未注入（Awake 时序）——跳过，OnShow 时再调
@@ -292,7 +293,8 @@ namespace TheLaw.UI
             }
         }
 
-        /// <summary>限制校验（数量/总价值/复数/升变≤初始——与 Resolver.BuildDeck 同规则，UI 提前拦截）。</summary>
+        /// <summary>限制校验（数量/复数/升变≤初始——与 Resolver.BuildDeck 同规则，UI 提前拦截）。
+        /// ⚠️ 死代码（2026-08-20 废除）：总价值上限校验——测试占位机制已移除（前端不再拦价值）。</summary>
         bool CanAdd(int defId)
         {
             // 单枚模式：已在队不能再加（左键加第二张被拦）
@@ -304,15 +306,7 @@ namespace TheLaw.UI
             {
                 return false;
             }
-            if (_valueLimit > 0)
-            {
-                int total = GetDeckTotalValue();
-                int value = GetEffectiveValue(defId);
-                if (total + value > _valueLimit)
-                {
-                    return false;
-                }
-            }
+            // 死代码（2026-08-20 废除）：价值上限校验不再执行——原：if (_valueLimit > 0) { total+value > _valueLimit → false }
             if (_promoteLimitByInitial && GetEffectiveType(defId) == PieceType.Promoted)
             {
                 int initialCount = CountByEffectiveType(PieceType.Initial);
@@ -447,7 +441,7 @@ namespace TheLaw.UI
             if (_tagSize != null)
                 _tagSize.text = _deckSizeLimit > 0 ? $"数量 {_deck.Count}/{_deckSizeLimit}" : $"数量 {_deck.Count}";
             if (_tagValue != null)
-                _tagValue.text = _valueLimit > 0 ? $"价值 {total}/{_valueLimit}" : $"价值 {total}";
+                _tagValue.text = $"价值 {total}"; // ⚠️ 死代码（2026-08-20 废除）：价值上限已移除——只显示总数，不再显示 /上限
             if (_tagDuplicate != null)
                 _tagDuplicate.text = _allowDuplicate ? "可复数" : "";
             if (_tagPromote != null)

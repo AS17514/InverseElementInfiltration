@@ -71,6 +71,7 @@ namespace TheLaw.Gameplay
         public void EnterFloor(int floorIndex)
         {
             _state.CurrentFloor = floorIndex;
+            _state.CurrentFloorConfig = _map.floors[floorIndex]; // 2026-08-20：当前关卡配置引用（Resolver 读 scoreDeductEnabled 等）
             _state.CurrentNodeIndex = 0;
             _state.NodeStates.Clear();
             var floor = _map.floors[floorIndex];

@@ -1179,12 +1179,13 @@ namespace TheLaw.UI
             return _state != null ? _state.GetEffectiveValue(def.Id) : def.value;
         }
 
-        /// <summary>手牌是否还有初始棋子（摆放前置判断）。</summary>
+        /// <summary>手牌是否还有初始棋子（摆放前置判断；2026-08-20 牌结构：仅棋子牌——麻将牌非棋子不计）。</summary>
         bool HasInitialInHand()
         {
-            foreach (var defId in _state.Hand)
+            foreach (var card in _state.Hand)
             {
-                var def = ConfigTable.Find<PieceDef>(defId);
+                if (!card.IsPiece) continue;
+                var def = ConfigTable.Find<PieceDef>(card.defId);
                 if (def != null && GetEffectiveType(def) == PieceType.Initial) return true;
             }
             return false;
@@ -1633,7 +1634,8 @@ namespace TheLaw.UI
             if (_panel == null || _panel.HandRoot == null) return;
 
             // 无变化保护：手牌内容没变就不重建（消除外部 HandChanged/阶段切换的无意义闪烁）
-            string key = string.Join(",", _state.Hand);
+            // ⚠️ 2026-08-20 牌结构：key 含 defId/点数/属性（麻将牌/带属性牌变化也触发刷新）
+            string key = string.Join("|", _state.Hand.ConvertAll(c => $"{c.defId}-{c.value}-{c.element}"));
             if (key == _lastHandKey && _panel.HandRoot.childCount > 0)
             {
                 return;
@@ -1680,10 +1682,12 @@ namespace TheLaw.UI
             var layout = _panel.HandRoot.GetComponent<HandLayoutController>();
             if (layout == null) layout = _panel.HandRoot.gameObject.AddComponent<HandLayoutController>();
             // 手牌显示排序：类型优先（初始→部署→升变）+ 同类型价值升序（全场景统一——CardTypeColors.SortPieces）
+            // ⚠️ 2026-08-20 牌结构：仅棋子牌显示（麻将牌表现留待玩法实现/前端后续）
             var handDefs = new List<PieceDef>();
-            foreach (var id in _state.Hand)
+            foreach (var card in _state.Hand)
             {
-                var d = ConfigTable.Find<PieceDef>(id);
+                if (!card.IsPiece) continue;
+                var d = ConfigTable.Find<PieceDef>(card.defId);
                 if (d != null) handDefs.Add(d);
             }
             CardTypeColors.SortPieces(handDefs);
@@ -1948,7 +1952,13 @@ namespace TheLaw.UI
         IEnumerator RecoverCardIfFailed(int defId, GameObject card)
         {
             yield return new WaitForSeconds(0.5f);
-            if (_state.Hand.Contains(defId))
+            // ⚠️ 2026-08-20 牌结构：棋子牌持有判定
+            bool held = false;
+            foreach (var c in _state.Hand)
+            {
+                if (c.IsPiece && c.defId == defId) { held = true; break; }
+            }
+            if (held)
             {
                 RestoreDragCard(card); // 规则层未移除 → 部署失败 → 恢复卡片（幂等）
             }

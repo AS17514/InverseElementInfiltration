@@ -38,6 +38,15 @@ namespace TheLaw.Gameplay
         private ExecContext _ctx;
         private bool _waitingCellSelect;     // 等玩家选格（落点/目标）
         private bool _waitingPresentation;   // 表现等待（等 UI 播完发"表现完成"）
+        // ⚠️ 2026-08-21 表现回执 token + 超时降级（D/C 方案）：
+        private static int _nextSessionId = 1;      // 跨实例递增（每场战斗一个 session）
+        private int _battleSessionId;                // 本场战斗会话 id（StartBattle 分配）
+        private int _actionCounter;                  // 本场战斗等待动作计数（递增）
+        private int _waitingActionId;                // 当前等待的动作 token（-1=未等待）
+        private bool _timeoutFallbackActive;         // 当前等待已超时降级（防重复降级）
+        private float _timeoutWaitStart;             // 当前等待开始时间（Time.time——超时计）
+        /// <summary>表现等待超时阈值（秒）——0/负 = 完全禁用超时降级（回到无限等）；超时后降级放行 + LogError 预警（诊断入档）。</summary>
+        public static float PresentationTimeoutSeconds = 3f;
         // _battleEnded 已删除（2026-08-11 收尾链）：Reset 移出事件回调栈后
         // Phase==GameOver 防御不会被破坏——补丁退休
         private bool _enemyTurnEndPending;   // 敌方回合结束待定——本阶段表现全部播完才切回玩家回合（动画优先）
@@ -72,6 +81,7 @@ namespace TheLaw.Gameplay
             EventCenter.Instance.RemoveEventListener(GameEvent.PresentationFinished, OnPresentationFinished);
             EventCenter.Instance.RemoveEventListener(GameEvent.PhaseDisplayed, OnPhaseDisplayed);
             EventCenter.Instance.RemoveEventListener(GameEvent.PlacementFinished, OnPlacementFinished);
+            _waitingPresentation = false; // 2026-08-21：停止超时守望协程（防实例引用滞留——协程循环退出）
         }
 
         // ========== 开战 / 阶段 ==========
@@ -80,6 +90,9 @@ namespace TheLaw.Gameplay
         {
             _state.ResetForBattle(); // 战斗态重置（2026-08-13：跨战斗残留——TurnCount/棋盘/波次分每场战斗重来）
             ResetState(); // 新局统一清瞬态执行状态（防跨局残留——后端待办 #5：多次重开卡死根因）
+            _battleSessionId = _nextSessionId++; // 2026-08-21：本场战斗会话 id（表现回执 token——跨战斗隔离）
+            _actionCounter = 0;
+            _waitingActionId = -1;
             _floor = floor;
             _aiParams = aiParams;
             _floorRules = FloorRulesFactory.Create(floor.Id);
@@ -394,7 +407,8 @@ namespace TheLaw.Gameplay
                             && (side == Side.Enemy || IsDeployAllowed(deployDef, _state.Phase));
                         if (deployValid)
                         {
-                            _resolver.Resolve(new DeployAction(deploy.pieceDefId, side, deploy.cell));
+                            var deployAction = new DeployAction(deploy.pieceDefId, side, deploy.cell) { cardInstanceId = deploy.cardInstanceId }; // 2026-08-21：精确消费实例 id
+                            _resolver.Resolve(deployAction);
                             DeductActionPoint(request.free, side);
                         }
                         break;
@@ -409,7 +423,8 @@ namespace TheLaw.Gameplay
                             && HasPieceInHand(promote.newDefId);
                         if (promoteValid)
                         {
-                            _resolver.Resolve(new PromoteAction(promote.pieceId, promote.newDefId));
+                            var promoteAction = new PromoteAction(promote.pieceId, promote.newDefId) { cardInstanceId = promote.cardInstanceId }; // 2026-08-21：精确消费实例 id
+                            _resolver.Resolve(promoteAction);
                             DeductActionPoint(request.free, side);
                         }
                         break;
@@ -721,11 +736,18 @@ namespace TheLaw.Gameplay
             }
         }
 
-        // ========== 表现等待（等"表现完成"事件——无限等 + 日志）==========
+        // ========== 表现等待（等"表现完成"事件——token 回执 + 超时降级；2026-08-21）==========
 
         private void WaitPresentation()
         {
             _waitingPresentation = true;
+            _timeoutFallbackActive = false;
+            _waitingActionId = ++_actionCounter; // 分配等待 token（战斗内递增）
+            _timeoutWaitStart = UnityEngine.Time.time;
+            if (PresentationTimeoutSeconds > 0)
+            {
+                CoroutineHost.Instance.Run(TimeoutWatch()); // 超时守望（主动计时——普通类无 Update）
+            }
             // 敌方回合表现发生时即锁存"本回合有表现"（2026-08-12：供 EndEnemyTurn 判定动画路径——
             // 串行化后收尾采样时机已过（表现完成、PhaseDisplayed 丢弃），锁存不依赖采样时机；玩家回合不受影响）
             if (_state.Phase == BattlePhase.EnemyTurn)
@@ -733,14 +755,63 @@ namespace TheLaw.Gameplay
                 _hadEnemyPresentation = true;
             }
             // 等待日志（卡住时定位：谁在等、等哪个表现组）
-            Debug.Log($"[BattleFlow] 表现等待开始 piece={_ctx?.pieceId} slot={_ctx?.slotIndex}（等'表现完成'事件）");
+            Debug.Log($"[BattleFlow] 表现等待开始 piece={_ctx?.pieceId} slot={_ctx?.slotIndex} token=({_battleSessionId},{_waitingActionId})（等'表现完成'事件；超时 {PresentationTimeoutSeconds}s）");
+        }
+
+        /// <summary>当前表现等待 token（2026-08-21：前端播完动画后读取并原样带回回执；未等待 = actionId -1）。</summary>
+        public (int sessionId, int actionId) CurrentPresentationToken
+            => (_battleSessionId, _waitingPresentation ? _waitingActionId : -1);
+
+        /// <summary>
+        /// 超时守望协程（2026-08-21）：等待超过 PresentationTimeoutSeconds 未收到匹配回执 →
+        /// 降级放行（推进）+ LogError 显著预警（防"降级掩盖问题"）+ 诊断入档（存档可查）。
+        /// 禁用：将 PresentationTimeoutSeconds 置 0/负（回到无限等）。
+        /// </summary>
+        private System.Collections.IEnumerator TimeoutWatch()
+        {
+            while (_waitingPresentation && !_timeoutFallbackActive)
+            {
+                float waited = UnityEngine.Time.time - _timeoutWaitStart;
+                if (waited >= PresentationTimeoutSeconds)
+                {
+                    _timeoutFallbackActive = true;
+                    int waitMs = (int)(waited * 1000f);
+                    // ⚠️ 显著预警：超时 = 前端表现疑似异常（不是静默容忍——请排查前端表现链路）
+                    Debug.LogError($"[BattleFlow] 表现回执超时降级：session={_battleSessionId} action={_waitingActionId} 等待 {PresentationTimeoutSeconds}s 无回执——前端表现疑似异常（本次已放行，请排查）");
+                    _state.AppendTimeoutRecord(_battleSessionId, _waitingActionId, waitMs, _state.Phase.ToString()); // 诊断入档（存档可查）
+                    _waitingPresentation = false;
+                    _timeoutWaitStart = 0f;
+                    if (_ctx != null)
+                    {
+                        AdvanceSlot();
+                    }
+                    TryEndEnemyTurn();
+                    yield break;
+                }
+                yield return null;
+            }
         }
 
         private void OnPresentationFinished(object data)
         {
-            if (_waitingPresentation)
+            // ⚠️ 2026-08-21：token 校验——新协议回执带 (sessionId, actionId)（PresentationInfo）；
+            // 旧协议（无数据/宽松）兼容：不回执 token（null/actionId<=0）→ 视同当前等待（过渡期）。
+            bool matched = true;
+            if (data is PresentationInfo info)
+            {
+                matched = info.SessionId == _battleSessionId
+                    && (info.ActionId <= 0 || info.ActionId == _waitingActionId);
+                if (!matched)
+                {
+                    // 迟到/重复回执：不推进、不误认（日志留痕）
+                    Debug.LogWarning($"[BattleFlow] 表现回执 token 不匹配——迟到/重复回执（收到 session={info.SessionId} action={info.ActionId}，当前等待 action={_waitingActionId}）——忽略");
+                    return;
+                }
+            }
+            if (_waitingPresentation && matched)
             {
                 _waitingPresentation = false;
+                _timeoutWaitStart = 0f;
                 if (_ctx != null)
                 {
                     AdvanceSlot();
@@ -1110,6 +1181,7 @@ namespace TheLaw.Gameplay
                 _resolver.SettleScore(_state.WaveScores.Count - 1);
             }
             ChangePhase(BattlePhase.GameOver);
+            _waitingPresentation = false; // 2026-08-21：终局停止表现等待（防超时协程 GameOver 后误报/滞留）
             EventCenter.Instance.EventTrigger(GameEvent.StateChanged, winner);
         }
     }
@@ -1120,5 +1192,17 @@ namespace TheLaw.Gameplay
         public Side Side;
         public int Current;
         public int Max;
+    }
+
+    /// <summary>
+    /// 表现回执数据（2026-08-21——前端播完表现后带回 token：sessionId + actionId——
+    /// 从 BattleFlow.CurrentPresentationToken 读取；后端校验匹配才推进（迟到/重复忽略）。
+    /// 旧前端可不带（null/0——宽松兼容过渡期）。
+    /// </summary>
+    [System.Serializable] // 全限定——BattleFlow 无 using System（避免头部引入潜在符号冲突）
+    public class PresentationInfo
+    {
+        public int SessionId;
+        public int ActionId;
     }
 }

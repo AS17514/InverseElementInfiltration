@@ -253,7 +253,14 @@ namespace TheLaw.Gameplay
                 Debug.LogWarning($"[Resolver] 部署格被占用，拒绝：cell={action.cell}（{def.name}）");
                 return;
             }
-            int consumedCardIndex = action.side == Side.Player ? FindHandCardIndex(action.pieceDefId) : -1;
+            int consumedCardIndex = action.side == Side.Player
+                ? FindHandCardIndex(action.pieceDefId, action.cardInstanceId)
+                : -1;
+            if (action.side == Side.Player && consumedCardIndex < 0)
+            {
+                Debug.LogWarning($"[Resolver] 部署拒绝：手牌无匹配牌（defId={action.pieceDefId} id={action.cardInstanceId}）");
+                return; // 精确消费失败/无牌——拒绝部署（不隐式乱打）
+            }
             Card consumedCard = consumedCardIndex >= 0 ? _state.Hand[consumedCardIndex] : default;
             var piece = new PieceInstance(def, action.side, action.cell)
             {
@@ -276,12 +283,33 @@ namespace TheLaw.Gameplay
             }
             _state.Pieces[action.cell] = piece;
             _state.PiecesById[piece.Id] = piece;
-            EventCenter.Instance.EventTrigger(GameEvent.PieceDeployed, new DeployInfo { PieceId = piece.Id, DefId = action.pieceDefId, Side = action.side, Cell = action.cell });
+            EventCenter.Instance.EventTrigger(GameEvent.PieceDeployed, new DeployInfo { PieceId = piece.Id, DefId = action.pieceDefId, Side = action.side, Cell = action.cell, CardInstanceId = action.cardInstanceId });
         }
 
-        /// <summary>找到一张实际消耗的手牌：优先带属性牌，允许同 defId 重复。</summary>
-        private int FindHandCardIndex(int defId)
+        /// <summary>
+        /// 找到一张实际消耗的手牌（2026-08-21：优先按 cardInstanceId 精确匹配（前端显式指定"打哪张"）；
+        /// id 无效/缺省（0——旧请求）→ 回退：优先带属性牌，允许同 defId 重复。
+        /// 返回索引；未找到 = -1。
+        /// </summary>
+        private int FindHandCardIndex(int defId, int cardInstanceId)
         {
+            // ① 显式 id：精确定位（校验 defId 匹配——防传错组合）
+            if (cardInstanceId > 0)
+            {
+                for (int i = 0; i < _state.Hand.Count; i++)
+                {
+                    var c = _state.Hand[i];
+                    if (c.instanceId == cardInstanceId)
+                    {
+                        if (c.IsPiece && c.defId == defId) return i;
+                        Debug.LogWarning($"[Resolver] 精确消费失败：实例 {cardInstanceId} 与 defId {defId} 不匹配——拒绝（实例实际 defId={c.defId}）");
+                        return -1;
+                    }
+                }
+                Debug.LogWarning($"[Resolver] 精确消费失败：实例 {cardInstanceId} 不在手牌——拒绝");
+                return -1;
+            }
+            // ② 隐式回退（旧请求）：优先带属性牌
             int fallback = -1;
             for (int i = 0; i < _state.Hand.Count; i++)
             {
@@ -307,7 +335,12 @@ namespace TheLaw.Gameplay
                 return;
             }
             var newDef = ConfigTable.Get<PieceDef>(action.newDefId);
-            int consumedCardIndex = piece.side == Side.Player ? FindHandCardIndex(action.newDefId) : -1;
+            int consumedCardIndex = piece.side == Side.Player ? FindHandCardIndex(action.newDefId, action.cardInstanceId) : -1;
+            if (piece.side == Side.Player && consumedCardIndex < 0)
+            {
+                Debug.LogWarning($"[Resolver] 升变拒绝：手牌无匹配升变牌（defId={action.newDefId} id={action.cardInstanceId}）");
+                return; // 精确消费失败/无牌——拒绝升变（不白升变）
+            }
             var oldDefId = piece.DefId;      // 升变前 def（相生复制牌用——被升变棋子）
             var oldElement = piece.element;  // 升变前属性（相克/相生判定用——旧棋子 vs 新棋子）
             piece.def = newDef;
@@ -331,7 +364,7 @@ namespace TheLaw.Gameplay
             {
                 HandRemovePieceAt(consumedCardIndex); // 升变牌打出：移除实际消耗的同一张牌（统一牌区入口）
             }
-            EventCenter.Instance.EventTrigger(GameEvent.PiecePromoted, new PromoteInfo { PieceId = piece.Id, NewDefId = action.newDefId });
+            EventCenter.Instance.EventTrigger(GameEvent.PiecePromoted, new PromoteInfo { PieceId = piece.Id, NewDefId = action.newDefId, CardInstanceId = action.cardInstanceId });
         }
 
         private void ResolveSkip(SkipAction action)
@@ -660,9 +693,10 @@ namespace TheLaw.Gameplay
         // 每个入口统一做：① 操作 ② 阶段不变量校验 ③ 发 HandChanged ④ 诊断（防止"分散写 → 口经不一致/漏事件/状态漂移"）
         // 牌区所有操作必须走这里——决策背景见 docs/后端待办（牌区口径统一 + 诊断）。
 
-        /// <summary>手牌加一张牌（棋子/属性牌/麻将——统一入口）。</summary>
+        /// <summary>手牌加一张牌（棋子/属性牌/麻将——统一入口；分配实例 id）。</summary>
         public void HandAddCard(Card card)
         {
+            card.instanceId = card.instanceId > 0 ? card.instanceId : _state.AllocateCardId(); // 2026-08-21：入区分配实例 id
             _state.Hand.Add(card);
             LogPileWrite("HandAddCard", _state.Hand, _state.DrawPile);
             EventCenter.Instance.EventTrigger(GameEvent.HandChanged, _state.Hand);
@@ -696,11 +730,17 @@ namespace TheLaw.Gameplay
             return true;
         }
 
-        /// <summary>构筑整组替换手牌（DeckBuild——入口收敛；入参为棋子 defId 列表 → 转 Card）。</summary>
+        /// <summary>构筑整组替换手牌（DeckBuild——入口收敛；入参为棋子 defId 列表 → 转 Card；统一分配实例 id）。</summary>
         public void DeckSetHand(List<int> defIds)
         {
             _state.Hand.Clear();
             _state.Hand.AddRange(defIds.ConvertAll(id => Card.Piece(id)));
+            for (int i = 0; i < _state.Hand.Count; i++)
+            {
+                var c = _state.Hand[i];
+                c.instanceId = _state.AllocateCardId(); // 2026-08-21：构筑落账统一分配（struct 需索引写回）
+                _state.Hand[i] = c;
+            }
             LogPileWrite("DeckSetHand", _state.Hand, _state.DrawPile);
             EventCenter.Instance.EventTrigger(GameEvent.HandChanged, _state.Hand);
         }
@@ -721,9 +761,10 @@ namespace TheLaw.Gameplay
             return card;
         }
 
-        /// <summary>抽牌堆加一张（麻将 18 张进堆/转移用——统一写 DrawPile 的入口）。</summary>
+        /// <summary>抽牌堆加一张（麻将 18 张进堆/转移用——统一写 DrawPile 的入口；分配实例 id）。</summary>
         private void DrawPileAdd(Card card)
         {
+            card.instanceId = card.instanceId > 0 ? card.instanceId : _state.AllocateCardId(); // 2026-08-21：入区分配
             _state.DrawPile.Add(card);
         }
 
@@ -738,6 +779,22 @@ namespace TheLaw.Gameplay
                     if (c.IsPiece && _state.GetEffectiveType(c.defId) != PieceType.Initial)
                     {
                         Debug.LogWarning($"[牌区] {caller}：准备阶段手牌含非初始牌 {c.defId}（EffectiveType={_state.GetEffectiveType(c.defId)}）——检查牌区分区口径");
+                    }
+                }
+            }
+            // 2026-08-21：牌实例 id 唯一性断言（分配漏了 = 出现 0/重复——排查信号）
+            var seen = new HashSet<int>();
+            foreach (var list in new List<Card>[] { hand, pile })
+            {
+                foreach (var c in list)
+                {
+                    if (c.instanceId <= 0)
+                    {
+                        Debug.LogWarning($"[牌区] {caller}：牌缺少实例 id（defId={c.defId} value={c.value}）——统一入口未分配？");
+                    }
+                    else if (!seen.Add(c.instanceId))
+                    {
+                        Debug.LogWarning($"[牌区] {caller}：牌实例 id 重复（{c.instanceId}）——分配/读档重分配异常");
                     }
                 }
             }
@@ -972,12 +1029,14 @@ namespace TheLaw.Gameplay
         public int DefId;
         public Side Side;
         public Vector2Int Cell;
+        public int CardInstanceId; // 2026-08-21：消耗的牌实例（前端知道"哪张被打出"）
     }
 
     public class PromoteInfo
     {
         public int PieceId;
         public int NewDefId;
+        public int CardInstanceId; // 2026-08-21：消耗的升变牌实例
     }
 
     public class DeathInfo

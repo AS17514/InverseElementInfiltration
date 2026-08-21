@@ -19,7 +19,13 @@ namespace TheLaw.Gameplay
         public Dictionary<Vector2Int, PieceInstance> Pieces { get; internal set; } = new Dictionary<Vector2Int, PieceInstance>();
         public HashSet<Vector2Int> Obstacles { get; internal set; } = new HashSet<Vector2Int>(); // 障碍物格标记（直射阻挡/移动阻挡）
         private int _nextPieceId = 1;
+        private int _nextCardId = 1; // 牌实例 id 计数器（2026-08-21——跨战斗唯一；入存档，读档恢复）
         public Dictionary<int, PieceInstance> PiecesById { get; internal set; } = new Dictionary<int, PieceInstance>();
+
+        // ========== 诊断（2026-08-21——只写不读；超时降级等异常留痕，存档可查，不参与游戏逻辑）==========
+        /// <summary>表现回执超时记录（环形缓冲——上限 MaxTimeoutRecords）。</summary>
+        public List<TimeoutRecord> PresentationTimeouts { get; internal set; } = new List<TimeoutRecord>();
+        public const int MaxTimeoutRecords = 20;
 
         // ========== 玩家 ==========
         /// <summary>手牌（牌列表——棋子牌 Card(defId) / 麻将牌 Card(value)——抽牌堆抽出；2026-08-20 牌结构改造）。</summary>
@@ -89,6 +95,24 @@ namespace TheLaw.Gameplay
         /// <summary>玩法是否激活（2026-08-20：麻将"mahjong"/属性"element"）。</summary>
         public bool IsStyleActive(string style) => ActiveStyles != null && ActiveStyles.Contains(style);
 
+        /// <summary>追加诊断记录（2026-08-21：超时降级等——环形缓冲，只写不读；存档可查）。</summary>
+        public void AppendTimeoutRecord(int sessionId, int actionId, int waitMs, string phase)
+        {
+            if (PresentationTimeouts == null) PresentationTimeouts = new List<TimeoutRecord>();
+            PresentationTimeouts.Add(new TimeoutRecord
+            {
+                SessionId = sessionId,
+                ActionId = actionId,
+                WaitMs = waitMs,
+                Phase = phase,
+                At = System.DateTime.Now.ToString("yyyy-MM-ddTHH:mm:ss"),
+            });
+            if (PresentationTimeouts.Count > MaxTimeoutRecords)
+            {
+                PresentationTimeouts.RemoveAt(0); // 环形缓冲（保留最近 N 条——防存档膨胀）
+            }
+        }
+
         /// <summary>
         /// 棋盘格是否障碍（2026-08-20 统一入口：普通障碍 Obstacles ∪ 麻将墙体 MahjongWalls——决策记录_牌数据结构与玩法语义）。
         /// 移动阻挡 + 直射阻挡共用；以后新增障碍源 = 在此加一行，查询点收拢。
@@ -138,6 +162,34 @@ namespace TheLaw.Gameplay
         public int AllocatePieceId()
         {
             return _nextPieceId++;
+        }
+
+        /// <summary>分配新牌实例 id（2026-08-21——唯一；牌进入 Hand/DrawPile 统一入口调用）。</summary>
+        public int AllocateCardId()
+        {
+            return _nextCardId++;
+        }
+
+        /// <summary>
+        /// 读档后牌实例 id 兼容处理（2026-08-21）：旧档 Card 无 instanceId（全 0）或存档损坏重复 → 重新分配；
+        /// 新档 id 已唯一则原样保留（回放按动作 id 消费依赖存档态一致）。
+        /// </summary>
+        private void ReAssignCardIdsAfterLoad()
+        {
+            var seen = new HashSet<int>();
+            foreach (var list in new List<Card>[] { Hand, DrawPile })
+            {
+                if (list == null) continue;
+                for (int i = 0; i < list.Count; i++)
+                {
+                    var c = list[i];
+                    if (c.instanceId <= 0 || !seen.Add(c.instanceId))
+                    {
+                        c.instanceId = AllocateCardId(); // 缺省/重复 → 重新分配
+                        list[i] = c;
+                    }
+                }
+            }
         }
 
         /// <summary>
@@ -199,6 +251,7 @@ namespace TheLaw.Gameplay
             DrawnEventIds.Clear();
             FreeExecutes.Clear();
             MahjongScore.Clear(); // 麻将状态随整局重置（ResetForBattle 同样清）
+            PresentationTimeouts.Clear(); // 诊断随整局重置（2026-08-21——新局新诊断）
             FanCount = 0;
             MahjongWalls.Clear();
             ActiveStyles.Clear(); // 玩法激活随整局重置（跨关累积——ResetForBattle 不清）
@@ -207,6 +260,7 @@ namespace TheLaw.Gameplay
             NodeStates.Clear();
             ReplayLog.Clear();
             _nextPieceId = 1;
+            _nextCardId = 1; // 2026-08-21：牌实例 id 计数器随整局重置
 
             // 初始牌组分区：准备阶段只持有初始棋子；部署/升变棋子预先进入抽牌堆。
             // 首个玩家回合 StartPlayerTurn 自动从 DrawPile 抽 4 张，后续再按 AP 抽牌。
@@ -215,6 +269,7 @@ namespace TheLaw.Gameplay
                 if (GetEffectiveType(def.Id) == PieceType.Initial) Hand.Add(Card.Piece(def.Id));
                 else DrawPile.Add(Card.Piece(def.Id));
             }
+            ReAssignCardIdsAfterLoad(); // 2026-08-21：新局初始化分配牌实例 id（Card.Piece 默认 0——统一分配）
         }
 
         /// <summary>
@@ -259,6 +314,7 @@ namespace TheLaw.Gameplay
                 Phase = Phase,
                 TurnCount = TurnCount,
                 NextPieceId = _nextPieceId,
+                NextCardId = _nextCardId, // 2026-08-21：牌实例 id（读档恢复防撞车）
                 PlayerAP = PlayerAP,
                 PlayerAPMax = PlayerAPMax,
                 PlayerScore = PlayerScore,
@@ -284,6 +340,7 @@ namespace TheLaw.Gameplay
                 DrawnEventIds = new List<string>(DrawnEventIds),
                 FreeExecutes = new List<int>(FreeExecutes),
                 ActiveStyles = new List<string>(ActiveStyles),
+                PresentationTimeouts = PresentationTimeouts, // 2026-08-21 诊断（存档可查——只写不读）
                 MahjongScore = new List<int>(MahjongScore),
                 FanCount = FanCount,
                 MahjongWalls = MahjongWalls,
@@ -322,6 +379,7 @@ namespace TheLaw.Gameplay
             Phase = dto.Phase;
             TurnCount = dto.TurnCount;
             _nextPieceId = dto.NextPieceId;
+            _nextCardId = dto.NextCardId <= 0 ? 1 : dto.NextCardId; // 2026-08-21：旧档缺省 → 1（配合下方重分配）
             PlayerAP = dto.PlayerAP;
             PlayerAPMax = dto.PlayerAPMax;
             PlayerScore = dto.PlayerScore;
@@ -335,6 +393,7 @@ namespace TheLaw.Gameplay
             Graveyard = dto.Graveyard ?? new List<int>();
             DrawPile = dto.DrawPile ?? new List<Card>();
             EnemyWavePool = dto.EnemyWavePool ?? new List<int>();
+            ReAssignCardIdsAfterLoad(); // 2026-08-21：旧档兼容——牌实例 id 缺省 0 或重复 → 重分配（新档 id 已唯一则不动）
             CurrentPrograms = dto.CurrentPrograms ?? new Dictionary<int, List<Template>>();
             EditingDefs = dto.EditingDefs != null ? new HashSet<int>(dto.EditingDefs) : new HashSet<int>();
             HiddenModules = dto.HiddenModules ?? new Dictionary<int, List<Template>>();
@@ -359,6 +418,7 @@ namespace TheLaw.Gameplay
             DrawnEventIds = dto.DrawnEventIds ?? new List<string>();
             FreeExecutes = dto.FreeExecutes != null ? new HashSet<int>(dto.FreeExecutes) : new HashSet<int>();
             ActiveStyles = dto.ActiveStyles != null ? new HashSet<string>(dto.ActiveStyles) : new HashSet<string>();
+            PresentationTimeouts = dto.PresentationTimeouts ?? new List<TimeoutRecord>(); // 诊断保留（不参与逻辑）
             MahjongScore = dto.MahjongScore ?? new List<int>();
             FanCount = dto.FanCount;
             MahjongWalls = dto.MahjongWalls ?? new Dictionary<Vector2Int, ObstacleData>();
@@ -421,6 +481,7 @@ namespace TheLaw.Gameplay
         public BattlePhase Phase;
         public int TurnCount;
         public int NextPieceId;
+        public int NextCardId; // 牌实例 id 计数器（2026-08-21——缺省 0 = 旧档）
         public int PlayerAP;
         public int PlayerAPMax;
         public int PlayerScore;
@@ -446,6 +507,7 @@ namespace TheLaw.Gameplay
         public List<string> DrawnEventIds;
         public List<int> FreeExecutes;
         public List<string> ActiveStyles;   // 玩法激活（2026-08-20）
+        public List<TimeoutRecord> PresentationTimeouts; // 表现回执超时诊断（2026-08-21）
         public List<int> MahjongScore;       // 麻将牌山（2026-08-20）
         public int FanCount;                 // 麻将番数（2026-08-20）
         public Dictionary<Vector2Int, ObstacleData> MahjongWalls; // 麻将墙体（2026-08-20）
@@ -473,5 +535,16 @@ namespace TheLaw.Gameplay
         public int ShieldCount;
         public int WaveIndex; // 所属波次（2026-08-13 补——每波得分按此累计）
         public Element Element; // 属性玩法（2026-08-20）
+    }
+
+    /// <summary>表现回执超时记录（2026-08-21 诊断——只写不读，存档可查）。</summary>
+    [Serializable]
+    public class TimeoutRecord
+    {
+        public int SessionId;   // 战斗会话 id
+        public int ActionId;    // 等待中的动作 token
+        public int WaitMs;      // 实际等待毫秒
+        public string Phase;    // 等待时阶段（PlayerTurn/EnemyTurn…）
+        public string At;       // 时间（ISO——留痕排序）
     }
 }

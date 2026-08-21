@@ -18,6 +18,7 @@ namespace TheLaw.Data
     {
         public int pieceDefId;
         public Vector2Int cell;
+        public int cardInstanceId; // 2026-08-21：要打出的那张牌的实例 id（0=旧请求——Resolver 隐式选择回退）
 
         public DeployRequest(int pieceDefId, Vector2Int cell)
         {
@@ -32,6 +33,7 @@ namespace TheLaw.Data
     {
         public int pieceId;
         public int newDefId;
+        public int cardInstanceId; // 2026-08-21：要消耗的那张升变牌实例 id（0=旧请求回退）
 
         public PromoteRequest(int pieceId, int newDefId)
         {

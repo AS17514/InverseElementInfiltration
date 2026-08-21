@@ -1,7 +1,7 @@
 # 《逆元渗透》非 UI 层开发任务表
 
 > 依据：`内部文档/架构设计.md`（最新版，含 2026-08-05 全部更新）+ `README.md`（目录/命名规范）+ 决策记录
-> 范围：Core / Data / Gameplay 三层全部代码（UI 层不在本表，由李毕负责）
+> 范围：Core / Data / Gameplay 三层全部代码（UI 层不在本表，由前端同学负责）
 > 执行顺序：**必须按编号顺序**（依赖关系：Core → Data → Gameplay）
 > 命名空间：`TheLaw.Core` / `TheLaw.Data` / `TheLaw.Gameplay`（架构文档 §一；如需改项目名请全局替换）
 

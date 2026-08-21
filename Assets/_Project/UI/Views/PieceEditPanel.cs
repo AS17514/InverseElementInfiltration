@@ -411,8 +411,7 @@ namespace TheLaw.UI
 
         System.Collections.IEnumerator BuildPieceListInner()
         {
-            EnsureScrollContent(_pieceContent);
-            // 加载 Piece_Card / Piece_ProgramInfo 模板（Addressables）
+            // 加载 Piece_Card / Piece_ProgramInfo 模板（Addressables）。预制体负责布局，运行时只添加实例。
             var cardHandle = UnityEngine.AddressableAssets.Addressables.LoadAssetAsync<GameObject>("Piece_Card");
             var progHandle = UnityEngine.AddressableAssets.Addressables.LoadAssetAsync<GameObject>("Piece_ProgramInfo");
             yield return cardHandle;
@@ -466,6 +465,19 @@ namespace TheLaw.UI
             // 滚动位置归零（跨局打开不残留旧滚动）
             var scroll = _pieceContent.GetComponentInParent<ScrollRect>();
             if (scroll != null) scroll.normalizedPosition = Vector2.zero;
+            RestoreContentOrigin(_pieceContent);
+        }
+
+        /// <summary>
+        /// 保留 prefab 的 Content 原点。ScrollRect 在 Content 宽度由 prefab 布局系统计算前，
+        /// 会把零宽 Content 临时居中到视口（当前表现为 x=160）；只恢复 prefab 原有原点，
+        /// 不改 GridLayout、子节点坐标、间距、锚点或尺寸。
+        /// </summary>
+        static void RestoreContentOrigin(Transform content)
+        {
+            var rt = content as RectTransform;
+            if (rt == null) return;
+            rt.anchoredPosition = new Vector2(0f, rt.anchoredPosition.y);
         }
 
         void FillPieceCard(GameObject go, PieceDef def, GameObject progTemplate, ToggleGroup group)
@@ -681,9 +693,7 @@ namespace TheLaw.UI
         {
             if (_programContent == null) return;
             _programListGeneration++;
-            EnsureScrollContent(_programContent);
-            // GridLayout 与视口不匹配（2×550+15=1115 > 视口 550）→ 重配为单列（2026-08-11 排查：列宽超视口被 Mask 裁掉半边）
-            FitGridToViewport(_programContent);
+            // 程序库 Content/GridLayout 使用预制体既有排版；运行时只清理并追加 Program_Card 实例。
             foreach (Transform child in _programContent) Destroy(child.gameObject);
             // 程序库卡 = Program_Card 预制体（李毕编排：Img_ProgramType 类型图标 + Txt_ProgramCount + Txt_ProgramDesc）——异步加载后填充
             StartCoroutine(BuildProgramList());
@@ -726,6 +736,25 @@ namespace TheLaw.UI
                 drag.Init(this, slot, EditorProgramDrag.DragSource.Library, -1);
                 drag.SetDraggable(CanEditSelected());
             }
+
+            // 只重建每张卡自己的 Grp_L。Content/GridLayout 不重建、不改 prefab 排版数据。
+            RebuildProgramGroupLayouts();
+            yield return null; // 等实例化后的 RectTransform 尺寸稳定，再补一次局部重建。
+            RebuildProgramGroupLayouts();
+        }
+
+        void RebuildProgramGroupLayouts()
+        {
+            if (_programContent == null) return;
+            Canvas.ForceUpdateCanvases();
+            foreach (Transform card in _programContent)
+            {
+                var group = FindDeep(card, "Grp_L") as RectTransform;
+                if (group != null && group.GetComponent<VerticalLayoutGroup>() != null)
+                {
+                    LayoutRebuilder.ForceRebuildLayoutImmediate(group);
+                }
+            }
         }
 
         private void RefreshProgramDragPermission()
@@ -763,43 +792,6 @@ namespace TheLaw.UI
                     BuildProgramLibrary();
                     RefreshProgramList(); // show/hide 语义变化后重新查询后端候选池
                 }
-            }
-        }
-
-        /// <summary>程序库 GridLayout 列宽适配：cellSize.x×列数+spacing 超出 Content 宽 → 缩 cellSize 到能放 2 列（保持网格布局语义）。</summary>
-        void FitGridToViewport(Transform content)
-        {
-            var grid = content.GetComponent<UnityEngine.UI.GridLayoutGroup>();
-            if (grid == null) return;
-            var rt = content as RectTransform;
-            if (rt == null || rt.rect.width <= 0) return;
-            int cols = grid.constraint == UnityEngine.UI.GridLayoutGroup.Constraint.FixedColumnCount
-                ? Mathf.Max(1, grid.constraintCount)
-                : 1;
-            float need = grid.cellSize.x * cols + grid.spacing.x * (cols - 1);
-            if (need > rt.rect.width)
-            {
-                float cellX = (rt.rect.width - grid.spacing.x * (cols - 1)) / cols;
-                grid.cellSize = new Vector2(Mathf.Max(50f, cellX), grid.cellSize.y);
-            }
-        }
-        /// <summary>保底：Content 加 ContentSizeFitter（垂直撑高——GridLayoutGroup 不改变 Content 尺寸，无 CSF 则滚动条永远满）。
-        /// 顶部锚 + 顶 pivot：CSF 撑高向下生长（防顶部被裁）。
-        /// 2026-08-11 重构后 Content 是 Viewport 子级：锚点横向拉伸（anchorMax.x=1）→ Content 宽 = Viewport 宽，
-        /// 否则 sizeDelta.x=0 时卡片横向溢出/被 Mask 裁剪（原 (0,1)-(0,1) 固定宽导致中列程序卡不可见）。</summary>
-        void EnsureScrollContent(Transform content)
-        {
-            var csf = content.GetComponent<UnityEngine.UI.ContentSizeFitter>();
-            if (csf == null) csf = content.gameObject.AddComponent<UnityEngine.UI.ContentSizeFitter>();
-            csf.verticalFit = UnityEngine.UI.ContentSizeFitter.FitMode.PreferredSize;
-            var rt = content as RectTransform;
-            if (rt != null)
-            {
-                rt.anchorMin = new Vector2(0f, 1f);
-                rt.anchorMax = new Vector2(1f, 1f); // 横向拉伸：宽度 = 视口宽度（修复卡片溢出/被裁）
-                rt.pivot = new Vector2(0.5f, 1f);
-                rt.anchoredPosition = Vector2.zero;
-                rt.sizeDelta = new Vector2(0f, rt.sizeDelta.y);
             }
         }
 

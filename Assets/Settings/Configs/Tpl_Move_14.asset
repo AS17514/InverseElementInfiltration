@@ -14,3 +14,50 @@ MonoBehaviour:
   m_EditorClassIdentifier: 
   _id: 94083587
   templateKey: Move-14
+  template:
+    rid: 4463436046253948948
+  references:
+    version: 2
+    RefIds:
+    - rid: 4463436046253948948
+      type: {class: MoveTemplate, ns: TheLaw.Data, asm: Data}
+      data:
+        id: 14
+        paths:
+        - segments:
+          - moves:
+            - direction: 1
+              steps: 010000000200000003000000
+            - direction: 16
+              steps: 01000000
+            - direction: 32
+              steps: 01000000
+        - segments:
+          - moves:
+            - direction: 1
+              steps: 01000000
+          - moves:
+            - direction: 32
+              steps: 01000000
+        - segments:
+          - moves:
+            - direction: 1
+              steps: 01000000
+          - moves:
+            - direction: 16
+              steps: 01000000
+        - segments:
+          - moves:
+            - direction: 4
+              steps: 01000000
+          - moves:
+            - direction: 16
+              steps: 01000000
+        - segments:
+          - moves:
+            - direction: 8
+              steps: 01000000
+          - moves:
+            - direction: 32
+              steps: 01000000
+        jumpOffsets: []

@@ -14,3 +14,20 @@ MonoBehaviour:
   m_EditorClassIdentifier: 
   _id: 1582011441
   templateKey: Attack-13
+  template:
+    rid: 4463436046253948933
+  references:
+    version: 2
+    RefIds:
+    - rid: 4463436046253948933
+      type: {class: AttackTemplate, ns: TheLaw.Data, asm: Data}
+      data:
+        id: 13
+        mode: 0
+        directions: 61
+        range: 1
+        damage: 1
+        friendlyFire: 1
+        shape: 0
+        points: []
+        rangeSteps: []

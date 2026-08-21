@@ -10,6 +10,7 @@ namespace TheLaw.Data
     public class TemplateDef : GameConfigBase
     {
         public string templateKey;   // 种类+编号（"Move-1"）——TemplateLibrary 按此查询
+        [UnityEngine.SerializeReference]
         public Template template;    // 实际模板结构（MoveTemplate/AttackTemplate 等）
     }
 }

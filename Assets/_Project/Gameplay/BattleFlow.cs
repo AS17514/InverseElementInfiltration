@@ -414,10 +414,11 @@ namespace TheLaw.Gameplay
                         if (_state.GetPiece(execute.pieceId)?.side == side)
                         {
                             // 免费执行资格（额外行动——方案 B）：有资格 → 本次免费 + 资格用掉（保留到使用为止，有效期待策划拍板）
+                            // ⚠️ 2026-08-20 统一入口：资格用掉经 Resolver（ConsumeFreeExecute）——BattleFlow 不再直写状态（回归落账纪律）
                             bool free = request.free || _state.FreeExecutes.Contains(execute.pieceId);
-                            if (free && _state.FreeExecutes.Remove(execute.pieceId))
+                            if (free)
                             {
-                                EventCenter.Instance.EventTrigger(GameEvent.BuffsChanged, execute.pieceId);
+                                _resolver.ConsumeFreeExecute(execute.pieceId);
                             }
                             ExecutePiece(execute.pieceId, free, side); // 玩家逐槽选择 / AI 自动选（内部按 side 分流）
                         }

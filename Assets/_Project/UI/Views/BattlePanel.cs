@@ -22,6 +22,7 @@ namespace TheLaw.UI
         public TMP_Text APValueText { get; private set; }
         public TMP_Text EventNameText { get; private set; }
         public Button DrawButton { get; private set; }
+        public Button DeckButton { get; private set; }
         public TMP_Text DrawPileCountText { get; private set; }
         public TMP_Text DrawCostText { get; private set; }
         public Slider TurnProgressSlider { get; private set; } // Sld_TurnProgress（回合进度条）
@@ -47,6 +48,12 @@ namespace TheLaw.UI
             }
             APValueText = transform.Find("Grp_AP/Txt_APValue")?.GetComponent<TMP_Text>();
             DrawButton = (transform.Find("Grp_DrawPile/Btn_Draw") ?? FindDeep("Btn_Draw"))?.GetComponent<Button>();
+            DeckButton = FindDeep("Btn_Graveyard")?.GetComponent<Button>();
+            if (DeckButton != null)
+            {
+                var label = DeckButton.GetComponentInChildren<TMP_Text>(true);
+                if (label != null) label.text = "牌库";
+            }
             DrawPileCountText = (transform.Find("Grp_DrawPile/Txt_DrawPileCount") ?? FindDeep("Txt_DrawPileCount"))?.GetComponent<TMP_Text>();
             DrawCostText = (transform.Find("Grp_DrawPile/Txt_DrawCost") ?? FindDeep("Txt_DrawCost"))?.GetComponent<TMP_Text>();
             if (DrawCostText != null) DrawCostText.text = "1 AP";

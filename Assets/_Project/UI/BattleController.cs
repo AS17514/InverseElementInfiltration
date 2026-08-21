@@ -172,8 +172,12 @@ namespace TheLaw.UI
         GameObject _dragCard; // 拖拽中的卡片（失败时恢复，避免整体重建闪烁）
 
         // 信息面板（Main 1 场景 UI 根下的 3D TMP 文本，用户已拼）
-        TMPro.TextMeshPro _infoName, _infoType, _infoValue, _infoDurability, _infoAbilities;
-        TMPro.TextMeshPro _infoOther; // 单节点多行 buff 区（Txt_Other——护盾/免费行动/临时能力/升变，\n 分隔）
+        TMP_Text _infoName, _infoType, _infoValue, _infoDurability, _infoAbilities;
+        TMP_Text _infoOther; // 单节点多行 buff 区（Txt_Other——护盾/免费行动/临时能力/升变，\n 分隔）
+        Transform _pieceInfoRoot; // Grp_Piece / 旧名 Piece：只隐藏单位信息，不影响常驻 3D TMP。
+        // Main/UI 下的 3D TMP 计分字段（标题 *_K 由场景维护，数值节点由控制器刷新）。
+        TMP_Text _totalScoreText, _waveScoreText, _baseScoreText, _multiplierText, _turnScoreText;
+        bool _scoreRefsWarningLogged;
         SpriteRenderer[] _infoProgramBlocks = new SpriteRenderer[4]; // 行为逻辑块（SpriteRenderer）
         List<Template> _infoProgram; // 当前信息面板显示的程序（浮窗内容源）
 
@@ -822,6 +826,7 @@ namespace TheLaw.UI
                 ClearSelection();
                 ClearHighlights();
             }
+            RefreshScore(); // 击杀敌方后 BaseScore 已落账；表现播放期间也应显示本回合累计
             EnqueuePresentation(() => PlayDeath(info));
         }
 
@@ -1205,6 +1210,7 @@ namespace TheLaw.UI
                 RefreshPhaseButton(); // 刷新按钮状态（提示继续摆放）
             }
             RefreshDrawPile();
+            RefreshScore(); // score / mahjong-hu 等 StateChanged 信号均可安全刷新
         }
 
         void OnHandChanged(object data)
@@ -1222,6 +1228,26 @@ namespace TheLaw.UI
             RefreshAP();
             RebuildHand();
             RefreshDrawPile();
+            RefreshScore();
+        }
+
+        /// <summary>
+        /// 刷新 Main/UI 的实时计分 3D 文本。
+        /// Txt_TurnScore 表示按当前倍率预估、将在本次结算获得的本回合分数。
+        /// </summary>
+        void RefreshScore()
+        {
+            if (_state == null) return;
+            EnsureScoreRefs();
+            int waveScore = _state.WaveScores != null && _state.WaveScores.Count > 0
+                ? _state.WaveScores[_state.WaveScores.Count - 1]
+                : 0;
+            int turnScore = _state.BaseScore * _state.ScoreMultiplier;
+            if (_totalScoreText != null) _totalScoreText.text = _state.PlayerScore.ToString();
+            if (_waveScoreText != null) _waveScoreText.text = waveScore.ToString();
+            if (_baseScoreText != null) _baseScoreText.text = _state.BaseScore.ToString();
+            if (_multiplierText != null) _multiplierText.text = _state.ScoreMultiplier.ToString();
+            if (_turnScoreText != null) _turnScoreText.text = turnScore.ToString();
         }
 
         void RefreshDrawPile()
@@ -1313,6 +1339,35 @@ namespace TheLaw.UI
         // ========== 场上信息面板（Main 1 场景 UI 根下的 3D 文本）==========
         GameObject _infoRoot;
 
+        void EnsureScoreRefs()
+        {
+            if (_totalScoreText != null && _waveScoreText != null && _baseScoreText != null
+                && _multiplierText != null && _turnScoreText != null) return;
+
+            var ui = _infoRoot != null ? _infoRoot : GameObject.Find("UI");
+            if (ui == null)
+            {
+                foreach (var go in FindObjectsOfType<GameObject>(true))
+                {
+                    if (go.name == "UI" && go.transform.parent == null) { ui = go; break; }
+                }
+            }
+            if (ui == null) return;
+
+            _infoRoot = ui;
+            _totalScoreText = GetTmp(ui, "Txt_TotalScore");
+            _waveScoreText = GetTmp(ui, "Txt_WaveScore");
+            _baseScoreText = GetTmp(ui, "Txt_BaseScore");
+            _multiplierText = GetTmp(ui, "Txt_Multiplier");
+            _turnScoreText = GetTmp(ui, "Txt_TurnScore");
+            if (!_scoreRefsWarningLogged && (_totalScoreText == null || _waveScoreText == null
+                || _baseScoreText == null || _multiplierText == null || _turnScoreText == null))
+            {
+                _scoreRefsWarningLogged = true;
+                Debug.LogWarning("[Battle] 实时计分节点缺失：需要 Main/UI 下的 Txt_TotalScore、Txt_WaveScore、Txt_BaseScore、Txt_Multiplier、Txt_TurnScore");
+            }
+        }
+
         void EnsureInfoRefs()
         {
             if (_infoName != null) return;
@@ -1328,15 +1383,17 @@ namespace TheLaw.UI
             }
             if (ui == null) return;
             _infoRoot = ui;
+            _pieceInfoRoot = ui.transform.Find("Grp_Piece") ?? ui.transform.Find("Piece");
             _infoName = GetTmp(ui, "Txt_Name");
             _infoType = GetTmp(ui, "Txt_Type");
             _infoValue = GetTmp(ui, "Txt_Value");
             _infoDurability = GetTmp(ui, "Txt_Durability");
-            _infoAbilities = GetTmp(ui, "Txt_SpecialAbilities");
+            _infoAbilities = GetTmp(ui, "Txt_Abilities");
             _infoOther = GetTmp(ui, "Txt_Other"); // 单节点多行 buff 区（2026-08-11：场景无 Txt_Other1~3，改为单 Txt_Other）
+            EnsureScoreRefs();
             for (int i = 0; i < 4; i++)
             {
-                var t = ui.transform.Find($"Txt_BehaviorLogic{i + 1}");
+                var t = FindDeep(ui.transform, $"Txt_BehaviorLogic{i + 1}");
                 _infoProgramBlocks[i] = t != null ? t.GetComponent<SpriteRenderer>() : null;
                 if (_infoProgramBlocks[i] != null && t.GetComponent<Collider>() == null)
                 {
@@ -1351,10 +1408,13 @@ namespace TheLaw.UI
             // 注：Txt_Other_K 是标题（“其他”），Txt_Other 是多行 buff 区——由 FillInfo 填充（2026-08-11）
         }
 
-        static TMPro.TextMeshPro GetTmp(GameObject root, string name)
+        static TMP_Text GetTmp(GameObject root, string name)
         {
-            var t = root.transform.Find(name);
-            return t != null ? t.GetComponent<TMPro.TextMeshPro>() : null;
+            foreach (var t in root.GetComponentsInChildren<TMP_Text>(true))
+            {
+                if (t.name == name) return t;
+            }
+            return null;
         }
 
         public void ShowPieceInfo(int pieceId)
@@ -1366,7 +1426,7 @@ namespace TheLaw.UI
             if (def == null) return;
 
             FillInfo(def, piece);
-            if (_infoRoot != null) _infoRoot.SetActive(true);
+            if (_pieceInfoRoot != null) _pieceInfoRoot.gameObject.SetActive(true);
         }
 
         void FillInfo(PieceDef def, PieceInstance piece)
@@ -1459,7 +1519,7 @@ namespace TheLaw.UI
         public void ClearPieceInfo()
         {
             EnsureInfoRefs();
-            if (_infoRoot != null) _infoRoot.SetActive(false);
+            if (_pieceInfoRoot != null) _pieceInfoRoot.gameObject.SetActive(false);
             Set(_infoName, "");
             Set(_infoType, "");
             Set(_infoValue, "");
@@ -1472,7 +1532,7 @@ namespace TheLaw.UI
             }
         }
 
-        static void Set(TMPro.TextMeshPro tmp, string text)
+        static void Set(TMP_Text tmp, string text)
         {
             if (tmp != null) tmp.text = text;
         }
@@ -1636,7 +1696,12 @@ namespace TheLaw.UI
             // 无变化保护：手牌内容没变就不重建（消除外部 HandChanged/阶段切换的无意义闪烁）
             // ⚠️ 2026-08-20 牌结构：key 含 defId/点数/属性（麻将牌/带属性牌变化也触发刷新）
             string key = string.Join("|", _state.Hand.ConvertAll(c => $"{c.defId}-{c.value}-{c.element}"));
-            if (key == _lastHandKey && _panel.HandRoot.childCount > 0)
+            int expectedPieceCards = 0;
+            foreach (var card in _state.Hand)
+            {
+                if (card.IsPiece && ConfigTable.Find<PieceDef>(card.defId) != null) expectedPieceCards++;
+            }
+            if (key == _lastHandKey && _panel.HandRoot.childCount == expectedPieceCards)
             {
                 return;
             }
@@ -1670,15 +1735,15 @@ namespace TheLaw.UI
                 yield break;
             }
             var template = handle.Result;
-            // 差异重建：同一 defId 复用旧卡（布局插值滑动到新位置）；只销毁移除/新建新增
-            var oldCards = new List<(GameObject go, int defId)>();
+            // 每次成功加载后清空手牌根，再严格按当前 GameState.Hand 重建。
+            // 防止旧 prefab/旧协程/旧局卡片残留，造成画面显示全量手牌。
             foreach (Transform child in _panel.HandRoot)
             {
-                var drag = child.GetComponent<HandCardDrag>();
-                if (drag != null) oldCards.Add((child.gameObject, drag.DefId));
+                DestroyImmediate(child.gameObject);
             }
-            bool fromEmpty = oldCards.Count == 0;
-            var reused = new bool[oldCards.Count];
+            var oldCards = new List<(GameObject go, int defId)>();
+            bool fromEmpty = true;
+            var reused = new bool[0];
             var layout = _panel.HandRoot.GetComponent<HandLayoutController>();
             if (layout == null) layout = _panel.HandRoot.gameObject.AddComponent<HandLayoutController>();
             // 手牌显示排序：类型优先（初始→部署→升变）+ 同类型价值升序（全场景统一——CardTypeColors.SortPieces）

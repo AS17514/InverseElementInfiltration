@@ -221,12 +221,9 @@ namespace TheLaw.Gameplay
         {
             _state.EnemyAP = 0;
             // ⚠️ 计分：敌方回合收尾统一结算（2026-08-20——策划"每个回合结束时（对手的该回合结束）"；
-            // 第 1 关（WipeOut）不结算；幂等（无分可结跳过）
-            if (_floor.victoryRule != VictoryRule.WipeOut)
-            {
-                _resolver.SettleScore(_state.WaveScores.Count - 1); // 当前波 = 已入账最后一波（未开始 = -1 → 只累总得分）
-            }
+            // 第 1 关（WipeOut）不结算；由 SettleTurnScore 统一处理，避免重复结算。
             _state.TurnCount++;
+            SettleTurnScore(); // 策划契约：敌方回合结束统一结算本回合基础分
             CheckVictory(false);
             if (_state.Phase != BattlePhase.GameOver)
             {
@@ -1003,6 +1000,18 @@ namespace TheLaw.Gameplay
 
         // ========== 胜负（非对称：玩家判负 + 关卡 victoryRule）==========
 
+        /// <summary>
+        /// 常规关卡的回合结算入口。WipeOut 为纯战斗关，不产生分数。
+        /// 仅在敌方回合收尾或终局兜底调用，避免玩家每次请求后清空 BaseScore。
+        /// </summary>
+        private void SettleTurnScore()
+        {
+            if (_floor != null && _floor.victoryRule != VictoryRule.WipeOut)
+            {
+                _resolver.SettleScore(_state.WaveScores.Count - 1);
+            }
+        }
+
         public void CheckVictory(bool force)
         {
             // 防御：GameOver 后不再判定（收尾链后 Reset 在栈外执行——Phase 防御不会被破坏）
@@ -1010,15 +1019,23 @@ namespace TheLaw.Gameplay
             {
                 return;
             }
-            // ⚠️ 计分结算时机（2026-08-20 修复——李毕审计）：**不在此结算**（移除——否则每次请求结束都结算，
-            // 基础分被中途清零、不符合策划"敌方回合结束才结算"）。
-            // 结算唯一时机：EndEnemyTurn（敌方回合收尾——主结算）+ EndBattle（终局强制判定前——防丢最后击杀分）兜底。
-            // 玩家失败（无棋且无手牌——仅玩家侧）
+            // ⚠️ 不在每次请求后结算；主结算在 EndEnemyTurn，终局分支在 EndBattle 前兜底。
+            // 玩家失败：终局兜底结算，防本回合已累计基础分在失败结算面板中丢失。
             if (_state.IsPlayerDefeated())
             {
+                SettleTurnScore();
                 EndBattle(Side.Enemy);
                 return;
             }
+
+            // 敌方全灭且所有波次均已部署时，本场已到终局；先结算最后击杀所得，
+            // 再按含分数的胜利规则判断。force 同样是末波倒计时的终局兜底。
+            bool terminalWipe = AllWavesDeployed() && _boardRules.IsEnemyWiped(_state);
+            if (force || terminalWipe)
+            {
+                SettleTurnScore();
+            }
+
             // 玩家胜利（按关卡规则）
             bool playerWins = false;
             switch (_floor.victoryRule)

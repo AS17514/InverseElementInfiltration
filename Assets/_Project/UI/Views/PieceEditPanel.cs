@@ -46,8 +46,11 @@ namespace TheLaw.UI
         private List<Template> _slotTemplates = new List<Template>(); // 当前选中棋子的程序（编辑副本）
         private List<bool> _slotLocked = new List<bool>();            // 槽位锁定标记（与 _slotTemplates 同步位移——模板原始程序块）
 
-        // ====== 程序库（全局模板去重） ======
+        // ====== 程序库（按当前棋子查询后端候选池） ======
         private List<Template> _programLibrary = new List<Template>();
+        private int _programListGeneration; // 候选切换时丢弃旧的异步列表构建结果
+        private GameObject _programCardTemplate; // Program_Card 缓存，避免每次候选刷新重复加载 Addressable
+        private bool _loadingProgramCardTemplate;
         private GameObject _progTemplate; // Piece_ProgramInfo prefab（卡面缩略图模板——Addressables）
         private Button _undoBtn;             // Btn_Undo（单击撤一步 / 长按全部撤回）
         private UndoButtonHandler _undoHandler;
@@ -65,9 +68,15 @@ namespace TheLaw.UI
         public void SetEditableDefId(int defId)
         {
             _editableDefId = defId;
-            _selectedDefId = -1;
+            _selectedDefId = defId;
             _slotTemplates.Clear();
             _slotLocked.Clear();
+            // 面板可能已缓存：先按本次事件棋子建立候选，避免首次打开候选区空白。
+            if (_editor != null && defId >= 0)
+            {
+                BuildProgramLibrary();
+                RefreshProgramList();
+            }
         }
 
         private bool CanEditSelected()
@@ -256,9 +265,14 @@ namespace TheLaw.UI
         {
             // 新局重置：清选中 + 隐藏信息区 + 重建棋子列表（卡面程序缩略图随当前数据刷新——
             // ⚠️ 2026-08-12：RefreshPieceList 原只在 Awake 跑一次，面板常驻跨局复用 → 卡面显示旧局编辑结果）
-            _selectedDefId = -1;
+            _selectedDefId = _editableDefId >= 0 ? _editableDefId : -1;
             _slotTemplates.Clear();
             _slotLocked.Clear(); // 锁定标记与槽同步清（选中后 ShowPieceInfo 重建）
+            if (_selectedDefId >= 0)
+            {
+                BuildProgramLibrary();
+                RefreshProgramList();
+            }
             if (_pieceInfo != null) _pieceInfo.gameObject.SetActive(false);
             // ⚠️ 2026-08-12：UGUI 组件状态必须【同步】立即重置——BuildPieceList 是异步协程
             // （Addressables 加载 + Destroy 延迟帧末），打开瞬间若依赖它则旧内容/旧选中/旧滚动仍在显示：
@@ -321,19 +335,33 @@ namespace TheLaw.UI
             _infoPortrait = portrait != null ? portrait.GetComponent<Image>() : null;
         }
 
-        // ====== 程序库（独立模板库优先，回退棋子自带去重） ======
+        // ====== 程序库（当前编辑棋子优先使用后端候选池） ======
         void BuildProgramLibrary()
         {
             _programLibrary.Clear();
             var seen = new HashSet<string>();
-            // 独立模板库（TemplateLibrary——编辑候选池，协作者 templates.json 导入）
-            foreach (var t in TemplateLibrary.All())
+            IEnumerable<Template> source = null;
+
+            // 编辑事件中：候选必须由后端按 defId 决定。
+            // 未选中棋子/编辑器未就绪时，才回退完整模板库，供面板初始化预览使用。
+            if (_editor != null && _selectedDefId >= 0)
             {
+                source = _editor.GetEditCandidates(_selectedDefId);
+            }
+            else
+            {
+                source = TemplateLibrary.All();
+            }
+
+            foreach (var t in source)
+            {
+                if (t == null) continue;
                 var key = SlotDescTable.FeatureOf(t);
                 if (seen.Add(key)) _programLibrary.Add(t);
             }
-            // 回退：模板库未注册时用棋子自带模板去重
-            if (_programLibrary.Count == 0)
+
+            // 模板库尚未注册时用棋子自带模块兜底，避免初始化阶段候选区完全为空。
+            if (_programLibrary.Count == 0 && _selectedDefId < 0)
             {
                 foreach (var def in ConfigTable.All<PieceDef>())
                 {
@@ -347,11 +375,12 @@ namespace TheLaw.UI
                     }
                 }
             }
-            // 程序块排序：类型优先（Move→Attack→Skip），同类型保持原顺序（2026-08-11 需求）
+
+            // 程序块排序：移动 → 攻击 → 效果 → 跳过；同类保持后端候选池顺序。
             _programLibrary.Sort((a, b) =>
             {
-                int ta = a is MoveTemplate ? 0 : a is AttackTemplate ? 1 : 2;
-                int tb = b is MoveTemplate ? 0 : b is AttackTemplate ? 1 : 2;
+                int ta = a is MoveTemplate ? 0 : a is AttackTemplate ? 1 : a is EffectTemplate ? 2 : 3;
+                int tb = b is MoveTemplate ? 0 : b is AttackTemplate ? 1 : b is EffectTemplate ? 2 : 3;
                 return ta.CompareTo(tb);
             });
         }
@@ -530,6 +559,47 @@ namespace TheLaw.UI
             return slotIndex >= 0 && slotIndex < _slotLocked.Count && _slotLocked[slotIndex];
         }
 
+        /// <summary>
+        /// 锁定槽通常拒绝拖入；唯一例外是 show 模式下把缺失的内置模块放回自己的原始槽位。
+        /// 是否接受由后端 TryRestoreBuiltinModule 最终裁决，前端不预先修改卡面。
+        /// </summary>
+        public bool CanAcceptModuleDrop(int slotIndex, Template module, EditorProgramDrag.DragSource source)
+        {
+            if (!IsSlotLocked(slotIndex)) return true;
+            if (source != EditorProgramDrag.DragSource.Library || _editor == null || _selectedDefId < 0 || module == null)
+                return false;
+            return IsBuiltinRestoreCandidate(module, slotIndex);
+        }
+
+        bool IsBuiltinRestoreCandidate(Template module, int targetIndex)
+        {
+            if (EditConfig.IsHideMode) return false;
+            var def = ConfigTable.Find<PieceDef>(_selectedDefId);
+            if (def?.programSet == null || def.programSet.Count == 0) return false;
+            var defaults = def.programSet[0].slots;
+            if (targetIndex < 0 || targetIndex >= defaults.Count) return false;
+            var original = defaults[targetIndex];
+            if (!IsBuiltinModule(original) || original.GetType() != module.GetType() || original.id != module.id)
+                return false;
+            foreach (var current in _slotTemplates)
+            {
+                if (current != null && current.GetType() == module.GetType() && current.id > 0 && current.id == module.id)
+                    return false;
+            }
+            return true;
+        }
+
+        static bool IsBuiltinModule(Template module)
+        {
+            switch (module)
+            {
+                case MoveTemplate move: return move.id > 0 && move.id <= 9;
+                case AttackTemplate attack: return attack.id > 0 && attack.id <= 11;
+                case EffectTemplate effect: return effect.id > 0 && effect.id <= 3;
+                default: return false;
+            }
+        }
+
         /// <summary>按有效类型/价值刷新棋子卡面基础信息。</summary>
         void FillPieceCardBase(GameObject card, PieceDef def)
         {
@@ -610,6 +680,7 @@ namespace TheLaw.UI
         void RefreshProgramList()
         {
             if (_programContent == null) return;
+            _programListGeneration++;
             EnsureScrollContent(_programContent);
             // GridLayout 与视口不匹配（2×550+15=1115 > 视口 550）→ 重配为单列（2026-08-11 排查：列宽超视口被 Mask 裁掉半边）
             FitGridToViewport(_programContent);
@@ -620,17 +691,34 @@ namespace TheLaw.UI
 
         System.Collections.IEnumerator BuildProgramList()
         {
-            var handle = UnityEngine.AddressableAssets.Addressables.LoadAssetAsync<GameObject>("Program_Card");
-            yield return handle;
-            if (handle.Status != UnityEngine.ResourceManagement.AsyncOperations.AsyncOperationStatus.Succeeded || handle.Result == null)
+            int generation = _programListGeneration;
+            if (_programCardTemplate == null)
+            {
+                if (_loadingProgramCardTemplate)
+                {
+                    while (_loadingProgramCardTemplate) yield return null;
+                }
+                else
+                {
+                    _loadingProgramCardTemplate = true;
+                    var handle = UnityEngine.AddressableAssets.Addressables.LoadAssetAsync<GameObject>("Program_Card");
+                    yield return handle;
+                    _loadingProgramCardTemplate = false;
+                    if (handle.Status == UnityEngine.ResourceManagement.AsyncOperations.AsyncOperationStatus.Succeeded)
+                    {
+                        _programCardTemplate = handle.Result;
+                    }
+                }
+            }
+            if (generation != _programListGeneration) yield break;
+            if (_programCardTemplate == null)
             {
                 Debug.LogWarning("[PieceEdit] Program_Card 加载失败——程序库为空");
                 yield break;
             }
-            var template = handle.Result;
             foreach (var slot in _programLibrary)
             {
-                var go = Instantiate(template, _programContent);
+                var go = Instantiate(_programCardTemplate, _programContent);
                 go.name = $"Prog_{SlotDescTable.FeatureOf(slot)}";
                 FillProgramCard(go, slot);
                 // 拖拽源：程序库块（Library 模式——复制放置，原卡不消耗）
@@ -672,6 +760,8 @@ namespace TheLaw.UI
                 {
                     var def = ConfigTable.Find<PieceDef>(editedDefId);
                     if (def != null) FillPieceInfo(def);
+                    BuildProgramLibrary();
+                    RefreshProgramList(); // show/hide 语义变化后重新查询后端候选池
                 }
             }
         }
@@ -726,6 +816,8 @@ namespace TheLaw.UI
             _slotTemplates = GetCurrentProgram(def);
             InitLockedFlags(def);
             FillPieceInfo(def);
+            BuildProgramLibrary();          // 后端候选池按当前 defId 查询
+            RefreshProgramList();           // 切换棋子后立即刷新候选区
             RefreshProgramDragPermission();
             RefreshUndoButton(); // 新选中：检查该棋子是否有可撤销历史
         }
@@ -824,6 +916,14 @@ namespace TheLaw.UI
         public bool InsertProgram(int to, Template template)
         {
             if (!CanEditSelected() || template == null) return false;
+
+            // show 模式：候选区中的缺失内置模块只能回到默认原槽。
+            // 后端先校验并落账；false 时保持当前 UI，不播放成功态。
+            if (IsBuiltinRestoreCandidate(template, to))
+            {
+                return _editor.TryRestoreBuiltinModule(_selectedDefId, template, to);
+            }
+
             if (_slotTemplates.Count >= MaxProgramSlots)
             {
                 // 满槽：替换目标槽（索引必须在 0..Count-1 内）
@@ -1155,7 +1255,7 @@ namespace TheLaw.UI
             {
                 if (target == null) continue;
                 if (target.SlotIndex == _sourceSlot) continue; // 自身源槽：不吸附不高亮（Library 模式 _sourceSlot=-1 永不匹配）
-                if (_panel.IsSlotLocked(target.SlotIndex)) continue; // 锁定槽不可拖入（绝对固定——恒排除）
+                if (!_panel.CanAcceptModuleDrop(target.SlotIndex, _template, _source)) continue; // 锁定槽仅允许内置模块回原位
                 var r = target.ScreenRect;
                 // 外扩矩形包含判定（区域吸附——包围盒自动覆盖 Img↔Desc 空隙）
                 if (pos.x < r.xMin - expand || pos.x > r.xMax + expand || pos.y < r.yMin - expand || pos.y > r.yMax + expand)

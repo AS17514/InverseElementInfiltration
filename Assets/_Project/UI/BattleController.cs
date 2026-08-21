@@ -811,8 +811,8 @@ namespace TheLaw.UI
             EnqueuePresentation(() => PlayDeploy(info));
             if (info.Side == Side.Player)
             {
-                RebuildHand(); // 规则层已 Hand.Remove——本地重建移除该卡
-                RefreshPhaseButton(); // ResolveDeploy 不发 HandChanged——按钮摆放前置状态需手动刷新
+                // 手牌变化由 Resolver.HandChanged 统一驱动；此处只保留阶段按钮刷新兜底。
+                RefreshPhaseButton();
             }
         }
 
@@ -854,7 +854,7 @@ namespace TheLaw.UI
                 if (piece != null) FillInfo(piece.def, piece);
                 PreviewRange(info.PieceId);
             }
-            RebuildHand();
+            // 手牌变化由 Resolver.HandChanged 统一驱动。
         }
 
         void CacheOrApplyPromotionWarning(PromoteAnnouncement announcement)
@@ -1741,10 +1741,11 @@ namespace TheLaw.UI
             // 手牌卡为独立 prefab（Piece_Handcard）——Addressables 按需加载
             // 注意：清空旧卡放在协程内（加载完成后同帧清+建）——避免重建中间空白帧（闪一下）
             _handBuildSeq++;
-            StartCoroutine(LoadAndBuildHand(_handBuildSeq));
+            var snapshot = new List<Card>(_state.Hand);
+            StartCoroutine(LoadAndBuildHand(_handBuildSeq, snapshot));
         }
 
-        IEnumerator LoadAndBuildHand(int seq)
+        IEnumerator LoadAndBuildHand(int seq, List<Card> snapshot)
         {
             var handle = UnityEngine.AddressableAssets.Addressables.LoadAssetAsync<GameObject>("Piece_Handcard");
             yield return handle;
@@ -1755,20 +1756,26 @@ namespace TheLaw.UI
                 yield break;
             }
             var template = handle.Result;
-            // 每次成功加载后清空手牌根，再严格按当前 GameState.Hand 重建。
-            // 防止旧 prefab/旧协程/旧局卡片残留，造成画面显示全量手牌。
+            // 先收集旧卡，再按当前 Hand 快照复用/增删；不改变 HandLayoutController 的动画。
+            var oldCards = new List<(GameObject go, int defId)>();
             foreach (Transform child in _panel.HandRoot)
             {
-                DestroyImmediate(child.gameObject);
+                var drag = child.GetComponent<HandCardDrag>();
+                if (drag != null) oldCards.Add((child.gameObject, drag.DefId));
+                else
+                {
+                    child.gameObject.SetActive(false);
+                    Destroy(child.gameObject); // 非手牌卡对象不应留在 HandRoot
+                }
             }
-            var oldCards = new List<(GameObject go, int defId)>();
-            var reused = new bool[0];
+            bool fromEmpty = oldCards.Count == 0;
+            var reused = new bool[oldCards.Count];
             var layout = _panel.HandRoot.GetComponent<HandLayoutController>();
             if (layout == null) layout = _panel.HandRoot.gameObject.AddComponent<HandLayoutController>();
             // 手牌显示排序：类型优先（初始→部署→升变）+ 同类型价值升序（全场景统一——CardTypeColors.SortPieces）
             // ⚠️ 2026-08-20 牌结构：仅棋子牌显示（麻将牌表现留待玩法实现/前端后续）
             var handDefs = new List<PieceDef>();
-            foreach (var card in _state.Hand)
+            foreach (var card in snapshot)
             {
                 if (!card.IsPiece) continue;
                 var d = ConfigTable.Find<PieceDef>(card.defId);
@@ -1805,6 +1812,8 @@ namespace TheLaw.UI
                 {
                     card.name = $"Card_{i}_{def.displayName}";
                     card.SetActive(true);
+                    var drag = card.GetComponent<HandCardDrag>();
+                    if (drag != null) drag.CancelVisualTween();
                     // 复用卡视觉重置（防拖出动画残留：alpha=0/scale=0.3 时隐形）
                     var cg = card.GetComponent<CanvasGroup>();
                     if (cg != null) cg.alpha = 1f;
@@ -1820,7 +1829,7 @@ namespace TheLaw.UI
                 }
             }
             // 有复用卡 → 不 instant（布局插值产生滑动过渡）；从无到有 → instant 落位
-            layout.RefreshCards(true);
+            layout.RefreshCards(fromEmpty);
         }
 
         /// <summary>新卡淡入（alpha 0→1，按索引错峰）——重建后重排有过渡而非瞬间出现。</summary>
@@ -2055,9 +2064,12 @@ namespace TheLaw.UI
         {
             if (card == null) card = _dragCard;
             if (card == null) return; // 卡片已销毁（Unity 伪 null）或拖拽清理后无引用
+            var drag = card.GetComponent<HandCardDrag>();
+            if (drag != null) drag.CancelVisualTween();
             var cg = card.GetComponent<CanvasGroup>();
             if (cg != null)
             {
+                cg.alpha = 1f;
                 DG.Tweening.DOTween.To(() => cg.alpha, a => cg.alpha = a, 1f, 0.15f)
                     .SetTarget(cg); // 绑定 target：卡片销毁时可被 Kill
             }
@@ -2098,6 +2110,21 @@ namespace TheLaw.UI
         DG.Tweening.Tween _fadeTween; // 拖出淡出 tween（显式管理，防销毁后访问）
 
         public int DefId => _defId; // 差异重建时按 defId 复用卡片
+
+        public void CancelVisualTween()
+        {
+            if (_fadeTween != null)
+            {
+                _fadeTween.Kill();
+                _fadeTween = null;
+            }
+            if (_cg != null)
+            {
+                DG.Tweening.DOTween.Kill(_cg);
+                _cg.alpha = 1f;
+            }
+            DG.Tweening.DOTween.Kill(transform);
+        }
 
         public void Init(BattleController controller, int defId, int cardIndex)
         {

@@ -58,6 +58,7 @@ namespace TheLaw.UI
         private readonly List<GameObject> _poolCards = new List<GameObject>(); // 牌池卡实例（索引 = _sortedDefs 索引）
         private GameObject _cardTemplate; // Piece_Card prefab（Addressables——牌池/出战共用）
         private GameObject _progTemplate; // Piece_ProgramInfo prefab（卡面程序槽图标——Addressables）
+        private GameObject _tagTemplate;  // Tag_DeckLimit prefab（Addressables——限制 Tag 外观唯一来源）
 
         // 当前事件限制（0 = 无限制）
         private int _deckSizeLimit;
@@ -440,53 +441,24 @@ namespace TheLaw.UI
                 _nextBtn.interactable = _deckSizeLimit <= 0 || _deck.Count == _deckSizeLimit;
         }
 
-        /// <summary>构筑限制 tag：优先用容器已有实例作模板；无模板则代码创建。</summary>
+        /// <summary>构筑限制 Tag 始终由 Tag_DeckLimit prefab 实例化，外观不由代码覆盖。</summary>
         void EnsureTags()
         {
-            if (_limitRoot == null) return;
+            if (_limitRoot == null || _tagTemplate == null) return;
             if (_tagSize != null && _tagPromote != null) return;
-            var template = _limitRoot.childCount > 0 ? _limitRoot.GetChild(0).gameObject : null;
-            var templateTxt = template != null
-                ? template.GetComponent<TMP_Text>() ?? template.GetComponentInChildren<TMP_Text>()
-                : null;
 
             if (_tagSize == null)
             {
-                if (templateTxt != null)
-                {
-                    _tagSize = templateTxt;
-                    template.name = "Tag_DeckSize";
-                }
-                else
-                {
-                    _tagSize = CreateTagText("Tag_DeckSize");
-                }
+                var sizeTag = Instantiate(_tagTemplate, _limitRoot);
+                sizeTag.name = "Tag_DeckSize";
+                _tagSize = sizeTag.GetComponent<TMP_Text>() ?? sizeTag.GetComponentInChildren<TMP_Text>();
             }
             if (_tagPromote == null)
             {
-                if (templateTxt != null)
-                {
-                    var clone = Instantiate(template, _limitRoot);
-                    clone.name = "Tag_DeckPromote";
-                    _tagPromote = clone.GetComponent<TMP_Text>() ?? clone.GetComponentInChildren<TMP_Text>();
-                }
-                else
-                {
-                    _tagPromote = CreateTagText("Tag_DeckPromote");
-                }
+                var promoteTag = Instantiate(_tagTemplate, _limitRoot);
+                promoteTag.name = "Tag_DeckPromote";
+                _tagPromote = promoteTag.GetComponent<TMP_Text>() ?? promoteTag.GetComponentInChildren<TMP_Text>();
             }
-        }
-
-        TMP_Text CreateTagText(string name)
-        {
-            var go = new GameObject(name, typeof(RectTransform), typeof(TextMeshProUGUI));
-            go.transform.SetParent(_limitRoot, false);
-            var txt = go.GetComponent<TextMeshProUGUI>();
-            txt.fontSize = 36;
-            txt.color = Color.white;
-            txt.alignment = TextAlignmentOptions.Center;
-            txt.text = "";
-            return txt;
         }
 
         // ====== 确认 ======
@@ -655,8 +627,10 @@ namespace TheLaw.UI
         {
             var handle = Addressables.LoadAssetAsync<GameObject>("Piece_Card");
             var progHandle = Addressables.LoadAssetAsync<GameObject>("Piece_ProgramInfo"); // 卡面程序槽图标模板
+            var tagHandle = Addressables.LoadAssetAsync<GameObject>("Tag_DeckLimit");
             yield return handle;
             yield return progHandle;
+            yield return tagHandle;
             if (handle.Status == UnityEngine.ResourceManagement.AsyncOperations.AsyncOperationStatus.Succeeded && handle.Result != null)
             {
                 _cardTemplate = handle.Result;
@@ -668,6 +642,15 @@ namespace TheLaw.UI
             if (progHandle.Status == UnityEngine.ResourceManagement.AsyncOperations.AsyncOperationStatus.Succeeded && progHandle.Result != null)
             {
                 _progTemplate = progHandle.Result;
+            }
+            if (tagHandle.Status == UnityEngine.ResourceManagement.AsyncOperations.AsyncOperationStatus.Succeeded && tagHandle.Result != null)
+            {
+                _tagTemplate = tagHandle.Result;
+                if (gameObject.activeInHierarchy) RefreshLimits();
+            }
+            else
+            {
+                Debug.LogError("[DeckBuild] Tag_DeckLimit 加载失败——无法显示构筑限制");
             }
             // 重建统一由 OnShow（模板未就绪时 RebuildPoolWhenReady 等待）驱动——此处不重复触发
         }

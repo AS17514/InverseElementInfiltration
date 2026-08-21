@@ -88,6 +88,9 @@ namespace TheLaw.Gameplay
             _state.EnemyAPMax = floor.enemyMaxAP;
             _state.WaveEndCountdown = -1;
             _floorRules.OnBattleStart(_state, _resolver);
+            // 先分离非初始牌，再创建 Placement UI；避免构筑结果在准备阶段短暂显示为满手牌。
+            // StartPlayerTurn 仍保留幂等防御调用，首回合只负责自动抽 4 张。
+            _resolver.SetupDrawPile();
             ChangePhase(BattlePhase.Placement, force: true); // 强制：塔流程 Phase 可能已停在 Placement——必须发事件让 UI 创建战斗控制器
             // 开局部署首波（startTurn=1 的波——玩家摆位需要看到敌方位置参照）
             HandleWaveAndPromotions();

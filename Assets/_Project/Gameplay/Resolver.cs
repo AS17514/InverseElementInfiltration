@@ -254,41 +254,45 @@ namespace TheLaw.Gameplay
                 Debug.LogWarning($"[Resolver] 部署格被占用，拒绝：cell={action.cell}（{def.name}）");
                 return;
             }
+            int consumedCardIndex = action.side == Side.Player ? FindHandCardIndex(action.pieceDefId) : -1;
+            Card consumedCard = consumedCardIndex >= 0 ? _state.Hand[consumedCardIndex] : default;
             var piece = new PieceInstance(def, action.side, action.cell)
             {
                 Id = _state.AllocatePieceId(),
                 waveIndex = action.waveIndex, // 波次标（每波得分累计用）
             };
             // ⚠️ 2026-08-20「属性」玩法：创建时分配属性（一方应含双方棋子——部署/波次都经此）
-            // 复制牌（Card 带属性，"属性相同"）优先用牌属性；否则激活玩法时随机（金木水火土）
+            // 复制牌（Card 带属性）优先用实际消耗牌属性；否则激活玩法时随机（金木水火土）
             if (_state.IsStyleActive("element"))
             {
-                piece.element = CardElementFromHand(action.pieceDefId);
+                piece.element = consumedCard.element;
                 if (piece.element == Element.None)
                 {
                     piece.element = RandomElement();
                 }
             }
-            if (action.side == Side.Player)
+            if (consumedCardIndex >= 0)
             {
-                _state.Hand.RemoveAll(c => c.IsPiece && c.defId == action.pieceDefId); // 玩家部署：手牌打出（棋子牌）
+                _state.Hand.RemoveAt(consumedCardIndex); // 玩家部署：只移除实际打出的这一张牌
+                EventCenter.Instance.EventTrigger(GameEvent.HandChanged, _state.Hand);
             }
             _state.Pieces[action.cell] = piece;
             _state.PiecesById[piece.Id] = piece;
             EventCenter.Instance.EventTrigger(GameEvent.PieceDeployed, new DeployInfo { PieceId = piece.Id, DefId = action.pieceDefId, Side = action.side, Cell = action.cell });
         }
 
-        /// <summary>手牌中该 defId 的带属性牌（复制牌"属性相同"）——有则返回牌属性，无则 None（2026-08-20）。</summary>
-        private Element CardElementFromHand(int defId)
+        /// <summary>找到一张实际消耗的手牌：优先带属性牌，允许同 defId 重复。</summary>
+        private int FindHandCardIndex(int defId)
         {
-            foreach (var card in _state.Hand)
+            int fallback = -1;
+            for (int i = 0; i < _state.Hand.Count; i++)
             {
-                if (card.IsPiece && card.defId == defId && card.element != Element.None)
-                {
-                    return card.element;
-                }
+                var card = _state.Hand[i];
+                if (!card.IsPiece || card.defId != defId) continue;
+                if (fallback < 0) fallback = i;
+                if (card.element != Element.None) return i;
             }
-            return Element.None;
+            return fallback;
         }
 
         /// <summary>随机属性（金木水火土——RandomManager 种子相关可复现；属性玩法激活时用）。</summary>
@@ -305,6 +309,7 @@ namespace TheLaw.Gameplay
                 return;
             }
             var newDef = ConfigTable.Get<PieceDef>(action.newDefId);
+            int consumedCardIndex = piece.side == Side.Player ? FindHandCardIndex(action.newDefId) : -1;
             var oldDefId = piece.DefId;      // 升变前 def（相生复制牌用——被升变棋子）
             var oldElement = piece.element;  // 升变前属性（相克/相生判定用——旧棋子 vs 新棋子）
             piece.def = newDef;
@@ -325,9 +330,10 @@ namespace TheLaw.Gameplay
                     EventCenter.Instance.EventTrigger(GameEvent.HandChanged, _state.Hand);
                 }
             }
-            if (piece.side == Side.Player)
+            if (consumedCardIndex >= 0)
             {
-                _state.Hand.RemoveAll(c => c.IsPiece && c.defId == action.newDefId); // 升变牌打出（手牌减一）——仅玩家（敌方无手牌）
+                _state.Hand.RemoveAt(consumedCardIndex); // 升变牌打出：只移除实际打出的这一张
+                EventCenter.Instance.EventTrigger(GameEvent.HandChanged, _state.Hand);
             }
             EventCenter.Instance.EventTrigger(GameEvent.PiecePromoted, new PromoteInfo { PieceId = piece.Id, NewDefId = action.newDefId });
         }

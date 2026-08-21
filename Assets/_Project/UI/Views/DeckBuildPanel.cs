@@ -37,9 +37,7 @@ namespace TheLaw.UI
         private Transform _deckContent;   // 出战列表 Content（Grp_BuildAndLimit/Grp_Build/Viewport/Content——当前手牌）
         private Transform _limitRoot;     // 构筑限制 tag 容器（Grp_BuildAndLimit/Grp_DeckLimit）
         private TMP_Text _tagSize;        // 数量 tag（"数量 x/y"）
-        private TMP_Text _tagValue;       // 价值 tag（"价值 x/y"）
-        private TMP_Text _tagDuplicate;   // 可复数 tag
-        private TMP_Text _tagPromote;     // 升变≤初始 tag（含实时计数）
+        private TMP_Text _tagPromote;     // 升变数量不大于初始数量 tag
         private Button _nextBtn;
 
         // ====== 信息区节点（同 PieceEditPanel——Grp_PieceInfo 直接挂 Grp 下）======
@@ -63,7 +61,6 @@ namespace TheLaw.UI
 
         // 当前事件限制（0 = 无限制）
         private int _deckSizeLimit;
-        private int _valueLimit;
         private bool _allowDuplicate;        // 允许同种棋子复数编入（策划开关——左键加/右键减）
         private bool _promoteLimitByInitial; // 升变数量 ≤ 初始数量（策划开关）
 
@@ -158,7 +155,6 @@ namespace TheLaw.UI
         void LoadLimits()
         {
             _deckSizeLimit = 0;
-            _valueLimit = 0; // 死代码：价值上限已废除——不再生效
             _allowDuplicate = false;
             _promoteLimitByInitial = false;
             if (_state == null) return; // Init 未注入（Awake 时序）——跳过，OnShow 时再调
@@ -173,7 +169,6 @@ namespace TheLaw.UI
             else
             {
                 _deckSizeLimit = ev.deckSizeLimit;
-                _valueLimit = ev.totalValueLimit;
                 _allowDuplicate = ev.allowDuplicate;
                 _promoteLimitByInitial = ev.promoteLimitByInitial;
             }
@@ -306,7 +301,7 @@ namespace TheLaw.UI
             {
                 return false;
             }
-            // 死代码（2026-08-20 废除）：价值上限校验不再执行——原：if (_valueLimit > 0) { total+value > _valueLimit → false }
+            // 价值上限已废除，不参与前端构筑校验。
             if (_promoteLimitByInitial && GetEffectiveType(defId) == PieceType.Promoted)
             {
                 int initialCount = CountByEffectiveType(PieceType.Initial);
@@ -317,13 +312,6 @@ namespace TheLaw.UI
                 }
             }
             return true;
-        }
-
-        int GetDeckTotalValue()
-        {
-            int total = 0;
-            foreach (var id in _deck) total += GetEffectiveValue(id);
-            return total;
         }
 
         int CountInDeck(int defId)
@@ -433,42 +421,30 @@ namespace TheLaw.UI
 
         // ====== 限制显示 ======
 
-        /// <summary>刷新数量/价值/复数/升变 tag（模板复制或代码创建——见 EnsureTags）。</summary>
+        /// <summary>刷新实际构筑限制 tag：数量、升变≤初始。</summary>
         void RefreshLimits()
         {
             EnsureTags();
-            int total = GetDeckTotalValue();
             if (_tagSize != null)
-                _tagSize.text = _deckSizeLimit > 0 ? $"数量 {_deck.Count}/{_deckSizeLimit}" : $"数量 {_deck.Count}";
-            if (_tagValue != null)
-                _tagValue.text = $"价值 {total}"; // ⚠️ 死代码（2026-08-20 废除）：价值上限已移除——只显示总数，不再显示 /上限
-            if (_tagDuplicate != null)
-                _tagDuplicate.text = _allowDuplicate ? "可复数" : "";
+                _tagSize.text = _deckSizeLimit > 0 ? $"数量不超过{_deckSizeLimit}" : "数量不限";
             if (_tagPromote != null)
             {
-                if (_promoteLimitByInitial)
+                bool visible = _promoteLimitByInitial;
+                _tagPromote.gameObject.SetActive(visible);
+                if (visible)
                 {
-                    int initial = CountByEffectiveType(PieceType.Initial);
-                    int promoted = CountByEffectiveType(PieceType.Promoted);
-                    _tagPromote.text = $"初始 {initial}｜升变 {promoted}（升变不超过初始）";
-                }
-                else
-                {
-                    _tagPromote.text = "";
+                    _tagPromote.text = "升变数量不大于初始数量";
                 }
             }
             if (_nextBtn != null)
                 _nextBtn.interactable = _deckSizeLimit <= 0 || _deck.Count == _deckSizeLimit;
         }
 
-        /// <summary>
-        /// 构筑限制 tag：优先用 Grp_DeckLimit 下已有实例作模板（复制多份）；无模板则代码创建。
-        /// 注：Tag_DeckLimit 预制体未注册 Addressables，运行时无法按地址加载——双保险。
-        /// </summary>
+        /// <summary>构筑限制 tag：优先用容器已有实例作模板；无模板则代码创建。</summary>
         void EnsureTags()
         {
             if (_limitRoot == null) return;
-            if (_tagSize != null && _tagValue != null && _tagDuplicate != null && _tagPromote != null) return;
+            if (_tagSize != null && _tagPromote != null) return;
             var template = _limitRoot.childCount > 0 ? _limitRoot.GetChild(0).gameObject : null;
             var templateTxt = template != null
                 ? template.GetComponent<TMP_Text>() ?? template.GetComponentInChildren<TMP_Text>()
@@ -484,32 +460,6 @@ namespace TheLaw.UI
                 else
                 {
                     _tagSize = CreateTagText("Tag_DeckSize");
-                }
-            }
-            if (_tagValue == null)
-            {
-                if (templateTxt != null)
-                {
-                    var clone = Instantiate(template, _limitRoot);
-                    clone.name = "Tag_DeckValue";
-                    _tagValue = clone.GetComponent<TMP_Text>() ?? clone.GetComponentInChildren<TMP_Text>();
-                }
-                else
-                {
-                    _tagValue = CreateTagText("Tag_DeckValue");
-                }
-            }
-            if (_tagDuplicate == null)
-            {
-                if (templateTxt != null)
-                {
-                    var clone = Instantiate(template, _limitRoot);
-                    clone.name = "Tag_DeckDuplicate";
-                    _tagDuplicate = clone.GetComponent<TMP_Text>() ?? clone.GetComponentInChildren<TMP_Text>();
-                }
-                else
-                {
-                    _tagDuplicate = CreateTagText("Tag_DeckDuplicate");
                 }
             }
             if (_tagPromote == null)

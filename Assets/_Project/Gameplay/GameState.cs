@@ -212,7 +212,7 @@ namespace TheLaw.Gameplay
             // 首个玩家回合 StartPlayerTurn 自动从 DrawPile 抽 4 张，后续再按 AP 抽牌。
             foreach (var def in ConfigTable.All<PieceDef>())
             {
-                if (def.pieceType == PieceType.Initial) Hand.Add(Card.Piece(def.Id));
+                if (GetEffectiveType(def.Id) == PieceType.Initial) Hand.Add(Card.Piece(def.Id));
                 else DrawPile.Add(Card.Piece(def.Id));
             }
         }

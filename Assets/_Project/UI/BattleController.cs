@@ -1797,6 +1797,8 @@ namespace TheLaw.UI
                     card.SetActive(true);
                     FillCard(card, def, i);
                     AddCardDrag(card, def.Id, i);
+                    var newCanvasGroup = card.GetComponent<CanvasGroup>();
+                    if (newCanvasGroup != null) newCanvasGroup.alpha = 1f;
                     // 全量重建后直接可见；不使用 alpha=0 的异步淡入，避免 tween 被打断后层级对象存在但不可见。
                 }
                 else

@@ -34,6 +34,10 @@ namespace TheLaw.UI
         private RectTransform _tipRect;
         private TMP_Text _descText;
         private bool _loading;
+        private int _requestGeneration;
+        private bool _requestedVisible;
+        private string _requestedText;
+        private Vector2 _requestedScreenPosition;
 
         /// <summary>显示描述浮窗（世界坐标——行为块/棋子旁；用主相机换算）。</summary>
         public void Show(string text, Vector3 worldPos)
@@ -41,75 +45,83 @@ namespace TheLaw.UI
             Show(text, worldPos, Camera.main);
         }
 
-        /// <summary>显示描述浮窗（世界坐标 + 显式相机——⚠️ UI 元素必须传 canvas.worldCamera（UICamera），主相机斜俯视投影会错位）。</summary>
+        /// <summary>显示描述浮窗（世界坐标 + 显式相机——UI 元素必须传 canvas.worldCamera）。</summary>
         public void Show(string text, Vector3 worldPos, Camera cam)
         {
-            StartCoroutine(EnsureLoaded(() =>
-            {
-                if (cam == null) return;
-                PlaceAt(RectTransformUtility.WorldToScreenPoint(cam, worldPos));
-                _descText.text = text;
-                _tipGo.SetActive(true);
-            }));
+            if (cam == null) return;
+            RequestShow(text, RectTransformUtility.WorldToScreenPoint(cam, worldPos));
         }
 
         /// <summary>显示描述浮窗（直接屏幕坐标——按钮旁）。</summary>
         public void ShowAtScreen(string text, Vector2 screenPos)
         {
-            StartCoroutine(EnsureLoaded(() =>
-            {
-                PlaceAt(screenPos);
-                _descText.text = text;
-                _tipGo.SetActive(true);
-            }));
+            RequestShow(text, screenPos);
         }
 
-        /// <summary>隐藏浮窗。</summary>
+        void RequestShow(string text, Vector2 screenPos)
+        {
+            _requestGeneration++;
+            _requestedVisible = true;
+            _requestedText = text;
+            _requestedScreenPosition = screenPos;
+            StartCoroutine(EnsureLoaded(_requestGeneration));
+        }
+
+        /// <summary>隐藏浮窗，并废弃仍在加载中的旧 hover 请求。</summary>
         public void Hide()
         {
+            _requestGeneration++;
+            _requestedVisible = false;
             if (_tipGo != null) _tipGo.SetActive(false);
         }
 
-        /// <summary>加载 TipPanel 预制体（一次缓存）→ 就绪后回调；加载中重复调用忽略（下次再显示）。</summary>
-        IEnumerator EnsureLoaded(Action onReady)
+        /// <summary>加载 TipPanel 一次；完成后只响应最新且仍有效的请求。</summary>
+        IEnumerator EnsureLoaded(int requestGeneration)
         {
-            if (_tipGo != null)
+            if (_tipGo == null && !_loading)
             {
-                onReady();
+                _loading = true;
+                var handle = Addressables.LoadAssetAsync<GameObject>("TipPanel");
+                yield return handle;
+                _loading = false;
+                if (handle.Status != UnityEngine.ResourceManagement.AsyncOperations.AsyncOperationStatus.Succeeded || handle.Result == null)
+                {
+                    Debug.LogWarning("[Tooltip] TipPanel 加载失败——描述浮窗不可用");
+                    yield break;
+                }
+                var canvas = FindRootCanvas();
+                if (canvas == null)
+                {
+                    Debug.LogWarning("[Tooltip] 根 Canvas 不存在——描述浮窗不可用");
+                    yield break;
+                }
+                var go = Instantiate(handle.Result, canvas.transform);
+                go.name = "Tooltip";
+                var tipCanvas = go.GetComponent<Canvas>();
+                if (tipCanvas == null) tipCanvas = go.AddComponent<Canvas>();
+                tipCanvas.renderMode = canvas.renderMode;
+                tipCanvas.worldCamera = canvas.worldCamera;
+                tipCanvas.planeDistance = canvas.planeDistance;
+                tipCanvas.overrideSorting = true;
+                tipCanvas.sortingOrder = 1000;
+                go.transform.SetAsLastSibling();
+                _tipGo = go;
+                _tipRect = go.GetComponent<RectTransform>();
+                _descText = go.transform.Find("Txt_Desc")?.GetComponent<TMP_Text>();
+                go.SetActive(false);
+                Addressables.Release(handle); // 实例已持有自身资源，不保留模板加载句柄
+            }
+            else if (_loading)
+            {
+                // 另一请求负责加载；它完成后会读取最新请求。
                 yield break;
             }
-            if (_loading)
-            {
-                yield break; // 加载中：忽略（防重复加载——下次 Show 自然触发）
-            }
-            _loading = true;
-            var handle = Addressables.LoadAssetAsync<GameObject>("TipPanel");
-            yield return handle;
-            _loading = false;
-            if (handle.Status != UnityEngine.ResourceManagement.AsyncOperations.AsyncOperationStatus.Succeeded || handle.Result == null)
-            {
-                Debug.LogWarning("[Tooltip] TipPanel 加载失败——描述浮窗不可用");
-                yield break;
-            }
-            var canvas = FindRootCanvas(); // 根 Canvas（ScreenSpaceCamera——PanelBase 确保；无则跳过）
-            if (canvas == null)
-            {
-                Debug.LogWarning("[Tooltip] 根 Canvas 不存在——描述浮窗不可用");
-                yield break;
-            }
-            var go = Instantiate(handle.Result, canvas.transform);
-            go.name = "Tooltip";
-            // ⚠️ 置顶：根 Canvas 下可能被子 Canvas（手牌 overrideSorting）遮挡——自身挂 Canvas + 高 sortingOrder 必在最上
-            var tipCanvas = go.GetComponent<Canvas>();
-            if (tipCanvas == null) tipCanvas = go.AddComponent<Canvas>();
-            tipCanvas.overrideSorting = true;
-            tipCanvas.sortingOrder = 1000;
-            go.transform.SetAsLastSibling();
-            _tipGo = go;
-            _tipRect = go.GetComponent<RectTransform>();
-            _descText = go.transform.Find("Txt_Desc")?.GetComponent<TMP_Text>();
-            go.SetActive(false);
-            onReady();
+
+            // 加载完成后应服务“最新请求”，不是发起加载的旧请求。
+            if (_tipGo == null || !_requestedVisible) yield break;
+            _descText.text = _requestedText;
+            PlaceAt(_requestedScreenPosition);
+            _tipGo.SetActive(true);
         }
 
         /// <summary>顶层 Canvas（FindObjectOfType 会误命中运行时子 Canvas——手牌区 overrideSorting 等）。</summary>

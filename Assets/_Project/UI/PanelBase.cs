@@ -191,6 +191,8 @@ namespace TheLaw.UI
                 {
                     panel = Create<T>();
                 }
+                // 实例已脱离 prefab asset handle；释放本次加载引用，避免每次创建面板累积。
+                Addressables.Release(op);
                 onReady?.Invoke(panel);
             };
         }

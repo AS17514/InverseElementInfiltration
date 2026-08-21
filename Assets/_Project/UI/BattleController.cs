@@ -158,6 +158,7 @@ namespace TheLaw.UI
         int _selectedPieceId = -1;
         // 敌方升变预告可能早于 Piece View 创建：按 pieceId 缓存，视觉出现后补应用。
         readonly Dictionary<int, PromoteAnnouncement> _pendingPromotionWarnings = new Dictionary<int, PromoteAnnouncement>();
+        readonly BattleViewRegistry _pieceViews = new BattleViewRegistry();
 
         // 表现队列（帧缓冲合并同槽事件）
         readonly List<System.Func<IEnumerator>> _presentations = new List<System.Func<IEnumerator>>();
@@ -168,6 +169,7 @@ namespace TheLaw.UI
         GameObject _previewPiece;
         Vector2Int _previewCell = new Vector2Int(-1, -1);
         bool _draggingCard;
+        bool _draggingPromotionCard;
         int _dragDefId = -1;
         GameObject _dragCard; // 拖拽中的卡片（失败时恢复，避免整体重建闪烁）
 
@@ -204,22 +206,9 @@ namespace TheLaw.UI
             if (_relicBtn != null) _relicBtn.onClick.RemoveListener(ToggleRelicList);
             // UI 架构重构 §五：面板局内复用——只解绑不销毁（面板生命周期归 Bootstrap：局结束统一销毁）
             _panel = null;
-            // 清理盘面视觉：高亮根 + 全部棋子视觉（重开会话时盘面必须清空）
-            // ⚠️ 2026-08-12：前缀同时匹配 EnemyPiece_（PlayDeploy 复用目标）——原只清 Piece_，敌方视觉跨局残留
+            // 清理本战斗注册的视觉；不扫描全场景，避免误伤其他系统/调试对象。
             ClearHighlights();
-            foreach (var go in FindObjectsOfType<GameObject>())
-            {
-                if (go.name.StartsWith("Piece_") || go.name.StartsWith("EnemyPiece_"))
-                {
-                    // ⚠️ 2026-08-16：销毁棋子前先杀其 Transform 上的 DOTween（移动/缩放/淡出），
-                    // 否则快速结束/收尾时 DOMove 等 tween 会访问已销毁 Transform 产生警告。
-                    DOTween.Kill(go.transform);
-                    // 组件 target 也要杀：sr.material.DOFade 绑的是 Material 实例，Kill(transform) 杀不到
-                    var sr = go.transform.Find("Portrait")?.GetComponent<SpriteRenderer>();
-                    if (sr != null && sr.material != null) DOTween.Kill(sr.material);
-                    DestroyImmediate(go);
-                }
-            }
+            _pieceViews.DestroyAll();
         }
 
         /// <summary>退出战斗请求（Bootstrap 订阅——回主菜单）。</summary>
@@ -369,7 +358,7 @@ namespace TheLaw.UI
             var listCanvas = _relicDisplay.GetComponent<Canvas>();
             if (listCanvas == null) listCanvas = _relicDisplay.gameObject.AddComponent<Canvas>();
             listCanvas.overrideSorting = true;
-            listCanvas.sortingOrder = 1;
+            listCanvas.sortingOrder = 60; // 高于手牌层(50)，低于 Tooltip(1000)
             // ⚠️ 2026-08-15：overrideSorting 子 Canvas 必须有 GraphicRaycaster——否则该层不参与 EventSystem
             // 射线检测 → RelicIconHover 收不到 OnPointerEnter → hover 描述浮窗失效（用户反馈）
             if (_relicDisplay.GetComponent<UnityEngine.UI.GraphicRaycaster>() == null)
@@ -453,9 +442,10 @@ namespace TheLaw.UI
             foreach (var kv in _state.Pieces)
             {
                 var piece = kv.Value;
-                if (GameObject.Find($"Piece_{piece.Id}") != null) continue;
-                PieceViewFactory.CreatePieceView(piece.Id, piece.DefId, piece.side, piece.position,
+                if (_pieceViews.Get(piece.Id) != null) continue;
+                var view = PieceViewFactory.CreatePieceView(piece.Id, piece.DefId, piece.side, piece.position,
                     piece.side == Side.Player ? PieceViewFactory.TintFor(piece.DefId) : PieceViewFactory.TintFor(piece.DefId + 1));
+                _pieceViews.Register(piece.Id, view);
             }
             if (_state.PromoteAnnouncements != null)
             {
@@ -803,6 +793,12 @@ namespace TheLaw.UI
             var info = (DamageInfo)data;
             _selectResultDirty = true;
             EnqueuePresentation(() => PlayDamage(info));
+            // 伤害不会必然触发 Buff/死亡事件；选中单位存活时也必须刷新耐久显示。
+            if (info.AttackerId == _selectedPieceId || info.TargetId == _selectedPieceId)
+            {
+                var selected = _state.GetPiece(_selectedPieceId);
+                if (selected != null) FillInfo(selected.def, selected);
+            }
         }
 
         void OnPieceDeployed(object data)
@@ -841,7 +837,7 @@ namespace TheLaw.UI
         {
             if (!(data is PromoteInfo info)) return;
             _pendingPromotionWarnings.Remove(info.PieceId);
-            var pieceView = GameObject.Find($"Piece_{info.PieceId}");
+            var pieceView = _pieceViews.Get(info.PieceId);
             if (pieceView != null)
             {
                 PieceViewFactory.UpdatePortrait(pieceView, info.NewDefId);
@@ -854,7 +850,8 @@ namespace TheLaw.UI
                 if (piece != null) FillInfo(piece.def, piece);
                 PreviewRange(info.PieceId);
             }
-            // 手牌变化由 Resolver.HandChanged 统一驱动。
+            // 手牌变化由 Resolver.HandChanged 统一驱动；属性升变可能改变倍率，立即刷新计分。
+            RefreshScore();
         }
 
         void CacheOrApplyPromotionWarning(PromoteAnnouncement announcement)
@@ -883,7 +880,7 @@ namespace TheLaw.UI
 
         PromotionOutlineView FindPromotionView(int pieceId)
         {
-            var pieceView = GameObject.Find($"Piece_{pieceId}");
+            var pieceView = _pieceViews.Get(pieceId);
             var portrait = pieceView != null ? pieceView.transform.Find("Portrait") : null;
             if (portrait == null) return null;
             var outline = portrait.GetComponent<PromotionOutlineView>();
@@ -918,7 +915,7 @@ namespace TheLaw.UI
         // ========== 表现动画（DOTween 优先，测试最小可用）==========
         IEnumerator PlayMove(MoveInfo info)
         {
-            var go = GameObject.Find($"Piece_{info.PieceId}");
+            var go = _pieceViews.Get(info.PieceId);
             if (go != null)
             {
                 AudioManager.Instance.PlaySFX(AudioRefs.SfxMove); // 移动音效（占位——资源就绪后发声）
@@ -937,7 +934,7 @@ namespace TheLaw.UI
             if (_batchFlashAttackers == null || _batchFlashAttackers.Add(info.AttackerId))
             {
                 AudioManager.Instance.PlaySFX(AudioRefs.SfxAttack); // 攻击（挥击）音效——同组只播一次
-                var attacker = GameObject.Find($"Piece_{info.AttackerId}");
+                var attacker = _pieceViews.Get(info.AttackerId);
                 if (attacker != null)
                 {
                     var asr = attacker.transform.Find("Portrait")?.GetComponent<SpriteRenderer>();
@@ -951,7 +948,7 @@ namespace TheLaw.UI
                 }
             }
             // 目标受击闪烁（被攻击方；空挥 TargetId=-1 跳过）
-            var go = GameObject.Find($"Piece_{info.TargetId}");
+            var go = _pieceViews.Get(info.TargetId);
             if (go != null)
             {
                 AudioManager.Instance.PlaySFX(AudioRefs.SfxHit); // 受击音效（逐目标）
@@ -971,17 +968,19 @@ namespace TheLaw.UI
         IEnumerator PlayDeploy(DeployInfo info)
         {
             // 复用场景已有视觉（敌方 BoardBuilder 摆的）或新建
-            if (GameObject.Find($"Piece_{info.PieceId}") == null)
+            if (_pieceViews.Get(info.PieceId) == null)
             {
                 var existing = FindEnemyVisualAt(info.Cell);
                 if (existing != null)
                 {
                     existing.name = $"Piece_{info.PieceId}";
+                    _pieceViews.Register(info.PieceId, existing);
                 }
                 else
                 {
-                    PieceViewFactory.CreatePieceView(info.PieceId, info.DefId, info.Side, info.Cell,
+                    var view = PieceViewFactory.CreatePieceView(info.PieceId, info.DefId, info.Side, info.Cell,
                         info.Side == Side.Player ? PieceViewFactory.TintFor(info.DefId) : PieceViewFactory.TintFor(info.DefId + 1));
+                    _pieceViews.Register(info.PieceId, view);
                 }
             }
             if (_pendingPromotionWarnings.TryGetValue(info.PieceId, out var pendingWarning))
@@ -992,7 +991,7 @@ namespace TheLaw.UI
 
         IEnumerator PlayDeath(DeathInfo info)
         {
-            var go = GameObject.Find($"Piece_{info.PieceId}");
+            var go = _pieceViews.Get(info.PieceId);
             if (go != null)
             {
                 AudioManager.Instance.PlaySFX(AudioRefs.SfxDeath); // 死亡音效（占位）
@@ -1005,6 +1004,7 @@ namespace TheLaw.UI
                 // 材质 tween 同杀：sr.material.DOFade 的 target 是 Material 实例，Kill(transform) 覆盖不到
                 if (sr != null && sr.material != null) DOTween.Kill(sr.material);
                 Destroy(go);
+                _pieceViews.Remove(info.PieceId);
             }
             yield return null;
         }
@@ -1183,11 +1183,13 @@ namespace TheLaw.UI
 
         PieceType GetEffectiveType(PieceDef def)
         {
+            if (def == null) return PieceType.Deployable;
             return _state != null ? _state.GetEffectiveType(def.Id) : def.pieceType;
         }
 
         int GetEffectiveValue(PieceDef def)
         {
+            if (def == null) return 0;
             return _state != null ? _state.GetEffectiveValue(def.Id) : def.value;
         }
 
@@ -1731,6 +1733,7 @@ namespace TheLaw.UI
             if (_draggingCard)
             {
                 _draggingCard = false;
+                _draggingPromotionCard = false;
                 SetHandLayoutDragging(false); // 重建即结束拖拽，恢复 hover
                 _dragCard = null;
                 if (_previewPiece != null) Destroy(_previewPiece);
@@ -1749,10 +1752,15 @@ namespace TheLaw.UI
         {
             var handle = UnityEngine.AddressableAssets.Addressables.LoadAssetAsync<GameObject>("Piece_Handcard");
             yield return handle;
-            if (seq != _handBuildSeq) yield break; // 过期重建请求：放弃（防双份卡片）
+            if (seq != _handBuildSeq)
+            {
+                UnityEngine.AddressableAssets.Addressables.Release(handle);
+                yield break; // 过期重建请求：放弃（防双份卡片）
+            }
             if (handle.Status != UnityEngine.ResourceManagement.AsyncOperations.AsyncOperationStatus.Succeeded || handle.Result == null)
             {
                 Debug.LogWarning("[Battle] 手牌卡 prefab 加载失败（address=Piece_Handcard）");
+                UnityEngine.AddressableAssets.Addressables.Release(handle);
                 yield break;
             }
             var template = handle.Result;
@@ -1830,6 +1838,8 @@ namespace TheLaw.UI
             }
             // 有复用卡 → 不 instant（布局插值产生滑动过渡）；从无到有 → instant 落位
             layout.RefreshCards(fromEmpty);
+            // 已实例化卡片不依赖 prefab handle；每次重建释放本次加载引用，避免 refcount 累积。
+            UnityEngine.AddressableAssets.Addressables.Release(handle);
         }
 
         /// <summary>新卡淡入（alpha 0→1，按索引错峰）——重建后重排有过渡而非瞬间出现。</summary>
@@ -1939,14 +1949,19 @@ namespace TheLaw.UI
 
         public bool CanDragCard(int defId)
         {
-            // 阶段限定种类（与规则层 IsDeployAllowed 一致）：Placement=初始 / PlayerTurn=部署；升变牌靠升变操作上场不可部署
             var def = ConfigTable.Find<PieceDef>(defId);
             if (def == null) return false;
             var effectiveType = GetEffectiveType(def);
+            // 升变牌只可在玩家回合、至少有 1 AP 时拖到己方未升变棋子；不进入部署流程。
+            if (effectiveType == PieceType.Promoted)
+            {
+                return _state.Phase == BattlePhase.PlayerTurn && _state.PlayerAP >= 1
+                    && !_executing && !_presentationPlaying;
+            }
+            // 普通牌仍沿用原部署规则：Placement=初始 / PlayerTurn=部署。
             bool typeOk = _state.Phase == BattlePhase.Placement
                 ? effectiveType == PieceType.Initial
                 : effectiveType == PieceType.Deployable;
-            // 执行中/表现播放中禁止拖拽（防时序错乱）
             return typeOk && !_executing && !_presentationPlaying
                 && (_state.Phase == BattlePhase.Placement || _state.Phase == BattlePhase.PlayerTurn);
         }
@@ -1966,9 +1981,12 @@ namespace TheLaw.UI
             if (!CanDragCard(defId)) return;
             if (_previewPiece != null) Destroy(_previewPiece); // 防旧预览泄漏
             _draggingCard = true;
+            var def = ConfigTable.Find<PieceDef>(defId);
+            _draggingPromotionCard = def != null && GetEffectiveType(def) == PieceType.Promoted;
             SetHandLayoutDragging(true); // 拖拽期间冻结手牌 hover/让位（后端排查记录）
             _dragDefId = defId;
             _dragCard = card;
+            // 升变牌也创建跟随鼠标的立绘预览；释放时仍走场上目标检测，不进入空格部署流程。
             PieceViewFactory.EnsureSprites();
             _previewPiece = PieceViewFactory.CreatePieceView(-1, defId, Side.Player, new Vector2Int(-9, -9),
                 PieceViewFactory.TintFor(defId));
@@ -1984,11 +2002,14 @@ namespace TheLaw.UI
             var cam = Camera.main;
             if (cam == null) return;
             var ray = cam.ScreenPointToRay(screenPos);
-            // 命中合法格 → 吸附定位点
+            // 普通牌命中合法空格时吸附；升变牌命中合法己方未升变棋子时吸附。
             if (Physics.Raycast(ray, out var hit, 200f))
             {
                 var cell = PieceViewFactory.CellFromWorld(hit.point);
-                if (IsDeployableCell(cell))
+                bool canSnap = _draggingPromotionCard
+                    ? IsPromotionTargetCell(cell)
+                    : IsDeployableCell(cell);
+                if (canSnap)
                 {
                     _previewPiece.transform.position = PieceViewFactory.CellToWorld(cell);
                     _previewCell = cell;
@@ -1996,7 +2017,7 @@ namespace TheLaw.UI
                     return;
                 }
             }
-            // 未吸附：立绘跟随光标（射线与 y=0 棋盘平面交点，保持可见）
+            // 未吸附/升变牌：立绘跟随光标（射线与 y=0 棋盘平面交点，保持可见）
             var plane = new Plane(Vector3.up, Vector3.zero);
             if (plane.Raycast(ray, out float enter))
             {
@@ -2019,29 +2040,62 @@ namespace TheLaw.UI
             portraitT.rotation = Quaternion.Euler(angle, 0f, 0f);
         }
 
-        public void OnCardDragEnd()
+        public void OnCardDragEnd(PointerEventData eventData)
         {
             if (!_draggingCard) return;
             _draggingCard = false;
-            if (_previewCell.x >= 0)
+            var defId = _dragDefId;
+            var card = _dragCard;
+            if (_draggingPromotionCard)
+            {
+                int pieceId = FindPromotionTarget(eventData);
+                if (pieceId >= 0)
+                {
+                    _flow.OnPlayerRequestPromote(new PromoteRequest(pieceId, defId));
+                    StartCoroutine(RecoverCardIfFailed(defId, card));
+                }
+                else
+                {
+                    RestoreDragCard(card); // 非法目标、AP 不足或非玩家回合：原卡回手。
+                }
+            }
+            else if (_previewCell.x >= 0)
             {
                 bool free = _state.Phase == BattlePhase.Placement;
-                _flow.OnPlayerRequestDeploy(new DeployRequest(_dragDefId, _previewCell) { free = free });
+                _flow.OnPlayerRequestDeploy(new DeployRequest(defId, _previewCell) { free = free });
                 // 成功：PieceDeployed → 规则层 Hand.Remove → OnPieceDeployed 重建手牌
                 // 失败兜底：0.5s 后 Hand 仍含该 defId → 恢复卡片（引用提前捕获——_dragCard 本方法末尾置空）
-                var card = _dragCard;
-                StartCoroutine(RecoverCardIfFailed(_dragDefId, card));
+                StartCoroutine(RecoverCardIfFailed(defId, card));
             }
             else
             {
-                RestoreDragCard(); // 非法格：只恢复拖出的卡片（不整体重建）
+                RestoreDragCard(card); // 非法格：只恢复拖出的卡片（不整体重建）
             }
             if (_previewPiece != null) Destroy(_previewPiece);
             _previewPiece = null;
             _previewCell = new Vector2Int(-1, -1);
+            _draggingPromotionCard = false;
             _dragDefId = -1;
             _dragCard = null; // 统一清理（防野引用）
             SetHandLayoutDragging(false); // 拖拽结束恢复 hover（后端排查记录）
+        }
+
+        bool IsPromotionTargetCell(Vector2Int cell)
+        {
+            if (_state == null || _state.Phase != BattlePhase.PlayerTurn || _state.PlayerAP < 1) return false;
+            var piece = _state.Pieces.TryGetValue(cell, out var target) ? target : null;
+            return piece != null && piece.side == Side.Player
+                && _state.GetEffectiveType(piece.DefId) != PieceType.Promoted;
+        }
+
+        int FindPromotionTarget(PointerEventData eventData)
+        {
+            if (_state.Phase != BattlePhase.PlayerTurn || _state.PlayerAP < 1 || Camera.main == null) return -1;
+            var ray = Camera.main.ScreenPointToRay(eventData.position);
+            if (!Physics.Raycast(ray, out var hit, 200f)) return -1;
+            var cell = PieceViewFactory.CellFromWorld(hit.point);
+            if (!IsPromotionTargetCell(cell)) return -1;
+            return _state.Pieces[cell].Id;
         }
 
         IEnumerator RecoverCardIfFailed(int defId, GameObject card)
@@ -2082,7 +2136,7 @@ namespace TheLaw.UI
             // 玩家部署区：y=0~1 + 空格（与规则层 IsValidDeployCell 一致）
             if (cell.x < 0 || cell.x >= 8 || cell.y < 0 || cell.y > 1) return false;
             if (_state.Pieces.ContainsKey(cell)) return false;
-            return true;
+            return !_state.IsBlocked(cell); // 普通障碍与麻将墙体均不可部署
         }
 
         void SetPreviewAlpha(float a)
@@ -2164,7 +2218,7 @@ namespace TheLaw.UI
 
         public void OnEndDrag(PointerEventData eventData)
         {
-            _controller.OnCardDragEnd();
+            _controller.OnCardDragEnd(eventData);
         }
     }
 }

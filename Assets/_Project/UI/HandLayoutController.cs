@@ -35,11 +35,16 @@ namespace TheLaw.UI
             _root = (RectTransform)transform;
             // 从父级找 Canvas（跳过自身——Grp_Hand 运行时加了 overrideSorting 子 Canvas，worldCamera 为 null）
             _canvas = transform.parent != null ? transform.parent.GetComponentInParent<Canvas>() : null;
-            // 手牌区独立渲染层（最高 sortingOrder）——hover 卡提层即可盖住手牌区外 UI
-            // 挂在容器上而非卡片上：动态增删卡片 Canvas 会破坏 UGUI 射线（拖拽失效）
+            // 手牌区独立排序，但渲染模式、相机、planeDistance 必须继承根 Canvas。
+            // 子 Canvas 不能混用 Overlay 与父级 ScreenSpaceCamera，否则坐标和射线口径分裂。
             var containerCanvas = GetComponent<Canvas>();
             if (containerCanvas == null) containerCanvas = gameObject.AddComponent<Canvas>();
-            containerCanvas.renderMode = RenderMode.ScreenSpaceOverlay; // 子 Canvas 保持 Overlay（渲染跟随父）——防被升级逻辑误改成 ScreenSpaceCamera
+            if (_canvas != null)
+            {
+                containerCanvas.renderMode = _canvas.renderMode;
+                containerCanvas.worldCamera = _canvas.worldCamera;
+                containerCanvas.planeDistance = _canvas.planeDistance;
+            }
             containerCanvas.overrideSorting = true;
             containerCanvas.sortingOrder = 50;
             if (GetComponent<UnityEngine.UI.GraphicRaycaster>() == null)
@@ -83,13 +88,7 @@ namespace TheLaw.UI
 
         void Update()
         {
-            // 每帧保证根 Canvas 为 ScreenSpaceCamera（升级时机不可靠——面板创建回调里设置会被某种时机重置）
-            if (_canvas != null && (_canvas.renderMode != RenderMode.ScreenSpaceCamera || _canvas.worldCamera == null))
-            {
-                var uiCam = UnityEngine.Object.FindObjectOfType<UICameraViewport>();
-                _canvas.renderMode = RenderMode.ScreenSpaceCamera;
-                _canvas.worldCamera = uiCam != null ? uiCam.GetComponent<Camera>() : null;
-            }
+            // 根 Canvas 由 PanelBase/UIRoot 装配；布局组件只读，不得每帧改全局 Canvas。
             UpdateHoverBySlot();
             ApplyLayout(instant: false);
         }

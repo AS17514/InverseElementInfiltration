@@ -308,19 +308,28 @@ namespace TheLaw.UI
         /// 按类型记录"加载中"，重复请求直接忽略（5 个面板统一受益）。
         /// </summary>
         private readonly HashSet<string> _loadingPanels = new HashSet<string>(); // 加载中的面板（防重入）
+        private int _sessionGeneration; // 局内异步创建代际：重开/收尾后旧回调不得接入新局
 
-        private System.Collections.IEnumerator LoadPanelAsync<T>(System.Action<T> onReady) where T : PanelBase
+        private System.Collections.IEnumerator LoadPanelAsync<T>(System.Action<T> onReady, bool sessionBound = false) where T : PanelBase
         {
-            string key = typeof(T).Name;
+            int generation = _sessionGeneration;
+            string key = sessionBound ? $"{typeof(T).Name}:{generation}" : typeof(T).Name;
             if (!_loadingPanels.Add(key))
             {
-                yield break; // 已在加载中——忽略重复请求
+                yield break; // 同一代际同类面板已在加载中
             }
             bool done = false;
             T panel = null;
             PanelBase.CreateAsync<T>(p => { panel = p; done = true; });
             yield return new WaitUntil(() => done);
             _loadingPanels.Remove(key);
+
+            // Addressables 完成时局可能已结束或重开。旧实例绝不能注册、订阅或显示到新局。
+            if (sessionBound && generation != _sessionGeneration)
+            {
+                if (panel != null) DestroyImmediate(panel.gameObject);
+                yield break;
+            }
             if (onReady != null) onReady(panel);
         }
 
@@ -348,7 +357,7 @@ namespace TheLaw.UI
                 panel.ShowEvent(_pendingEventId); // 主动推首次事件数据（面板注册晚于事件广播——否则显示预制文本/选项无响应）
                 _uiManager.ShowPanel("EventPanel");
                 Debug.Log($"[Bootstrap] 事件面板已显示（event={_pendingEventId}）");
-            });
+            }, sessionBound: true);
         }
 
         private void OnStateChanged(object data)
@@ -392,6 +401,7 @@ namespace TheLaw.UI
                 yield break; // 收尾进行中——防重复执行（UI 审阅②：完成后复位）
             }
             _finalizing = true;
+            _sessionGeneration++; // 立即废弃局内异步面板回调
             yield return null; // 等一帧：当前事件回调栈必然已退出（Unity 单线程，帧末栈空）
             DestroyBattleController();
             DisposeSessionFlow(); // 整局级"离开销毁"（2026-08-13：注销监听 + 置空——含战斗实例销毁）
@@ -470,6 +480,7 @@ namespace TheLaw.UI
         /// </summary>
         private void StartNewGame()
         {
+            _sessionGeneration++; // 新局边界：旧局异步面板不得接线到当前会话
             DestroyBattleController(); // 清理旧战斗会话（重开/结算重开路径）
             DisposeSessionFlow(); // 整局级"离开销毁"（2026-08-13：重开路径清理——旧局规则层实例注销监听）
             DestroySessionPanels(); // 局结束销毁会话面板（P4 断链补全——替代隐藏，防跨局残留）
@@ -538,7 +549,7 @@ namespace TheLaw.UI
                 panel.OnCandidateConfirmed += OnEditCandidateConfirmed;
                 _uiManager.ShowPanel("EditCandidatePanel");
                 Debug.Log("[Bootstrap] 编辑候选面板已显示");
-            });
+            }, sessionBound: true);
         }
 
         private void OnEditCandidateConfirmed(int defId)
@@ -577,7 +588,7 @@ namespace TheLaw.UI
                 panel.SetEditableDefId(editableDefId);
                 _uiManager.ShowPanel("PieceEdit");
                 Debug.Log("[Bootstrap] 棋子编辑界面已显示（事件模式）");
-            });
+            }, sessionBound: true);
         }
 
         /// <summary>打开牌组构筑面板（事件关模式——StateChanged("deck") 驱动；Btn_Next 经 Resolver.BuildDeck 落账后发 EventCompleted 推进）。</summary>
@@ -602,7 +613,7 @@ namespace TheLaw.UI
                 panel.Init(_resolver, _gameState);
                 _uiManager.ShowPanel("DeckBuild");
                 Debug.Log("[Bootstrap] 牌组构筑界面已显示（事件模式）");
-            });
+            }, sessionBound: true);
         }
 
         private BattlePanel _battlePanel; // 局内缓存战斗面板（UI 架构重构 §五——一局一栋房，每场换管家）
@@ -631,11 +642,17 @@ namespace TheLaw.UI
         {
             yield return LoadPanelAsync<BattlePanel>(panel =>
             {
+                // 同一局可连续多场战斗；首场面板慢加载完成时，flow 也可能已被后续战斗替换。
+                if (flow == null || flow != CurrentBattleFlow)
+                {
+                    if (panel != null) DestroyImmediate(panel.gameObject);
+                    return;
+                }
                 _battlePanel = panel;
                 _uiManager.RegisterPanel(panel);
                 panel.OnSettingsClicked += () => _uiManager.PushOverlay("Settings"); // 战斗内设置入口
                 CreateBattleControllerWith(flow, panel);
-            });
+            }, sessionBound: true);
         }
 
         private void CreateBattleControllerWith(BattleFlow flow, BattlePanel panel)

@@ -427,7 +427,7 @@ namespace TheLaw.UI
         {
             EnsureTags();
             if (_tagSize != null)
-                _tagSize.text = _deckSizeLimit > 0 ? $"数量不超过{_deckSizeLimit}" : "数量不限";
+                _tagSize.text = _deckSizeLimit > 0 ? $"数量等于{_deckSizeLimit}" : "数量不限";
             if (_tagPromote != null)
             {
                 bool visible = _promoteLimitByInitial;

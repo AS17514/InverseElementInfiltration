@@ -695,9 +695,17 @@ namespace TheLaw.Gameplay
             // ⚠️ 2026-08-20 麻将玩法：战斗开始 18 张麻将牌放进抽牌堆（与棋子牌混合——第一回合抽 4/摸切可抽到）
             if (_state.IsStyleActive(Mahjong.StyleId))
             {
-                foreach (var tile in Mahjong.Tiles())
+                bool hasMahjong = false;
+                foreach (var card in _state.DrawPile)
                 {
-                    _state.DrawPile.Add(tile);
+                    if (card.IsMahjong) { hasMahjong = true; break; }
+                }
+                if (!hasMahjong)
+                {
+                    foreach (var tile in Mahjong.Tiles())
+                    {
+                        _state.DrawPile.Add(tile);
+                    }
                 }
             }
             for (int i = _state.Hand.Count - 1; i >= 0; i--)

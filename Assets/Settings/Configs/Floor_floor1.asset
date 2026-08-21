@@ -15,6 +15,7 @@ MonoBehaviour:
   _id: 2073112875
   victoryRule: 0
   targetScore: 0
+  scoreDeductEnabled: 0
   waveDefs:
   - startTurn: 1
     pieceDefIds: 
@@ -30,6 +31,7 @@ MonoBehaviour:
     endCountdown: 0
     promotions: []
     autoPromote: 1
+    waveScoreTarget: 0
   - startTurn: 4
     pieceDefIds: 
     randomPool: 1
@@ -44,6 +46,7 @@ MonoBehaviour:
     endCountdown: 0
     promotions: []
     autoPromote: 1
+    waveScoreTarget: 0
   - startTurn: 7
     pieceDefIds: 
     randomPool: 1
@@ -58,6 +61,7 @@ MonoBehaviour:
     endCountdown: 3
     promotions: []
     autoPromote: 1
+    waveScoreTarget: 0
   enemyMaxAP: 2
   eventSequence:
   - ability

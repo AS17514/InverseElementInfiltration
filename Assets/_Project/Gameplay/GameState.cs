@@ -208,10 +208,12 @@ namespace TheLaw.Gameplay
             ReplayLog.Clear();
             _nextPieceId = 1;
 
-            // 初始手牌 = 基础牌组：全部已注册棋子（当前 12 个 = 4 初始 + 4 部署 + 4 升变——构筑事件后续限定）
+            // 初始牌组分区：准备阶段只持有初始棋子；部署/升变棋子预先进入抽牌堆。
+            // 首个玩家回合 StartPlayerTurn 自动从 DrawPile 抽 4 张，后续再按 AP 抽牌。
             foreach (var def in ConfigTable.All<PieceDef>())
             {
-                Hand.Add(Card.Piece(def.Id));
+                if (def.pieceType == PieceType.Initial) Hand.Add(Card.Piece(def.Id));
+                else DrawPile.Add(Card.Piece(def.Id));
             }
         }
 

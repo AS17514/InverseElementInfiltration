@@ -2920,7 +2920,7 @@ GameObject:
   m_Component:
   - component: {fileID: 464617575}
   m_Layer: 0
-  m_Name: Piece
+  m_Name: Grp_Piece
   m_TagString: Untagged
   m_Icon: {fileID: 0}
   m_NavMeshLayer: 0

@@ -196,6 +196,7 @@ namespace TheLaw.UI
             EventCenter.Instance.RemoveEventListener(GameEvent.StateChanged, OnStateChanged);
             EventCenter.Instance.RemoveEventListener(GameEvent.BuffsChanged, OnBuffsChanged);
             EventCenter.Instance.RemoveEventListener(GameEvent.ExtraActionGranted, OnBuffsChanged);
+            EventCenter.Instance.RemoveEventListener(GameEvent.RelicObtained, OnRelicObtained);
             if (_handPosTween != null) _handPosTween.Kill();
             if (_handSizeTween != null) _handSizeTween.Kill();
             _pendingPromotionWarnings.Clear();
@@ -255,6 +256,7 @@ namespace TheLaw.UI
             EventCenter.Instance.AddEventListener(GameEvent.StateChanged, OnStateChanged);
             EventCenter.Instance.AddEventListener(GameEvent.BuffsChanged, OnBuffsChanged); // buff 变化 → 刷新选中棋子信息面板
             EventCenter.Instance.AddEventListener(GameEvent.ExtraActionGranted, OnBuffsChanged); // 免费行动授予同刷新
+            EventCenter.Instance.AddEventListener(GameEvent.RelicObtained, OnRelicObtained); // 道中获得遗物/能力 → 刷新全局能力栏
 
             // UI 架构重构 §五：面板局内缓存（Bootstrap 管理生命周期）——每场绑定不创建
             // 防御：面板未就绪（Bootstrap 保证——不应发生）——先检查再订阅（验收 B：防防御路径订阅残留）
@@ -908,6 +910,11 @@ namespace TheLaw.UI
             }
         }
 
+        void OnRelicObtained(object data)
+        {
+            RefreshEventAbilities();
+        }
+
         // ========== 表现动画（DOTween 优先，测试最小可用）==========
         IEnumerator PlayMove(MoveInfo info)
         {
@@ -1229,12 +1236,34 @@ namespace TheLaw.UI
             RebuildHand();
             RefreshDrawPile();
             RefreshScore();
+            RefreshEventAbilities();
         }
 
         /// <summary>
         /// 刷新 Main/UI 的实时计分 3D 文本。
         /// Txt_TurnScore 表示按当前倍率预估、将在本次结算获得的本回合分数。
         /// </summary>
+        void RefreshEventAbilities()
+        {
+            if (_state == null) return;
+            EnsureInfoRefs();
+            var names = new List<string>();
+            if (_state.Relics != null)
+            {
+                foreach (var relic in _state.Relics)
+                {
+                    if (relic == null || relic.abilities == null) continue;
+                    foreach (var ability in relic.abilities)
+                    {
+                        if (ability == null) continue;
+                        string name = DisplayNames.OfAbilityType(ability.type);
+                        if (!names.Contains(name)) names.Add(name);
+                    }
+                }
+            }
+            Set(_infoAbilities, names.Count > 0 ? string.Join("、", names) : "无");
+        }
+
         void RefreshScore()
         {
             if (_state == null) return;
@@ -1438,17 +1467,8 @@ namespace TheLaw.UI
             Set(_infoType, effectiveType == PieceType.Initial ? "初始" : effectiveType == PieceType.Deployable ? "部署" : "升变");
             Set(_infoValue, GetEffectiveValue(def).ToString());
             Set(_infoDurability, piece != null ? $"{piece.durability}/{def.durability}" : def.durability.ToString());
-            var abilities = new List<string>();
-            foreach (var a in def.specialAbilities) abilities.Add(DisplayNames.OfAbilityType(a.type)); // 中文映射（2026-08-11：防英文枚举泄漏）
-            if (piece != null)
-            {
-                foreach (var a in piece.GetAllAbilities())
-                {
-                    string cn = DisplayNames.OfAbilityType(a.type);
-                    if (!abilities.Contains(cn)) abilities.Add(cn);
-                }
-            }
-            Set(_infoAbilities, abilities.Count > 0 ? string.Join(", ", abilities) : "无");
+            // Txt_Abilities 是整局道中能力栏，不随当前选中棋子变化。
+            RefreshEventAbilities();
             // buff 区（Txt_Other 多行）：升变 → 护盾 → 免费行动 → 临时能力（BuffDisplay 聚合）
             Set(_infoOther, BuildBuffLines(def, piece));
 
@@ -1524,7 +1544,7 @@ namespace TheLaw.UI
             Set(_infoType, "");
             Set(_infoValue, "");
             Set(_infoDurability, "");
-            Set(_infoAbilities, "");
+            RefreshEventAbilities();
             Set(_infoOther, "");
             for (int i = 0; i < 4; i++)
             {
@@ -1742,7 +1762,6 @@ namespace TheLaw.UI
                 DestroyImmediate(child.gameObject);
             }
             var oldCards = new List<(GameObject go, int defId)>();
-            bool fromEmpty = true;
             var reused = new bool[0];
             var layout = _panel.HandRoot.GetComponent<HandLayoutController>();
             if (layout == null) layout = _panel.HandRoot.gameObject.AddComponent<HandLayoutController>();
@@ -1778,7 +1797,7 @@ namespace TheLaw.UI
                     card.SetActive(true);
                     FillCard(card, def, i);
                     AddCardDrag(card, def.Id, i);
-                    if (fromEmpty) FadeInCard(card, i); // 仅从无到有时淡入
+                    // 全量重建后直接可见；不使用 alpha=0 的异步淡入，避免 tween 被打断后层级对象存在但不可见。
                 }
                 else
                 {
@@ -1799,7 +1818,7 @@ namespace TheLaw.UI
                 }
             }
             // 有复用卡 → 不 instant（布局插值产生滑动过渡）；从无到有 → instant 落位
-            layout.RefreshCards(fromEmpty);
+            layout.RefreshCards(true);
         }
 
         /// <summary>新卡淡入（alpha 0→1，按索引错峰）——重建后重排有过渡而非瞬间出现。</summary>

@@ -5,7 +5,7 @@ Shader "TheLaw/SpriteOutlinePulse"
         [PerRendererData] _MainTex ("Sprite Texture", 2D) = "white" {}
         _Color ("Tint", Color) = (1,1,1,1)
         _OutlineColor ("Outline Color", Color) = (1,0.62,0.08,1)
-        _OutlineSize ("Outline Size", Range(0.5,4)) = 1.25
+        _OutlineSize ("Outline Size", Range(0.5,16)) = 1.25
         _Pulse ("Pulse", Range(0,1)) = 0.5
         _Flash ("Flash", Range(0,1)) = 0
     }

@@ -78,8 +78,12 @@ namespace TheLaw.UI
             sr.sprite = PortraitFor(defId);
             sr.color = Color.white; // 美术立绘原色直出，不做阵营/种类颜色叠加（tint 仅占位期用）
             sr.sortingOrder = (int)(-cell.y * 100f) + 400;
-            var promotionOutline = portrait.AddComponent<PromotionOutlineView>();
-            promotionOutline.Initialize(sr);
+            // 描边仅用于敌方升变预告；玩家棋子不创建无效的独立材质实例。
+            if (side == Side.Enemy)
+            {
+                var promotionOutline = portrait.AddComponent<PromotionOutlineView>();
+                promotionOutline.Initialize(sr);
+            }
             portrait.transform.localScale = new Vector3(1f / 6f, 1f / 6f, 1f / 6f);
             // 伪2D 朝向：相机固定 → 创建时算一次角度（绕 X 倾斜对准相机，锁 Y/Z）
             var cam = Camera.main;

@@ -32,8 +32,9 @@ namespace TheLaw.UI
             }
 
             _material = new Material(shader) { name = $"PromotionOutline_{gameObject.name}" };
-            _material.SetColor(OutlineColorId, new Color(1f, 0.55f, 0.05f, 1f));
-            _material.SetFloat(OutlineSizeId, 1.35f);
+            _material.SetColor(OutlineColorId, Color.red);
+            // 采样半径按贴图 texel 计；棋子立绘缩放为 1/6，1.35 会降到亚像素不可见。
+            _material.SetFloat(OutlineSizeId, 10f);
             _material.SetFloat(PulseId, 0f);
             _material.SetFloat(FlashId, 0f);
             _renderer.material = _material;

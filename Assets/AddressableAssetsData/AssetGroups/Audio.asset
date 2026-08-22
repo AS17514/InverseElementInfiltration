@@ -1,0 +1,103 @@
+%YAML 1.1
+%TAG !u! tag:unity3d.com,2011:
+--- !u!114 &11400000
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 0}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: bbb281ee3bf0b054c82ac2347e9e782c, type: 3}
+  m_Name: Audio
+  m_EditorClassIdentifier: 
+  m_GroupName: Audio
+  m_Data:
+    m_SerializedData: []
+  m_GUID: 856838aa24d35b740b028c159213316e
+  m_SerializeEntries:
+  - m_GUID: 0227c964dd05a4e42b494f4bbd15e80b
+    m_Address: SFX/free_action
+    m_ReadOnly: 0
+    m_SerializedLabels: []
+    FlaggedDuringContentUpdateRestriction: 0
+  - m_GUID: 026d788a0c0adb345a96612338205f52
+    m_Address: SFX/deploy
+    m_ReadOnly: 0
+    m_SerializedLabels: []
+    FlaggedDuringContentUpdateRestriction: 0
+  - m_GUID: 10e44cd155c5126459be7a55642fd21f
+    m_Address: SFX/shield
+    m_ReadOnly: 0
+    m_SerializedLabels: []
+    FlaggedDuringContentUpdateRestriction: 0
+  - m_GUID: 32e9074b3d521db4ca3c56c5405b114e
+    m_Address: SFX/attack_spell
+    m_ReadOnly: 0
+    m_SerializedLabels: []
+    FlaggedDuringContentUpdateRestriction: 0
+  - m_GUID: 39cfe5d7ba10d644a94a745a539d1d64
+    m_Address: SFX/score
+    m_ReadOnly: 0
+    m_SerializedLabels: []
+    FlaggedDuringContentUpdateRestriction: 0
+  - m_GUID: 411f05a20891bd7489ddabb08967f2ac
+    m_Address: SFX/attack_melee
+    m_ReadOnly: 0
+    m_SerializedLabels: []
+    FlaggedDuringContentUpdateRestriction: 0
+  - m_GUID: 6532b8c1305380b4cb49aed3b6e95ddf
+    m_Address: SFX/promote
+    m_ReadOnly: 0
+    m_SerializedLabels: []
+    FlaggedDuringContentUpdateRestriction: 0
+  - m_GUID: 80e50c9b0313207468ea958ef1bb0662
+    m_Address: SFX/mahjong_tile
+    m_ReadOnly: 0
+    m_SerializedLabels: []
+    FlaggedDuringContentUpdateRestriction: 0
+  - m_GUID: 89ea2693ffd058248b85e8139b69c01c
+    m_Address: SFX/attack_arcing
+    m_ReadOnly: 0
+    m_SerializedLabels: []
+    FlaggedDuringContentUpdateRestriction: 0
+  - m_GUID: 94180ddf50b939140aa7335932941b66
+    m_Address: SFX/death
+    m_ReadOnly: 0
+    m_SerializedLabels: []
+    FlaggedDuringContentUpdateRestriction: 0
+  - m_GUID: 9858bf8dcde4beb408bc7854edaaabc0
+    m_Address: SFX/draw
+    m_ReadOnly: 0
+    m_SerializedLabels: []
+    FlaggedDuringContentUpdateRestriction: 0
+  - m_GUID: a15c35b620334194d8be1e191caa24f2
+    m_Address: SFX/attack_direct
+    m_ReadOnly: 0
+    m_SerializedLabels: []
+    FlaggedDuringContentUpdateRestriction: 0
+  - m_GUID: a273cd783fd22e244b9916c6bd6167c8
+    m_Address: SFX/attack_melee_aoe
+    m_ReadOnly: 0
+    m_SerializedLabels: []
+    FlaggedDuringContentUpdateRestriction: 0
+  - m_GUID: ab08d80b87bab7c4abc32ef4207c8885
+    m_Address: SFX/death_ui
+    m_ReadOnly: 0
+    m_SerializedLabels: []
+    FlaggedDuringContentUpdateRestriction: 0
+  - m_GUID: f3fbea080753b1e438170ec7c9bd1ca3
+    m_Address: SFX/hit
+    m_ReadOnly: 0
+    m_SerializedLabels: []
+    FlaggedDuringContentUpdateRestriction: 0
+  - m_GUID: fc15c816a5b362247a7a34d5227ea23f
+    m_Address: SFX/move
+    m_ReadOnly: 0
+    m_SerializedLabels: []
+    FlaggedDuringContentUpdateRestriction: 0
+  m_ReadOnly: 0
+  m_Settings: {fileID: 11400000, guid: 47cc120f2a625024bb26fdfb7b9fdeeb, type: 2}
+  m_SchemaSet:
+    m_Schemas: []

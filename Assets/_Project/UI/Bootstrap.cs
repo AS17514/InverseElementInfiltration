@@ -486,6 +486,26 @@ namespace TheLaw.UI
             DestroySessionPanels(); // 局结束销毁会话面板（P4 断链补全——替代隐藏，防跨局残留）
             _gameState.ResetForNewRun(); // 基础牌组填手牌（协作者实现）；敌方由波次调度产出（数据集 floor1 回合 1/4/7）
             CreateSessionFlow(); // 整局级"进入创建"（2026-08-13：每局新建 EditorSession/EventNodeSystem/TowerFlow）
+            // 首波部署会在 StartBattle 的 Placement 事件后同步进入表现等待；先确保 BattlePanel 已加载，
+            // 使 BattleController 能在同一调用栈内订阅部署事件，避免首组表现丢失后回执超时。
+            StartCoroutine(PreloadBattlePanelThenEnterTower());
+        }
+
+        /// <summary>新局进入爬塔前预加载局内 BattlePanel；只缓存面板，不提前创建 BattleController 或显示面板。</summary>
+        private System.Collections.IEnumerator PreloadBattlePanelThenEnterTower()
+        {
+            int generation = _sessionGeneration;
+            if (_battlePanel == null)
+            {
+                yield return LoadPanelAsync<BattlePanel>(panel =>
+                {
+                    _battlePanel = panel;
+                    _uiManager.RegisterPanel(panel);
+                    panel.OnSettingsClicked += () => _uiManager.PushOverlay("Settings");
+                }, sessionBound: true);
+            }
+            // LoadPanelAsync 会在旧代际直接结束；陈旧协程不得继续推进当前新局。
+            if (generation != _sessionGeneration) yield break;
             EnterTower();
         }
 

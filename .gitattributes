@@ -1,18 +1,63 @@
 # 文本文件统一 LF：仓库存 LF，检出 LF，Windows 下不再做 CRLF 转换
 * text=auto eol=lf
 
-# 二进制文件（禁止行尾转换）
-*.png binary
-*.jpg binary
-*.jpeg binary
-*.gif binary
-*.psd binary
-*.tga binary
-*.fbx binary
-*.mp3 binary
-*.wav binary
-*.ogg binary
-*.ttf binary
-*.pdf binary
-*.zip binary
-*.unitypackage binary
+# 大型二进制资源：从本规则提交起由 Git LFS 管理。
+# .meta / .prefab / .unity / .asset / JSON 等 Unity 引用与文本文件保持普通 Git，绝不纳入 LFS。
+# 既有普通 Git 历史不迁移；LFS 只接管新增或后续重新提交的匹配资源。
+*.png          filter=lfs diff=lfs merge=lfs -text
+*.jpg          filter=lfs diff=lfs merge=lfs -text
+*.jpeg         filter=lfs diff=lfs merge=lfs -text
+*.webp         filter=lfs diff=lfs merge=lfs -text
+*.gif          filter=lfs diff=lfs merge=lfs -text
+*.psd          filter=lfs diff=lfs merge=lfs -text
+*.tga          filter=lfs diff=lfs merge=lfs -text
+*.fbx          filter=lfs diff=lfs merge=lfs -text
+*.blend        filter=lfs diff=lfs merge=lfs -text
+*.mp3          filter=lfs diff=lfs merge=lfs -text
+*.wav          filter=lfs diff=lfs merge=lfs -text
+*.ogg          filter=lfs diff=lfs merge=lfs -text
+*.aif          filter=lfs diff=lfs merge=lfs -text
+*.aiff         filter=lfs diff=lfs merge=lfs -text
+*.flac         filter=lfs diff=lfs merge=lfs -text
+*.ttf          filter=lfs diff=lfs merge=lfs -text
+*.pdf          filter=lfs diff=lfs merge=lfs -text
+*.zip          filter=lfs diff=lfs merge=lfs -text
+*.unitypackage filter=lfs diff=lfs merge=lfs -text
+
+# 已在普通 Git 历史中的资源不迁移；显式排除以避免 LFS 在检出时把旧 blob 误判为 pointer。
+Assets/Art/Battleboard/battle_bg.png -filter -diff -merge -text
+Assets/Art/Battleboard/battle_board.png -filter -diff -merge -text
+Assets/Art/Battleboard/battle_board_stand.png -filter -diff -merge -text
+Assets/Art/Battleboard/battle_foreground.png -filter -diff -merge -text
+Assets/Art/Battleboard/battle_left_1.png -filter -diff -merge -text
+Assets/Art/Battleboard/battle_left_2.png -filter -diff -merge -text
+Assets/Art/Battleboard/battle_progress.png -filter -diff -merge -text
+Assets/Art/Battleboard/battle_right_1.png -filter -diff -merge -text
+Assets/Art/Battleboard/battle_right_2.png -filter -diff -merge -text
+Assets/Art/Battleboard/battle_wave.png -filter -diff -merge -text
+Assets/Art/Battleboard/battle_wave_big.png -filter -diff -merge -text
+Assets/Art/Battleboard/battle_wave_empty.png -filter -diff -merge -text
+Assets/Art/Battleboard/battle_wave_huge.png -filter -diff -merge -text
+Assets/Art/Battleboard/battle_wave_mid.png -filter -diff -merge -text
+Assets/Art/Battleboard/battle_wave_small.png -filter -diff -merge -text
+Assets/Art/Characters/Assassin.png -filter -diff -merge -text
+Assets/Art/Characters/Berserker.png -filter -diff -merge -text
+Assets/Art/Characters/Cannoner.png -filter -diff -merge -text
+Assets/Art/Characters/Knight.png -filter -diff -merge -text
+Assets/Art/Characters/LightCavalry.png -filter -diff -merge -text
+Assets/Art/Characters/Marksman.png -filter -diff -merge -text
+Assets/Art/Characters/Ranger.png -filter -diff -merge -text
+Assets/Art/Characters/ShieldGuard.png -filter -diff -merge -text
+Assets/Art/Characters/ShortArcher.png -filter -diff -merge -text
+Assets/Art/Characters/Soldier.png -filter -diff -merge -text
+Assets/Art/Characters/Swordsman.png -filter -diff -merge -text
+Assets/Art/Characters/Wizard.png -filter -diff -merge -text
+Assets/Plugins/Demigiant/DOTween/Editor/Imgs/DOTweenIcon.png -filter -diff -merge -text
+Assets/Plugins/Demigiant/DOTween/Editor/Imgs/DOTweenMiniIcon.png -filter -diff -merge -text
+Assets/Plugins/Demigiant/DOTween/Editor/Imgs/Footer.png -filter -diff -merge -text
+Assets/Plugins/Demigiant/DOTween/Editor/Imgs/Footer_dark.png -filter -diff -merge -text
+Assets/Plugins/Demigiant/DOTween/Editor/Imgs/Header.jpg -filter -diff -merge -text
+Assets/Fonts/ALIMAMAFANGYUANTIVF-THIN.TTF -filter -diff -merge -text
+Assets/TextMesh?Pro/Documentation/TextMesh?Pro?User?Guide?2016.pdf -filter -diff -merge -text
+Assets/TextMesh?Pro/Fonts/LiberationSans.ttf -filter -diff -merge -text
+Assets/TextMesh?Pro/Sprites/EmojiOne.png -filter -diff -merge -text

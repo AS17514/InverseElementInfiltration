@@ -16,6 +16,12 @@ namespace TheLaw.UI
             Apply();
         }
 
+        void LateUpdate()
+        {
+            if (_cam == null) _cam = GetComponent<Camera>();
+            if (_cam != null && _cam.rect != new Rect(0f, 0f, 1f, 1f)) Apply();
+        }
+
         void Apply()
         {
             if (_cam != null) _cam.rect = new Rect(0f, 0f, 1f, 1f); // 全屏

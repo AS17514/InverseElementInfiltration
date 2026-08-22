@@ -17,15 +17,6 @@
       ]
     },
     {
-      "relicName": "ability_ap",
-      "displayName": "行动点强化",
-      "description": "行动点上限 +1。",
-      "tags": ["basic"],
-      "effects": [
-        { "effectType": "APBonus", "value": 1 }
-      ]
-    },
-    {
       "relicName": "ability_draw_extra",
       "displayName": "过目不忘",
       "description": "行动点上限 +1；花费行动点抽牌时，可以额外抽一张。",

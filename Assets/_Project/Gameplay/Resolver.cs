@@ -1026,10 +1026,11 @@ namespace TheLaw.Gameplay
             EventCenter.Instance.EventTrigger(GameEvent.HandChanged, _state.Hand);
         }
 
-        /// <summary>抽 1 张（2026-08-20：从抽牌堆随机抽一张 → 手牌；统一牌区入口 DrawFromPile；抽牌堆空 = 无操作）。</summary>
-        public void DrawCard()
+        /// <summary>抽 1 张（2026-08-20：从抽牌堆随机抽一张 → 手牌；统一牌区入口 DrawFromPile；抽牌堆空 = 返回 null）。
+        /// ⚠️ 2026-08-23 E5：返回抽到的牌（调用方按需检查触发——如 BattleFlow 的"抽到编辑牌"检测）。</summary>
+        public Card? DrawCard()
         {
-            DrawFromPile();
+            return DrawFromPile();
         }
 
         /// <summary>敌方波次池增强（加牌落点：敌方无手牌——增强未来波次阵容）。</summary>

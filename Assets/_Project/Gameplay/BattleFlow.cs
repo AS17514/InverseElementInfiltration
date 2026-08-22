@@ -465,9 +465,10 @@ namespace TheLaw.Gameplay
                     case DrawCardRequest:
                         // 抽牌行动（2026-08-19 策划确认）：1 AP 抽 1 张；抽牌堆空 → 拒绝（无操作不扣费）
                         // ⚠️ 2026-08-22 能力 DrawExtra：花费 AP 抽牌时额外抽一张
+                        // ⚠️ 2026-08-23 E5：花费 AP 抽牌抽到被编辑过的棋子牌 → 自动部署/升变 + 立即执行一次（插入链）
                         if (side == Side.Player && _state.DrawPile != null && _state.DrawPile.Count > 0)
                         {
-                            _resolver.DrawCard();
+                            CheckEditedDrawThenInsert(_resolver.DrawCard()); // 主抽一张（E5 检测）
                             int extra = 0;
                             foreach (var relic in _state.Relics)
                             {
@@ -479,7 +480,7 @@ namespace TheLaw.Gameplay
                             }
                             for (int i = 0; i < extra && _state.DrawPile.Count > 0; i++)
                             {
-                                _resolver.DrawCard();
+                                CheckEditedDrawThenInsert(_resolver.DrawCard()); // 额外张同样检测（同属该次抽牌行动）
                             }
                             DeductActionPoint(request.free, side);
                         }
@@ -583,6 +584,103 @@ namespace TheLaw.Gameplay
                 ExecutePiece(pieceId, true, Side.Player);
                 return; // 一次一个（执行中的收尾点会再次触发）
             }
+        }
+
+        // ========== E5：抽到编辑牌 → 立即部署/升变 + 执行一次（2026-08-23 实现——插入执行链的第二种触发）==========
+
+        // 待插入的"编辑牌"（能力 DrawEditedImmediate：使用行动点抽牌时，抽到被编辑过的棋子牌 → 自动部署/升变 + 立即执行一次）
+        private readonly Queue<EditedCardInsert> _pendingEditedCardInserts = new Queue<EditedCardInsert>();
+
+        private struct EditedCardInsert
+        {
+            public int defId;           // 被编辑的棋子定义
+            public int cardInstanceId;  // 抽到的那张牌的实例 id（精确消费）
+        }
+
+        /// <summary>抽牌后的 E5 检测（2026-08-23）：持有能力 + 抽到棋子牌 + 该棋子被编辑过 → 入插入队列（空闲时自动部署/升变+执行）。</summary>
+        private void CheckEditedDrawThenInsert(Card? card)
+        {
+            if (card == null) return;
+            var c = card.Value;
+            if (!c.IsPiece) return; // 非棋子牌（麻将）不触发
+            if (!_state.HasRelicEffect(RelicEffectType.DrawEditedImmediate)) return; // 未持有 E5 能力
+            if (!_state.CurrentPrograms.ContainsKey(c.defId)) return; // 该棋子未被编辑过
+            _pendingEditedCardInserts.Enqueue(new EditedCardInsert { defId = c.defId, cardInstanceId = c.instanceId });
+            TryFlushEditedCardInserts();
+        }
+
+        /// <summary>空闲时处理编辑牌插入（与 TryFlushImmediateExecutes 同构占用判定——收尾点再触发）。
+        /// 动作按牌类型自动：部署类牌 → 自动部署（第一合法格）；升变类牌 → 自动升变（第一个可升变己方棋子）；随后立即执行一次（free）。</summary>
+        private void TryFlushEditedCardInserts()
+        {
+            while (_pendingEditedCardInserts.Count > 0)
+            {
+                if (_state.Phase != BattlePhase.PlayerTurn || _ctx != null || _waitingPresentation)
+                {
+                    return; // 非空闲——等收尾点
+                }
+                var insert = _pendingEditedCardInserts.Dequeue();
+                var type = _state.GetEffectiveType(insert.defId);
+                if (type == PieceType.Deployable)
+                {
+                    AutoDeployFromEditedCard(insert);
+                    return;
+                }
+                if (type == PieceType.Promoted)
+                {
+                    AutoPromoteFromEditedCard(insert);
+                    return;
+                }
+                // 其他（防御）——跳过
+            }
+        }
+
+        /// <summary>E5 自动部署：抽到的编辑牌（部署类）→ 部署到己方部署区第一合法格 → 立即执行一次（free 额外行动，不额外耗 AP）。</summary>
+        private void AutoDeployFromEditedCard(EditedCardInsert insert)
+        {
+            if (!HasCardByInstanceId(insert.cardInstanceId)) return; // 牌已不在手（防御）
+            var cell = FindDeployCell(Side.Player);
+            if (cell.x < 0) return; // 无合法部署格——跳过（牌保留在手）
+            var deployAction = new DeployAction(insert.defId, Side.Player, cell) { cardInstanceId = insert.cardInstanceId }; // 精确消费该牌
+            _resolver.Resolve(deployAction);
+            var piece = _state.GetPieceAt(cell); // 部署落账后该格即新棋子实例
+            if (piece == null || piece.side != Side.Player) return;
+            ExecutePiece(piece.Id, true, Side.Player); // 立即执行一次（free——穿透行动经济）
+        }
+
+        /// <summary>E5 自动升变：抽到的编辑牌（升变类）→ 升变第一个可升变的己方棋子 → 立即执行一次（free）。</summary>
+        private void AutoPromoteFromEditedCard(EditedCardInsert insert)
+        {
+            if (!HasCardByInstanceId(insert.cardInstanceId)) return; // 牌已不在手（防御）
+            var promoteDef = ConfigTable.Find<PieceDef>(insert.defId);
+            if (promoteDef == null || _state.GetEffectiveType(promoteDef.Id) != PieceType.Promoted) return;
+            // 目标：场上第一个己方非升变棋子（升变校验同 BattleFlow 请求链：非升变 + 手牌有升变牌）
+            PieceInstance target = null;
+            foreach (var piece in _state.Pieces.Values)
+            {
+                if (piece.side == Side.Player && _state.GetEffectiveType(piece.DefId) != PieceType.Promoted)
+                {
+                    target = piece;
+                    break;
+                }
+            }
+            if (target == null) return; // 无目标——跳过（牌保留在手）
+            var promoteAction = new PromoteAction(target.Id, insert.defId) { cardInstanceId = insert.cardInstanceId };
+            _resolver.Resolve(promoteAction); // 升变落账（该牌精确消费）
+            var promoted = _state.GetPiece(target.Id); // 升变后实例保持 Id（def 替换——程序经 GetProgram 仍取编辑程序）
+            if (promoted == null || promoted.side != Side.Player) return;
+            ExecutePiece(promoted.Id, true, Side.Player); // 立即执行一次（free）
+        }
+
+        /// <summary>手牌是否持有指定实例 id 的牌（E5 精确消费防御——与 HasPieceInHand 的 defId 粒度区分）。</summary>
+        private bool HasCardByInstanceId(int instanceId)
+        {
+            if (instanceId <= 0) return false;
+            foreach (var card in _state.Hand)
+            {
+                if (card.instanceId == instanceId) return true;
+            }
+            return false;
         }
 
         private void ExecutePiece(int pieceId, bool free, Side side)
@@ -792,6 +890,7 @@ namespace TheLaw.Gameplay
             DeductActionPoint(free, side);
             // ⚠️ 2026-08-22 插入执行：当前整段执行完成后触发（空闲且玩家回合——强制立即执行该棋——free 额外）
             TryFlushImmediateExecutes();
+            TryFlushEditedCardInserts(); // 2026-08-23 E5：同收尾点触发编辑牌插入（自动部署/升变 + 立即执行一次）
             // 执行扣费是异步的（表现完成后），此处补触发 AP 耗尽检查（回合自动移交）
             if (side == Side.Player)
             {

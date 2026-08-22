@@ -38,7 +38,7 @@ namespace TheLaw.Core
         public const string SfxMahjongTile = "SFX/mahjong_tile"; // 麻将 M1-M8 全部（打出/破坏/牌山[音高随点数]/刻顺/番数/摸切/雀头）＋ UI/事件 U1-U9（按钮/面板/确认取消/遗物获得/编辑拖放替换撤销/三选一/构筑/Tooltip）统一复用
 
         // ===== SFX：其他 =====
-        public const string SfxDeathUi = "SFX/death_ui"; // 2026-08-23 由音频交付（原名"sfx_death ui"含空格，已改名合规）；**用途待音频同学确认**（未列入需求单，先建常量备用）
+        public const string SfxDeathUi = "SFX/death_ui"; // 2026-08-23 由音频交付（原名"sfx_death ui"含空格，已改名合规）；用途已确认（2026-08-23 设计）：**玩家死亡提示音**（我方判负/玩家死亡时播放——挂点待前端）
 
         // ===== 遗留兼容（2026-08-23 扩展前旧常量）=====
         public const string SfxAttack = "SFX/attack";   // ⚠️ 旧统一攻击音——资源未交付；前端接入 5 种分发后不再使用（保留防编译破坏）

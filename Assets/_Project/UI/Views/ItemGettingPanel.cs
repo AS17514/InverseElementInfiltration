@@ -56,20 +56,29 @@ namespace TheLaw.UI
             if (!_showing) ShowNext();
         }
 
-        /// <summary>展示队列头部遗物（消费式）：填充内容后 PushOverlay。</summary>
+        /// <summary>纯展示绑定；队列与 Overlay 生命周期仍由 Panel 管理。</summary>
+        public void Bind(ItemGettingViewData data)
+        {
+            if (_nameText != null) _nameText.text = data?.Name ?? string.Empty;
+            if (_infoText != null) _infoText.text = data?.Description ?? string.Empty;
+            if (_iconImg != null)
+            {
+                _iconImg.color = data != null ? data.IconColor : Color.white;
+                _iconImg.gameObject.SetActive(data != null && data.ShowIcon);
+            }
+        }
+
+        static ItemGettingViewData ToViewData(RelicDef relic)
+        {
+            return new ItemGettingViewData(relic.displayName, relic.description, RelicTint(relic));
+        }
+
+        /// <summary>展示队列头部遗物（消费式）：绑定 DTO 后 PushOverlay。</summary>
         void ShowNext()
         {
             if (_pendingRelics.Count == 0) return;
             _showing = true;
-            var relic = _pendingRelics.Dequeue();
-            // 填充内容
-            if (_nameText != null) _nameText.text = relic.displayName;
-            if (_infoText != null) _infoText.text = relic.description;
-            if (_iconImg != null)
-            {
-                _iconImg.color = RelicTint(relic); // 占位色块（RelicDef 无图标资源——按配置 id 上色）
-                _iconImg.gameObject.SetActive(true);
-            }
+            Bind(ToViewData(_pendingRelics.Dequeue()));
             // 覆盖显示（不暂停——通知性质；确认关闭）
             if (_uiManager != null) _uiManager.PushOverlay(Key);
             else gameObject.SetActive(true);
@@ -89,10 +98,7 @@ namespace TheLaw.UI
             {
                 // 队列还有下一个遗物——直接切换内容（Overlay 保持显示，不 Pop 再 Push 避免闪跳）
                 _showing = true; // 保持展示态
-                var relic = _pendingRelics.Dequeue();
-                if (_nameText != null) _nameText.text = relic.displayName;
-                if (_infoText != null) _infoText.text = relic.description;
-                if (_iconImg != null) _iconImg.color = RelicTint(relic);
+                Bind(ToViewData(_pendingRelics.Dequeue()));
             }
             else
             {

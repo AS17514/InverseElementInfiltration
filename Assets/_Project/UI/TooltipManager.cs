@@ -1,7 +1,6 @@
 using System;
 using System.Collections;
 using TheLaw.UI;
-using TMPro;
 using UnityEngine;
 using UnityEngine.AddressableAssets;
 
@@ -32,37 +31,53 @@ namespace TheLaw.UI
 
         private GameObject _tipGo;
         private RectTransform _tipRect;
-        private TMP_Text _descText;
+        private TooltipView _tipView;
         private bool _loading;
         private int _requestGeneration;
         private bool _requestedVisible;
-        private string _requestedText;
+        private TooltipViewData _requestedData;
         private Vector2 _requestedScreenPosition;
 
         /// <summary>显示描述浮窗（世界坐标——行为块/棋子旁；用主相机换算）。</summary>
-        public void Show(string text, Vector3 worldPos)
+        public void Show(TooltipViewData data, Vector3 worldPos)
         {
-            Show(text, worldPos, Camera.main);
+            Show(data, worldPos, Camera.main);
         }
 
         /// <summary>显示描述浮窗（世界坐标 + 显式相机——UI 元素必须传 canvas.worldCamera）。</summary>
-        public void Show(string text, Vector3 worldPos, Camera cam)
+        public void Show(TooltipViewData data, Vector3 worldPos, Camera cam)
         {
             if (cam == null) return;
-            RequestShow(text, RectTransformUtility.WorldToScreenPoint(cam, worldPos));
+            RequestShow(data, RectTransformUtility.WorldToScreenPoint(cam, worldPos));
         }
 
         /// <summary>显示描述浮窗（直接屏幕坐标——按钮旁）。</summary>
-        public void ShowAtScreen(string text, Vector2 screenPos)
+        public void ShowAtScreen(TooltipViewData data, Vector2 screenPos)
         {
-            RequestShow(text, screenPos);
+            RequestShow(data, screenPos);
         }
 
-        void RequestShow(string text, Vector2 screenPos)
+        /// <summary>兼容字符串调用；统一转换为 TooltipViewData。</summary>
+        public void Show(string text, Vector3 worldPos)
+        {
+            Show(new TooltipViewData(text), worldPos);
+        }
+
+        public void Show(string text, Vector3 worldPos, Camera cam)
+        {
+            Show(new TooltipViewData(text), worldPos, cam);
+        }
+
+        public void ShowAtScreen(string text, Vector2 screenPos)
+        {
+            ShowAtScreen(new TooltipViewData(text), screenPos);
+        }
+
+        void RequestShow(TooltipViewData data, Vector2 screenPos)
         {
             _requestGeneration++;
             _requestedVisible = true;
-            _requestedText = text;
+            _requestedData = data;
             _requestedScreenPosition = screenPos;
             StartCoroutine(EnsureLoaded(_requestGeneration));
         }
@@ -107,7 +122,8 @@ namespace TheLaw.UI
                 go.transform.SetAsLastSibling();
                 _tipGo = go;
                 _tipRect = go.GetComponent<RectTransform>();
-                _descText = go.transform.Find("Txt_Desc")?.GetComponent<TMP_Text>();
+                _tipView = go.GetComponent<TooltipView>();
+                if (_tipView == null) _tipView = go.AddComponent<TooltipView>();
                 go.SetActive(false);
                 Addressables.Release(handle); // 实例已持有自身资源，不保留模板加载句柄
             }
@@ -119,7 +135,7 @@ namespace TheLaw.UI
 
             // 加载完成后应服务“最新请求”，不是发起加载的旧请求。
             if (_tipGo == null || !_requestedVisible) yield break;
-            _descText.text = _requestedText;
+            if (_tipView != null) _tipView.Bind(_requestedData);
             PlaceAt(_requestedScreenPosition);
             _tipGo.SetActive(true);
         }

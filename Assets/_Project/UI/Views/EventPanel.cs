@@ -137,21 +137,12 @@ namespace TheLaw.UI
             for (int i = 0; i < _currentEvent.options.Count; i++)
             {
                 var option = _currentEvent.options[i];
-                var go = Instantiate(_optionTemplate, _optionsRoot);
-                var btn = go.GetComponent<Button>();
-                if (btn == null) btn = go.AddComponent<Button>();
-                var label = go.GetComponentInChildren<TMP_Text>();
-                if (label != null) label.text = option.label;
-                if (!option.available)
-                {
-                    // 灰显交给 Button.interactable=false（disabledColor 自动）——不改预制体视觉
-                    btn.interactable = false;
-                }
-                else
-                {
-                    int index = i;
-                    btn.onClick.AddListener(() => OnOptionClicked(index));
-                }
+                var index = i;
+                UIComponentFactory.CreateEventOption(
+                    _optionTemplate,
+                    _optionsRoot,
+                    new EventOptionViewData(option.label, option.available),
+                    option.available ? () => OnOptionClicked(index) : null);
             }
         }
 
@@ -203,12 +194,11 @@ namespace TheLaw.UI
                 return;
             }
             foreach (Transform child in _optionsRoot) Destroy(child.gameObject);
-            var go = Instantiate(_optionTemplate, _optionsRoot);
-            var btn = go.GetComponent<Button>();
-            if (btn == null) btn = go.AddComponent<Button>();
-            var label = go.GetComponentInChildren<TMP_Text>();
-            if (label != null) label.text = "继续";
-            btn.onClick.AddListener(() => Complete());
+            UIComponentFactory.CreateEventOption(
+                _optionTemplate,
+                _optionsRoot,
+                new EventOptionViewData("继续", true),
+                Complete);
         }
 
         System.Collections.IEnumerator ShowContinueWhenReady()

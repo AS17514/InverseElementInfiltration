@@ -114,24 +114,33 @@ namespace TheLaw.UI
             _enemyScore = _state.EnemyScore;
             _waveScores = new List<int>(_state.WaveScores);
             _hasResult = true;
-            FillContent();
+            Bind(ToViewData());
             _uiManager?.PushOverlay(Key); // 覆盖显示（不隐藏下层——收尾/下层界面在面板之下）
             _dismissReady = false; // 跳帧守卫：战斗结束那帧的按键不再被当成确认
         }
 
-        /// <summary>填充内容（PushOverlay 前调用——Show 由 UIManager 负责）。</summary>
-        void FillContent()
+        BattleResultViewData ToViewData()
+        {
+            return new BattleResultViewData(
+                _victory ? "测试通过" : "失败",
+                _victory ? new Color(0f, 1f, 0.165f, 1f) : new Color(0.882f, 0f, 0f, 1f),
+                BuildStats(),
+                "按任意键继续");
+        }
+
+        /// <summary>纯展示绑定（PushOverlay 前调用；输入与 Overlay 生命周期仍由 Panel 管理）。</summary>
+        public void Bind(BattleResultViewData data)
         {
             if (_resultText != null)
             {
-                _resultText.text = _victory ? "测试通过" : "失败";
-                // 胜利 00FF2A / 失败 E10000
-                _resultText.color = _victory ? new Color(0f, 1f, 0.165f, 1f) : new Color(0.882f, 0f, 0f, 1f);
+                _resultText.text = data?.ResultText ?? string.Empty;
+                _resultText.color = data != null ? data.ResultColor : Color.white;
             }
-            if (_statsText != null) _statsText.text = BuildStats();
+            if (_statsText != null) _statsText.text = data?.StatsText ?? string.Empty;
             // Txt_Tip 闪动（alpha 循环）
             if (_tipText != null)
             {
+                _tipText.text = data?.TipText ?? string.Empty;
                 if (_tipTween != null) _tipTween.Kill();
                 _tipText.alpha = 1f;
                 _tipTween = DOTween.To(() => _tipText.alpha, a => _tipText.alpha = a, 0.25f, 0.6f)

@@ -28,9 +28,7 @@ namespace TheLaw.UI
         // ====== 节点引用 ======
         private Transform _pieceContent;   // 左列棋子列表 Content
         private Transform _programContent; // 中列程序库 Content
-        private Transform _pieceInfo;      // 右侧信息区（Grp_PieceInfo）
-        private Transform _overlapDisplay; // 右侧叠加显示（Grp_OverlapDisplay）
-        private Transform _nonOverlap;     // 右侧文字显示（Grp_NonOverlapDisplay）
+        private Transform _pieceInfo;      // 右侧统一详情卡（Piece_Handcard）
         private Image[] _slotImages;       // Img_InfoProgram1~4
         private TMP_Text[] _slotTexts;     // 槽位内文字（移/攻/跳）
         private TMP_Text[] _slotDescs;     // Txt_InfoProgram1~4Desc
@@ -196,7 +194,7 @@ namespace TheLaw.UI
             var confirm = FindObjectOfType<ConfirmPanel>(true);
             if (confirm != null)
             {
-                confirm.ShowConfirm("确认全部撤回？", RestoreAllAndReset);
+                confirm.ShowConfirm(new ConfirmViewData("确认全部撤回？"), RestoreAllAndReset);
             }
             else
             {
@@ -234,7 +232,7 @@ namespace TheLaw.UI
             if (canvas != null)
             {
                 Vector2 screen = RectTransformUtility.WorldToScreenPoint(canvas.worldCamera, _undoBtn.transform.position);
-                TooltipManager.Instance.ShowAtScreen("单击撤回一次\n长按全部撤回", screen);
+                TooltipManager.Instance.ShowAtScreen(new TooltipViewData("单击撤回一次\n长按全部撤回"), screen);
             }
         }
         void HideUndoTooltip()
@@ -296,42 +294,38 @@ namespace TheLaw.UI
 
         void ResolveNodes()
         {
-            // 路径跟随 2026-08-11 面板重构：棋子列表在 Grp/Grp_R/Grp_Pieces/...，程序库在 Grp/Grp_Programs/...（无 Grp_L 层）
+            // 列表和程序库仍按面板自身节点绑定；右侧详情统一复用内嵌 Piece_Handcard。
             _pieceContent = transform.Find("Grp/Grp_R/Grp_Pieces/Grp_PieceDisplay/Viewport/Content");
             _programContent = transform.Find("Grp/Grp_Programs/Grp_ProgramDisplay/Viewport/Content");
-            _pieceInfo = transform.Find("Grp/Grp_PieceInfo");
-            if (_pieceInfo == null) return;
-            _overlapDisplay = _pieceInfo.Find("Grp_OverlapDisplay");
-            _nonOverlap = _pieceInfo.Find("Grp_NonOverlapDisplay");
+            _pieceInfo = FindDeep(transform, "Piece_Handcard");
 
             _slotImages = new Image[4];
             _slotTexts = new TMP_Text[4];
             _slotDescs = new TMP_Text[4];
+            if (_pieceInfo == null)
+            {
+                Debug.LogError("[PieceEdit] 未找到右侧统一详情卡 Piece_Handcard");
+                return;
+            }
+
             for (int i = 0; i < 4; i++)
             {
-                var img = _overlapDisplay?.Find($"Grp_InfoProgram/Img_InfoProgram{i + 1}");
+                var img = FindDeep(_pieceInfo, $"Img_InfoProgram{i + 1}");
                 _slotImages[i] = img != null ? img.GetComponent<Image>() : null;
-                _slotTexts[i] = img != null ? img.GetComponentInChildren<TMP_Text>() : null;
-                var desc = _nonOverlap?.Find($"Grp_ProgramDesc/Txt_InfoProgram{i + 1}Desc");
+                _slotTexts[i] = img != null ? img.GetComponentInChildren<TMP_Text>(true) : null;
+                var desc = FindDeep(_pieceInfo, $"Txt_InfoProgram{i + 1}Desc");
                 _slotDescs[i] = desc != null ? desc.GetComponent<TMP_Text>() : null;
             }
-            var value = _overlapDisplay?.Find("Grp_InfoBase/Img_InfoValue");
+
+            var value = FindDeep(_pieceInfo, "Img_InfoValue");
             _infoValueImg = value != null ? value.GetComponent<Image>() : null;
-            _infoValueText = value != null ? value.GetComponentInChildren<TMP_Text>() : null;
-            var type = _overlapDisplay?.Find("Grp_InfoBase/Img_InfoType");
+            _infoValueText = value != null ? value.GetComponentInChildren<TMP_Text>(true) : null;
+            var type = FindDeep(_pieceInfo, "Img_InfoType");
             _infoTypeImg = type != null ? type.GetComponent<Image>() : null;
-            _infoTypeText = type != null ? type.GetComponentInChildren<TMP_Text>() : null;
-            var name = _nonOverlap?.Find("Grp_PortraitNameDisplay/Txt_InfoName");
+            _infoTypeText = type != null ? type.GetComponentInChildren<TMP_Text>(true) : null;
+            var name = FindDeep(_pieceInfo, "Txt_InfoName");
             _infoName = name != null ? name.GetComponent<TMP_Text>() : null;
-            if (_infoName == null)
-            {
-                // 兜底：深层按名查找（prefab 复制可能带 (1) 后缀）
-                foreach (var t in GetComponentsInChildren<TMP_Text>(true))
-                {
-                    if (t.name == "Txt_InfoName") { _infoName = t; break; }
-                }
-            }
-            var portrait = _nonOverlap?.Find("Grp_PortraitNameDisplay/Img_InfoPortrait");
+            var portrait = FindDeep(_pieceInfo, "Img_InfoPortrait");
             _infoPortrait = portrait != null ? portrait.GetComponent<Image>() : null;
         }
 
@@ -505,6 +499,7 @@ namespace TheLaw.UI
         public List<InfoSlotTarget> CollectInfoSlotTargets(Camera uiCam)
         {
             var list = new List<InfoSlotTarget>();
+            if (_slotImages == null || _slotDescs == null) return list;
             for (int i = 0; i < 4; i++)
             {
                 if (_slotImages[i] == null && _slotDescs[i] == null) continue;
@@ -548,7 +543,7 @@ namespace TheLaw.UI
         /// <summary>槽位高亮组件（按槽索引——吸附判定命中 Img 或 Desc 都作用于对应 Img 的高亮）。</summary>
         public SlotSnapHighlight GetSlotHighlight(int slotIndex)
         {
-            if (slotIndex < 0 || slotIndex >= 4 || _slotImages[slotIndex] == null) return null;
+            if (_slotImages == null || slotIndex < 0 || slotIndex >= 4 || _slotImages[slotIndex] == null) return null;
             var hl = _slotImages[slotIndex].GetComponent<SlotSnapHighlight>();
             if (hl == null) hl = _slotImages[slotIndex].gameObject.AddComponent<SlotSnapHighlight>();
             return hl;
@@ -778,10 +773,21 @@ namespace TheLaw.UI
 
         void FillPieceInfo(PieceDef def)
         {
+            if (_pieceInfo == null || _slotImages == null || _slotDescs == null)
+            {
+                Debug.LogError("[PieceEdit] 右侧统一详情卡未正确初始化，无法刷新棋子信息");
+                return;
+            }
+
             var effectiveType = GetEffectiveType(def);
-            if (_infoName != null) _infoName.text = VerticalName(def.displayName);
-            if (_infoValueText != null) _infoValueText.text = GetEffectiveValue(def).ToString();
-            if (_infoTypeText != null) _infoTypeText.text = PieceTypeChar(effectiveType);
+            var handCardView = _pieceInfo.GetComponent<HandCardView>();
+            if (handCardView == null) handCardView = _pieceInfo.gameObject.AddComponent<HandCardView>();
+            handCardView.Bind(PiecePresentationMapper.ToHandCard(
+                def,
+                effectiveType,
+                GetEffectiveValue(def),
+                _slotTemplates));
+
             for (int i = 0; i < 4; i++)
             {
                 // 槽位节点常显（未拥有的空槽也可作为吸附位点——2026-08-11 需求：空位也可拖入插入）
@@ -824,17 +830,7 @@ namespace TheLaw.UI
                     if (_slotImages[i] != null) _slotImages[i].color = new Color(1f, 1f, 1f, 0.15f);
                 }
             }
-            // 右侧信息区底色按种类标识（半透明——不盖子级内容）
-            if (_pieceInfo != null)
-            {
-                var infoImg = _pieceInfo.GetComponent<Image>();
-                if (infoImg != null)
-                {
-                    var c = CardTypeColors.For(effectiveType);
-                    infoImg.color = new Color(c.r, c.g, c.b, 0.45f);
-                }
-                _pieceInfo.gameObject.SetActive(true);
-            }
+            _pieceInfo.gameObject.SetActive(true);
         }
 
         // ====== 程序编排（锁定块在前绝对固定 + 替换/插入语义——整组提交） ======

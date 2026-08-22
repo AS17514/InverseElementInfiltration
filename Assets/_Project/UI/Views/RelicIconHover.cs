@@ -23,7 +23,8 @@ namespace TheLaw.UI
             string text = $"{_relic.displayName}\n{_relic.description}";
             // ⚠️ UI 元素世界坐标属 UICamera 系——必须传 canvas.worldCamera（主相机斜俯视投影错位）
             var canvas = GetComponentInParent<Canvas>();
-            TooltipManager.Instance.Show(text, transform.position, canvas != null ? canvas.worldCamera : Camera.main);
+            TooltipManager.Instance.Show(new TooltipViewData(text), transform.position,
+                canvas != null ? canvas.worldCamera : Camera.main);
         }
 
         public void OnPointerExit(PointerEventData eventData)

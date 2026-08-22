@@ -99,4 +99,68 @@ namespace TheLaw.UI
             return icons;
         }
     }
+
+    public sealed class EventOptionViewData
+    {
+        public string Label { get; }
+        public bool Interactable { get; }
+
+        public EventOptionViewData(string label, bool interactable)
+        {
+            Label = label ?? string.Empty;
+            Interactable = interactable;
+        }
+    }
+
+    public sealed class ConfirmViewData
+    {
+        public string Message { get; }
+
+        public ConfirmViewData(string message)
+        {
+            Message = message ?? string.Empty;
+        }
+    }
+
+    public sealed class ItemGettingViewData
+    {
+        public string Name { get; }
+        public string Description { get; }
+        public Color IconColor { get; }
+        public bool ShowIcon { get; }
+
+        public ItemGettingViewData(string name, string description, Color iconColor, bool showIcon = true)
+        {
+            Name = name ?? string.Empty;
+            Description = description ?? string.Empty;
+            IconColor = iconColor;
+            ShowIcon = showIcon;
+        }
+    }
+
+    public sealed class BattleResultViewData
+    {
+        public string ResultText { get; }
+        public Color ResultColor { get; }
+        public string StatsText { get; }
+        public string TipText { get; }
+
+        public BattleResultViewData(string resultText, Color resultColor, string statsText, string tipText)
+        {
+            ResultText = resultText ?? string.Empty;
+            ResultColor = resultColor;
+            StatsText = statsText ?? string.Empty;
+            TipText = tipText ?? string.Empty;
+        }
+    }
+
+    public sealed class TooltipViewData
+    {
+        public string Text { get; }
+
+        public TooltipViewData(string text)
+        {
+            Text = text ?? string.Empty;
+        }
+    }
 }

@@ -15,6 +15,7 @@ namespace TheLaw.Core
         private readonly Dictionary<string, ISnapshot> _snapshots = new Dictionary<string, ISnapshot>();
 
         private const int MaxHistoryCount = 5; // 历史存档保留上限（2026-08-13：整局结束归档保留 N 份，超出删除最旧——排查可回溯）
+        private const string LegacySettingsKey = "SettingsSystem"; // 旧存档里的设置字段，加载时剥离
 
         private string SavePath => Path.Combine(Application.persistentDataPath, "save.json");
 
@@ -30,8 +31,14 @@ namespace TheLaw.Core
         /// </summary>
         public void SaveAll()
         {
+            WriteBundle(CollectBundle());
+        }
+
+        /// <summary>原子写主存档（先写临时文件再替换——防"写到一半进程被杀"留下半个 JSON 损坏存档）。</summary>
+        private void WriteBundle(Dictionary<string, string> bundle)
+        {
             string tmpPath = SavePath + ".tmp";
-            File.WriteAllText(tmpPath, JsonConvert.SerializeObject(CollectBundle()));
+            File.WriteAllText(tmpPath, JsonConvert.SerializeObject(bundle));
             if (File.Exists(SavePath))
             {
                 File.Delete(SavePath);
@@ -100,6 +107,12 @@ namespace TheLaw.Core
                 {
                     UnityEngine.Debug.LogError("[SaveManager] 存档为空或格式错误——跳过读档");
                     return;
+                }
+                if (bundle.ContainsKey(LegacySettingsKey))
+                {
+                    bundle.Remove(LegacySettingsKey);
+                    WriteBundle(bundle); // 设置已独立到 settings.json，旧存档不再保留该字段
+                    UnityEngine.Debug.Log("[SaveManager] 已从旧存档剥离 SettingsSystem 设置字段");
                 }
                 foreach (var pair in bundle)
                 {

@@ -119,6 +119,7 @@ namespace TheLaw.UI
         {
             // 单例类（首次访问自动创建）：EventCenter / SaveManager / RandomManager / SettingsSystem / AudioManager / GameState
             _gameState = GameState.Instance;
+            SettingsSystem.Instance.LoadSettings(); // 独立设置加载（settings.json，不随存档）
             _ = AudioManager.Instance; // 实例化音频管理器（监听音量设置——不实例化则音量永远不生效）
             var applierGo = new GameObject("ScreenSettingsApplier");
             applierGo.AddComponent<ScreenSettingsApplier>(); // 显示设置（全屏/分辨率）全局应用器
@@ -235,7 +236,6 @@ namespace TheLaw.UI
             var saveManager = SaveManager.Instance;
             saveManager.RegisterSnapshot(_gameState);
             saveManager.RegisterSnapshot(RandomManager.Instance);
-            saveManager.RegisterSnapshot(SettingsSystem.Instance);
             saveManager.RegisterSnapshot(_tutorialSystem);
             saveManager.RegisterSnapshot(_progressSystem);
         }

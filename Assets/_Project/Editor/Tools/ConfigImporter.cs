@@ -152,6 +152,23 @@ namespace TheLaw.EditorTools
                 relic.displayName = r.displayName;
                 relic.description = r.description;
                 relic.abilities = abilities;
+                // 2026-08-22：能力模型——词条（tags）+ 基础效果组合（effects）
+                relic.tags = r.tags ?? new List<string>();
+                relic.effects = new List<RelicEffectSpec>();
+                if (r.effects != null)
+                {
+                    foreach (var e in r.effects)
+                    {
+                        if (System.Enum.TryParse(e.effectType, out RelicEffectType et))
+                        {
+                            relic.effects.Add(new RelicEffectSpec { type = et, value = e.value });
+                        }
+                        else
+                        {
+                            UnityEngine.Debug.LogWarning($"[ConfigImporter] 未知遗物效果类型：{e.effectType}（遗物 {r.relicName}）");
+                        }
+                    }
+                }
                 if (relic.Id == 0)
                 {
                     SetId(relic, StableHash(relic.name));
@@ -183,6 +200,7 @@ namespace TheLaw.EditorTools
                     var def = LoadOrCreate<EventDefinition>(assetPath, $"Event_{e.eventId}"); // 增量：已存在更新不删建
                     def.title = e.title;
                     def.description = e.description;
+                    def.isAbilityPick = e.isAbilityPick; // 2026-08-22：能力三选一事件（动态候选——不显示固定 options）
                     def.deckSizeLimit = e.deckSizeLimit;
                     def.totalValueLimit = e.totalValueLimit;
                     def.allowDuplicate = e.allowDuplicate;            // 构筑新规则开关（2026-08-15：可复数）
@@ -686,11 +704,12 @@ namespace TheLaw.EditorTools
         private class WaveJson { public int startTurn; public List<string> pieceDefIds; public string pool; public int count; public List<PointJson> positions; public bool isLastWave; public int endCountdown; public List<WavePromotionJson> promotions; public bool autoPromote; public int waveScoreTarget; }
         private class WavePromotionJson { public int pieceIndexInWave; public string toDefId; }
         private class RelicsJson { public List<RelicJson> relics; }
-        private class RelicJson { public string relicName; public string displayName; public string description; public List<AbilityJson> abilities; }
+        private class RelicJson { public string relicName; public string displayName; public string description; public List<string> tags; public List<RelicEffectJson> effects; public List<AbilityJson> abilities; }
+        private class RelicEffectJson { public string effectType; public int value = 1; }
         private class EventsJson { public List<PoolJson> pools; public List<EventJson> events; }
         private class PoolJson { public string poolName; public List<EntryJson> entries; }
         private class EntryJson { public string eventId; public float weight; }
-        private class EventJson { public string eventId; public string title; public string description; public int deckSizeLimit; public int totalValueLimit; public bool allowDuplicate; public bool promoteLimitByInitial; public List<OptionJson> options; }
+        private class EventJson { public string eventId; public string title; public string description; public bool isAbilityPick; public int deckSizeLimit; public int totalValueLimit; public bool allowDuplicate; public bool promoteLimitByInitial; public List<OptionJson> options; }
         private class OptionJson { public string optionId; public string label; public List<EffectJson> effects; }
         private class EffectJson { public string effectType; public int targetDefId; public int amount; public int abilityId; public string relicName; }
         private class AbilityJson

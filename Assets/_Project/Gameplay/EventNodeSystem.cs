@@ -50,6 +50,13 @@ namespace TheLaw.Gameplay
             _state.CurrentEventId = picked.eventId;
             _state.DrawnEventIds.Add(picked.eventId);
             _consumedEventId = null; // 新事件 = 新消费机会（2026-08-12：事件级只允许一次选项消费）
+            // 能力事件（2026-08-22）：打开即按玩法词条抽取 3 候选（三选一 + 每项刷新）——不显示固定选项
+            var ev = ConfigTable.FindByName<EventDefinition>(picked.eventId);
+            if (ev != null && ev.isAbilityPick)
+            {
+                _resolver.DrawAbilityCandidates();
+                return; // 能力事件不走普通 EventOpened/选项流（前端按 AbilityCandidatesDrawn 显示三选一）
+            }
             // 通知 UI：事件关打开（携带当前事件 id——UI 据此打开事件界面）
             EventCenter.Instance.EventTrigger(GameEvent.EventOpened, _state.CurrentEventId);
         }

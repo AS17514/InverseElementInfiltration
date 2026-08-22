@@ -73,6 +73,12 @@ namespace TheLaw.Gameplay
         public Dictionary<Vector2Int, ObstacleData> MahjongWalls { get; internal set; } = new Dictionary<Vector2Int, ObstacleData>();
 
         public List<RelicDef> Relics { get; internal set; } = new List<RelicDef>();
+        /// <summary>能力事件三选一候选（2026-08-22：当前能力事件展示的 3 个候选——词条过滤随机抽取；事件进行中入档）。</summary>
+        public List<RelicDef> AbilityCandidates { get; internal set; } = new List<RelicDef>();
+        /// <summary>能力候选刷新次数（2026-08-22：每项各可刷新 1 次——与 AbilityCandidates 顺序对应）。</summary>
+        public List<int> AbilityRefreshLeft { get; internal set; } = new List<int>();
+        /// <summary>行动经济已行动集（2026-08-22：ActionEconomy 激活时——本回合已执行过行动的棋子——回合级，回合开始重置；额外行动穿透不查此集）。</summary>
+        public HashSet<int> ActionEconomyActed { get; internal set; } = new HashSet<int>();
         public List<int> WaveScores { get; internal set; } = new List<int>();     // 每波得分（第 3 关"每波达标"）
         public List<PromoteAnnouncement> PromoteAnnouncements { get; internal set; } = new List<PromoteAnnouncement>();
         public int WaveEndCountdown { get; internal set; } = -1;                  // 末波强制判定倒计时（-1=未启用）
@@ -94,6 +100,43 @@ namespace TheLaw.Gameplay
 
         /// <summary>玩法是否激活（2026-08-20：麻将"mahjong"/属性"element"）。</summary>
         public bool IsStyleActive(string style) => ActiveStyles != null && ActiveStyles.Contains(style);
+
+        /// <summary>
+        /// 是否持有指定基础效果（2026-08-22：能力=遗物效果组合——遍历持有遗物；供统一入口挂点查询）。
+        /// </summary>
+        public bool HasRelicEffect(RelicEffectType type)
+        {
+            foreach (var relic in Relics)
+            {
+                if (relic == null) continue;
+                foreach (var e in relic.effects)
+                {
+                    if (e != null && e.type == type) return true;
+                }
+            }
+            return false;
+        }
+
+        /// <summary>行动经济激活（ActionEconomy——执行不耗 AP + 每棋子每回合一次）。</summary>
+        public bool ActionEconomyActive => HasRelicEffect(RelicEffectType.ActionEconomy);
+
+        /// <summary>己方部署区行数加成（DeployRow——累加）。</summary>
+        public int DeployRowBonus
+        {
+            get
+            {
+                int bonus = 0;
+                foreach (var relic in Relics)
+                {
+                    if (relic == null) continue;
+                    foreach (var e in relic.effects)
+                    {
+                        if (e != null && e.type == RelicEffectType.DeployRow) bonus += e.value;
+                    }
+                }
+                return bonus;
+            }
+        }
 
         /// <summary>追加诊断记录（2026-08-21：超时降级等——环形缓冲，只写不读；存档可查）。</summary>
         public void AppendTimeoutRecord(int sessionId, int actionId, int waitMs, string phase)
@@ -244,6 +287,9 @@ namespace TheLaw.Gameplay
             EditCandidates.Clear();
             EditModuleCandidates.Clear();
             Relics.Clear();
+            AbilityCandidates.Clear();   // 2026-08-22 能力候选（整局重置）
+            AbilityRefreshLeft.Clear();
+            ActionEconomyActed.Clear();
             WaveScores.Clear();
             PromoteAnnouncements.Clear();
             WaveEndCountdown = -1;
@@ -333,6 +379,8 @@ namespace TheLaw.Gameplay
                 EditCandidates = new List<int>(EditCandidates),
                 EditModuleCandidates = EditModuleCandidates,
                 Relics = Relics.ConvertAll(r => r.Id),
+                AbilityCandidates = AbilityCandidates.ConvertAll(r => r.Id), // 2026-08-22 能力事件候选（事件进行中入档）
+                AbilityRefreshLeft = new List<int>(AbilityRefreshLeft),
                 WaveScores = new List<int>(WaveScores),
                 PromoteAnnouncements = PromoteAnnouncements,
                 WaveEndCountdown = WaveEndCountdown,
@@ -411,6 +459,19 @@ namespace TheLaw.Gameplay
                     }
                 }
             }
+            AbilityCandidates = new List<RelicDef>();
+            if (dto.AbilityCandidates != null)
+            {
+                foreach (var relicId in dto.AbilityCandidates)
+                {
+                    var relic = ConfigTable.Find<RelicDef>(relicId);
+                    if (relic != null)
+                    {
+                        AbilityCandidates.Add(relic);
+                    }
+                }
+            }
+            AbilityRefreshLeft = dto.AbilityRefreshLeft ?? new List<int>();
             WaveScores = dto.WaveScores ?? new List<int>();
             PromoteAnnouncements = dto.PromoteAnnouncements ?? new List<PromoteAnnouncement>();
             WaveEndCountdown = dto.WaveEndCountdown;
@@ -500,6 +561,8 @@ namespace TheLaw.Gameplay
         public List<int> EditCandidates;                        // 编辑事件三选一候选（defId）
         public List<Template> EditModuleCandidates;             // 编辑事件 6 候选模块
         public List<int> Relics;
+        public List<int> AbilityCandidates;   // 能力事件候选（2026-08-22——id 列表）
+        public List<int> AbilityRefreshLeft;  // 候选刷新次数（2026-08-22）
         public List<int> WaveScores;
         public List<PromoteAnnouncement> PromoteAnnouncements;
         public int WaveEndCountdown;

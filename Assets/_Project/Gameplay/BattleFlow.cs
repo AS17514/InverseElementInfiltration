@@ -56,6 +56,8 @@ namespace TheLaw.Gameplay
         private int _enemyBudget; // 敌方回合行动次数预算（逐步决策——每步一个行动；2026-08-13 替代请求队列）
         private readonly HashSet<int> _actedEnemyPieces = new HashSet<int>(); // 本回合已行动的敌方棋子（① 排除——防 requests[0] 固定重复执行）
 
+        private readonly System.Collections.Generic.Queue<int> _pendingImmediateExecutes = new System.Collections.Generic.Queue<int>(); // 2026-08-22 插入执行队列（免费行动"立即执行"——触发入队，空闲时强制该棋执行）
+
         public BattleFlow(GameState state, BoardRules boardRules, IntentResolver intentResolver,
             Resolver resolver, EnemyAI enemyAI, RelicSystem relicSystem)
         {
@@ -69,6 +71,7 @@ namespace TheLaw.Gameplay
             EventCenter.Instance.AddEventListener(GameEvent.PresentationFinished, OnPresentationFinished);
             EventCenter.Instance.AddEventListener(GameEvent.PhaseDisplayed, OnPhaseDisplayed);
             EventCenter.Instance.AddEventListener(GameEvent.PlacementFinished, OnPlacementFinished);
+            EventCenter.Instance.AddEventListener(GameEvent.ExtraActionGranted, OnExtraActionGranted); // 2026-08-22 插入执行（免费行动"获得即立即执行"）
         }
 
         /// <summary>
@@ -81,6 +84,7 @@ namespace TheLaw.Gameplay
             EventCenter.Instance.RemoveEventListener(GameEvent.PresentationFinished, OnPresentationFinished);
             EventCenter.Instance.RemoveEventListener(GameEvent.PhaseDisplayed, OnPhaseDisplayed);
             EventCenter.Instance.RemoveEventListener(GameEvent.PlacementFinished, OnPlacementFinished);
+            EventCenter.Instance.RemoveEventListener(GameEvent.ExtraActionGranted, OnExtraActionGranted); // 2026-08-22 对称清理
             _waitingPresentation = false; // 2026-08-21：停止超时守望协程（防实例引用滞留——协程循环退出）
         }
 
@@ -162,6 +166,7 @@ namespace TheLaw.Gameplay
                 }
             }
             _state.PlayerAP = _state.PlayerAPMax;
+            _state.ActionEconomyActed.Clear(); // 2026-08-22 行动经济：新回合重置已行动集（buff 回态 A）
             ChangePhase(BattlePhase.PlayerTurn);
             _floorRules.OnTurnStart(_state, _resolver);
             _relicSystem.OnTurnStart();
@@ -431,21 +436,50 @@ namespace TheLaw.Gameplay
                     case ExecuteRequest execute:
                         if (_state.GetPiece(execute.pieceId)?.side == side)
                         {
+                            // ⚠️ 2026-08-22 行动经济（ActionEconomy）：普通执行不耗 AP + 每棋子每回合一次；
+                            // 免费行动/额外行动（request.free——击杀触发）为"额外行动"——穿透限制（不查已行动集）。
+                            bool isExtra = request.free; // 额外行动（免费行动）——穿透
+                            if (_state.ActionEconomyActive && !isExtra)
+                            {
+                                if (_state.ActionEconomyActed.Contains(execute.pieceId))
+                                {
+                                    Debug.LogWarning($"[BattleFlow] 行动经济：该棋子本回合已执行过行动——拒绝（piece={execute.pieceId}）");
+                                    break; // 已行动过——拒绝本次普通执行
+                                }
+                            }
                             // 免费执行资格（额外行动——方案 B）：有资格 → 本次免费 + 资格用掉（保留到使用为止，有效期待策划拍板）
                             // ⚠️ 2026-08-20 统一入口：资格用掉经 Resolver（ConsumeFreeExecute）——BattleFlow 不再直写状态（回归落账纪律）
-                            bool free = request.free || _state.FreeExecutes.Contains(execute.pieceId);
-                            if (free)
+                            bool free = isExtra || _state.ActionEconomyActive || _state.FreeExecutes.Contains(execute.pieceId);
+                            if (isExtra && _state.FreeExecutes.Contains(execute.pieceId))
                             {
                                 _resolver.ConsumeFreeExecute(execute.pieceId);
                             }
                             ExecutePiece(execute.pieceId, free, side); // 玩家逐槽选择 / AI 自动选（内部按 side 分流）
+                            if (_state.ActionEconomyActive)
+                            {
+                                _state.ActionEconomyActed.Add(execute.pieceId); // 标记本回合已行动（buff 切态 B）
+                            }
                         }
                         break;
                     case DrawCardRequest:
                         // 抽牌行动（2026-08-19 策划确认）：1 AP 抽 1 张；抽牌堆空 → 拒绝（无操作不扣费）
+                        // ⚠️ 2026-08-22 能力 DrawExtra：花费 AP 抽牌时额外抽一张
                         if (side == Side.Player && _state.DrawPile != null && _state.DrawPile.Count > 0)
                         {
                             _resolver.DrawCard();
+                            int extra = 0;
+                            foreach (var relic in _state.Relics)
+                            {
+                                if (relic == null) continue;
+                                foreach (var e in relic.effects)
+                                {
+                                    if (e != null && e.type == RelicEffectType.DrawExtra) extra += e.value;
+                                }
+                            }
+                            for (int i = 0; i < extra && _state.DrawPile.Count > 0; i++)
+                            {
+                                _resolver.DrawCard();
+                            }
                             DeductActionPoint(request.free, side);
                         }
                         break;
@@ -518,6 +552,37 @@ namespace TheLaw.Gameplay
         }
 
         // ========== 逐槽可续执行 ==========
+
+        // ⚠️ 2026-08-22 插入执行（免费行动"获得即立即执行"——复用免费行动逻辑/同执行链；E5 同链待接）：
+        // 击杀授予免费行动 → ExtraActionGranted → 入队 → 当前请求收尾/表现排空后强制该棋执行（free=额外行动）。
+        private void OnExtraActionGranted(object data)
+        {
+            if (!(data is int pieceId)) return;
+            _pendingImmediateExecutes.Enqueue(pieceId);
+            TryFlushImmediateExecutes();
+        }
+
+        /// <summary>空闲时触发强制插入执行（玩家回合 + 非执行中 + 队非空 → 出队执行该棋——free=额外）。</summary>
+        private void TryFlushImmediateExecutes()
+        {
+            while (_pendingImmediateExecutes.Count > 0)
+            {
+                if (_state.Phase != BattlePhase.PlayerTurn || _ctx != null || _waitingPresentation)
+                {
+                    return; // 非空闲（敌方回合/执行中/表现中——等收尾点再触发）
+                }
+                int pieceId = _pendingImmediateExecutes.Dequeue();
+                var piece = _state.GetPiece(pieceId);
+                if (piece == null || piece.side != Side.Player)
+                {
+                    continue; // 棋子已不在/非玩家——跳过
+                }
+                // 立即执行（额外行动——穿透行动经济限制；资格用掉经 Resolver）
+                _resolver.ConsumeFreeExecute(pieceId);
+                ExecutePiece(pieceId, true, Side.Player);
+                return; // 一次一个（执行中的收尾点会再次触发）
+            }
+        }
 
         private void ExecutePiece(int pieceId, bool free, Side side)
         {
@@ -724,6 +789,8 @@ namespace TheLaw.Gameplay
             _ctx = null;
             // 按发起方扣费（表现完成时阶段可能已切到对方回合，按当前阶段会扣错阵营）
             DeductActionPoint(free, side);
+            // ⚠️ 2026-08-22 插入执行：当前整段执行完成后触发（空闲且玩家回合——强制立即执行该棋——free 额外）
+            TryFlushImmediateExecutes();
             // 执行扣费是异步的（表现完成后），此处补触发 AP 耗尽检查（回合自动移交）
             if (side == Side.Player)
             {
@@ -976,8 +1043,14 @@ namespace TheLaw.Gameplay
         private Vector2Int FindDeployCell(Side side)
         {
             // 玩家部署区 = 最下 2 行（y 0~1）；敌方 = 最上 2 行（y 6~7）
+            // ⚠️ 2026-08-22 能力 DeployRow：己方部署区 +N 行（敌方不变）
             int minY = side == Side.Player ? 0 : 6;
-            for (int y = minY; y < minY + 2; y++)
+            int rows = 2;
+            if (side == Side.Player)
+            {
+                rows += _state.DeployRowBonus;
+            }
+            for (int y = minY; y < minY + rows; y++)
             {
                 for (int x = 0; x < 8; x++)
                 {
@@ -1061,7 +1134,7 @@ namespace TheLaw.Gameplay
             {
                 return false;
             }
-            if (side == Side.Player && (cell.y < 0 || cell.y > 1))
+            if (side == Side.Player && (cell.y < 0 || cell.y > 1 + _state.DeployRowBonus)) // 2026-08-22 能力 DeployRow：己方部署区 +N 行
             {
                 return false;
             }

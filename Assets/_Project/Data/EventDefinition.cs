@@ -10,6 +10,11 @@ namespace TheLaw.Data
         public string title;             // UI 标题（JSON title 导入；空 = 资产名兜底）
         [TextArea] public string description; // UI 剧情文案（JSON description 导入；空 = 标题兜底）
         public List<EventOption> options = new List<EventOption>();
+        /// <summary>
+        /// 能力事件（2026-08-22）：true = 打开时按当前玩法词条抽取能力候选（随机 3）→ 前端三选一 + 每项可刷新一次。
+        /// 不显示普通 options（动态候选）。
+        /// </summary>
+        public bool isAbilityPick;
 
         // ====== 牌组构筑限制（DeckBuild 事件用；0 = 无限制）======
         public int deckSizeLimit;        // 牌组牌数上限（0 = 不限制）

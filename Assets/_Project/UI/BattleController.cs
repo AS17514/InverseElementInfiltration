@@ -171,6 +171,7 @@ namespace TheLaw.UI
         bool _draggingCard;
         bool _draggingPromotionCard;
         int _dragDefId = -1;
+        int _dragCardInstanceId = -1; // 拖拽起始卡的运行实例 id（部署/升变精确消费）
         GameObject _dragCard; // 拖拽中的卡片（失败时恢复，避免整体重建闪烁）
 
         // 信息面板（Main 1 场景 UI 根下的 3D TMP 文本，用户已拼）
@@ -748,19 +749,25 @@ namespace TheLaw.UI
                 // 组内并行（架构 §四.7：同槽表现并行、槽间串行——AOE 多目标同时闪白）
                 var batch = new List<System.Func<IEnumerator>>(_presentations);
                 _presentations.Clear();
+                // 在本组启动时快照 token。回执是同步事件，会推进规则层并可能生成下一组 token，不能在回执后再读取。
+                var batchToken = _flow != null ? _flow.CurrentPresentationToken : default;
                 _batchFlashAttackers = new HashSet<int>(); // 组内攻击者只闪一次
                 int pending = batch.Count;
                 foreach (var play in batch)
                 {
                     StartCoroutine(PlayWithCount(play, () => pending--));
                 }
-                while (pending > 0) yield return null; // 组内全部完成 → 下一组（组间串行）
+                while (pending > 0) yield return null; // 组内全部完成 → 回执一次
                 _batchFlashAttackers = null;
+                EventCenter.Instance.EventTrigger(GameEvent.PresentationFinished, new PresentationInfo
+                {
+                    SessionId = batchToken.sessionId,
+                    ActionId = batchToken.actionId
+                });
+                if (_executing) AdvanceAfterPresentation();
             }
             _presentationPlaying = false;
             RefreshDrawPile();
-            EventCenter.Instance.EventTrigger(GameEvent.PresentationFinished);
-            if (_executing) AdvanceAfterPresentation();
         }
 
         /// <summary>组内并行子协程：播完计数（finally 保证异常/中断也计数——防组等待卡死）。</summary>
@@ -1716,8 +1723,8 @@ namespace TheLaw.UI
             if (_panel == null || _panel.HandRoot == null) return;
 
             // 无变化保护：手牌内容没变就不重建（消除外部 HandChanged/阶段切换的无意义闪烁）
-            // ⚠️ 2026-08-20 牌结构：key 含 defId/点数/属性（麻将牌/带属性牌变化也触发刷新）
-            string key = string.Join("|", _state.Hand.ConvertAll(c => $"{c.defId}-{c.value}-{c.element}"));
+            // 牌实例 id 是手牌 UI 身份；同 defId / 属性的重复牌也必须分别刷新与复用。
+            string key = string.Join("|", _state.Hand.ConvertAll(c => $"{c.instanceId}-{c.defId}-{c.value}-{c.element}"));
             int expectedPieceCards = 0;
             foreach (var card in _state.Hand)
             {
@@ -1735,6 +1742,7 @@ namespace TheLaw.UI
                 _draggingCard = false;
                 _draggingPromotionCard = false;
                 SetHandLayoutDragging(false); // 重建即结束拖拽，恢复 hover
+                _dragCardInstanceId = -1;
                 _dragCard = null;
                 if (_previewPiece != null) Destroy(_previewPiece);
                 _previewPiece = null;
@@ -1765,11 +1773,11 @@ namespace TheLaw.UI
             }
             var template = handle.Result;
             // 先收集旧卡，再按当前 Hand 快照复用/增删；不改变 HandLayoutController 的动画。
-            var oldCards = new List<(GameObject go, int defId)>();
+            var oldCards = new List<(GameObject go, int instanceId)>();
             foreach (Transform child in _panel.HandRoot)
             {
                 var drag = child.GetComponent<HandCardDrag>();
-                if (drag != null) oldCards.Add((child.gameObject, drag.DefId));
+                if (drag != null) oldCards.Add((child.gameObject, drag.CardInstanceId));
                 else
                 {
                     child.gameObject.SetActive(false);
@@ -1780,26 +1788,31 @@ namespace TheLaw.UI
             var reused = new bool[oldCards.Count];
             var layout = _panel.HandRoot.GetComponent<HandLayoutController>();
             if (layout == null) layout = _panel.HandRoot.gameObject.AddComponent<HandLayoutController>();
-            // 手牌显示排序：类型优先（初始→部署→升变）+ 同类型价值升序（全场景统一——CardTypeColors.SortPieces）
+            // 手牌显示排序：类型优先（初始→部署→升变）+ 同类型价值升序；排序只影响视觉，Card 实例身份必须保留。
             // ⚠️ 2026-08-20 牌结构：仅棋子牌显示（麻将牌表现留待玩法实现/前端后续）
-            var handDefs = new List<PieceDef>();
-            foreach (var card in snapshot)
+            var hand = new List<(Card card, PieceDef def)>();
+            foreach (var handCard in snapshot)
             {
-                if (!card.IsPiece) continue;
-                var d = ConfigTable.Find<PieceDef>(card.defId);
-                if (d != null) handDefs.Add(d);
+                if (!handCard.IsPiece) continue;
+                var def = ConfigTable.Find<PieceDef>(handCard.defId);
+                if (def != null) hand.Add((handCard, def));
             }
-            CardTypeColors.SortPieces(handDefs);
-            var hand = handDefs.ConvertAll(d => d.Id);
+            hand.Sort((a, b) =>
+            {
+                int type = CardTypeColors.TypeOrder(GetEffectiveType(a.def)).CompareTo(CardTypeColors.TypeOrder(GetEffectiveType(b.def)));
+                if (type != 0) return type;
+                int value = GetEffectiveValue(a.def).CompareTo(GetEffectiveValue(b.def));
+                return value != 0 ? value : a.card.instanceId.CompareTo(b.card.instanceId);
+            });
             for (int i = 0; i < hand.Count; i++)
             {
-                var def = ConfigTable.Get<PieceDef>(hand[i]);
-                if (def == null) continue; // 配置缺失防御（缺卡不建，避免 NRE 中止整个协程）
+                var handCard = hand[i].card;
+                var def = hand[i].def;
                 GameObject card = null;
-                // 复用：找第一个未复用且 defId 相同的旧卡（保留其位置 → 布局插值滑动）
+                // 复用必须按实例 id 匹配：同 defId、同属性的重复牌也不能互换身份。
                 for (int j = 0; j < oldCards.Count; j++)
                 {
-                    if (!reused[j] && oldCards[j].defId == def.Id)
+                    if (!reused[j] && oldCards[j].instanceId == handCard.instanceId)
                     {
                         card = oldCards[j].go;
                         reused[j] = true;
@@ -1811,7 +1824,7 @@ namespace TheLaw.UI
                     card = Instantiate(template, _panel.HandRoot);
                     card.SetActive(true);
                     FillCard(card, def, i);
-                    AddCardDrag(card, def.Id, i);
+                    AddCardDrag(card, handCard, i);
                     var newCanvasGroup = card.GetComponent<CanvasGroup>();
                     if (newCanvasGroup != null) newCanvasGroup.alpha = 1f;
                     // 全量重建后直接可见；不使用 alpha=0 的异步淡入，避免 tween 被打断后层级对象存在但不可见。
@@ -1941,10 +1954,10 @@ namespace TheLaw.UI
             return null;
         }
 
-        void AddCardDrag(GameObject card, int defId, int index)
+        void AddCardDrag(GameObject card, Card handCard, int index)
         {
             var drag = card.AddComponent<HandCardDrag>();
-            drag.Init(this, defId, index);
+            drag.Init(this, handCard.defId, handCard.instanceId, index);
         }
 
         public bool CanDragCard(int defId)
@@ -1976,7 +1989,7 @@ namespace TheLaw.UI
             }
         }
 
-        public void OnCardDragStart(int defId, GameObject card)
+        public void OnCardDragStart(int defId, int cardInstanceId, GameObject card)
         {
             if (!CanDragCard(defId)) return;
             if (_previewPiece != null) Destroy(_previewPiece); // 防旧预览泄漏
@@ -1985,6 +1998,7 @@ namespace TheLaw.UI
             _draggingPromotionCard = def != null && GetEffectiveType(def) == PieceType.Promoted;
             SetHandLayoutDragging(true); // 拖拽期间冻结手牌 hover/让位（后端排查记录）
             _dragDefId = defId;
+            _dragCardInstanceId = cardInstanceId;
             _dragCard = card;
             // 升变牌也创建跟随鼠标的立绘预览；释放时仍走场上目标检测，不进入空格部署流程。
             PieceViewFactory.EnsureSprites();
@@ -2002,30 +2016,32 @@ namespace TheLaw.UI
             var cam = Camera.main;
             if (cam == null) return;
             var ray = cam.ScreenPointToRay(screenPos);
-            // 普通牌命中合法空格时吸附；升变牌命中合法己方未升变棋子时吸附。
-            if (Physics.Raycast(ray, out var hit, 200f))
-            {
-                var cell = PieceViewFactory.CellFromWorld(hit.point);
-                bool canSnap = _draggingPromotionCard
-                    ? IsPromotionTargetCell(cell)
-                    : IsDeployableCell(cell);
-                if (canSnap)
-                {
-                    _previewPiece.transform.position = PieceViewFactory.CellToWorld(cell);
-                    _previewCell = cell;
-                    RefacePreview();
-                    return;
-                }
-            }
-            // 未吸附/升变牌：立绘跟随光标（射线与 y=0 棋盘平面交点，保持可见）
+            // 部署格与自由跟随统一以 y=0 棋盘平面换算：不依赖隐形 Tile Collider，
+            // 避免棋子、预览物或其他 Collider 抢先命中后得到错误格子。
             var plane = new Plane(Vector3.up, Vector3.zero);
-            if (plane.Raycast(ray, out float enter))
+            if (!plane.Raycast(ray, out float enter))
             {
-                var p = ray.GetPoint(enter);
-                p.y = Mathf.Clamp(p.y, 0.05f, 5f); // 略高于棋盘，不穿地
-                _previewPiece.transform.position = p;
-                RefacePreview();
+                _previewCell = new Vector2Int(-1, -1);
+                return;
             }
+            Vector3 boardPoint = ray.GetPoint(enter);
+
+            var cell = PieceViewFactory.CellFromWorld(boardPoint);
+            bool canSnap = _draggingPromotionCard
+                ? IsPromotionTargetCell(cell)
+                : IsDeployableCell(cell);
+            if (canSnap)
+            {
+                _previewPiece.transform.position = PieceViewFactory.CellToWorld(cell);
+                _previewCell = cell;
+                RefacePreview();
+                return;
+            }
+
+            // 未吸附时仍按棋盘平面跟随光标，保持原有预览表现。
+            boardPoint.y = Mathf.Clamp(boardPoint.y, 0.05f, 5f);
+            _previewPiece.transform.position = boardPoint;
+            RefacePreview();
             _previewCell = new Vector2Int(-1, -1);
         }
 
@@ -2045,14 +2061,18 @@ namespace TheLaw.UI
             if (!_draggingCard) return;
             _draggingCard = false;
             var defId = _dragDefId;
+            var cardInstanceId = _dragCardInstanceId;
             var card = _dragCard;
             if (_draggingPromotionCard)
             {
                 int pieceId = FindPromotionTarget(eventData);
                 if (pieceId >= 0)
                 {
-                    _flow.OnPlayerRequestPromote(new PromoteRequest(pieceId, defId));
-                    StartCoroutine(RecoverCardIfFailed(defId, card));
+                    _flow.OnPlayerRequestPromote(new PromoteRequest(pieceId, defId)
+                    {
+                        cardInstanceId = cardInstanceId
+                    });
+                    StartCoroutine(RecoverCardIfFailed(cardInstanceId, card));
                 }
                 else
                 {
@@ -2062,10 +2082,14 @@ namespace TheLaw.UI
             else if (_previewCell.x >= 0)
             {
                 bool free = _state.Phase == BattlePhase.Placement;
-                _flow.OnPlayerRequestDeploy(new DeployRequest(defId, _previewCell) { free = free });
-                // 成功：PieceDeployed → 规则层 Hand.Remove → OnPieceDeployed 重建手牌
-                // 失败兜底：0.5s 后 Hand 仍含该 defId → 恢复卡片（引用提前捕获——_dragCard 本方法末尾置空）
-                StartCoroutine(RecoverCardIfFailed(defId, card));
+                _flow.OnPlayerRequestDeploy(new DeployRequest(defId, _previewCell)
+                {
+                    free = free,
+                    cardInstanceId = cardInstanceId
+                });
+                // 成功：PieceDeployed → 规则层精确移除该实例 → OnPieceDeployed 重建手牌。
+                // 失败兜底：0.5s 后 Hand 仍含该实例才恢复卡片（引用提前捕获——_dragCard 本方法末尾置空）。
+                StartCoroutine(RecoverCardIfFailed(cardInstanceId, card));
             }
             else
             {
@@ -2076,6 +2100,7 @@ namespace TheLaw.UI
             _previewCell = new Vector2Int(-1, -1);
             _draggingPromotionCard = false;
             _dragDefId = -1;
+            _dragCardInstanceId = -1;
             _dragCard = null; // 统一清理（防野引用）
             SetHandLayoutDragging(false); // 拖拽结束恢复 hover（后端排查记录）
         }
@@ -2098,14 +2123,14 @@ namespace TheLaw.UI
             return _state.Pieces[cell].Id;
         }
 
-        IEnumerator RecoverCardIfFailed(int defId, GameObject card)
+        IEnumerator RecoverCardIfFailed(int cardInstanceId, GameObject card)
         {
             yield return new WaitForSeconds(0.5f);
-            // ⚠️ 2026-08-20 牌结构：棋子牌持有判定
+            // 只检查拖出的那张实例：同 defId 的另一张牌仍在手牌时不能误判恢复。
             bool held = false;
             foreach (var c in _state.Hand)
             {
-                if (c.IsPiece && c.defId == defId) { held = true; break; }
+                if (c.IsPiece && c.instanceId == cardInstanceId) { held = true; break; }
             }
             if (held)
             {
@@ -2160,10 +2185,12 @@ namespace TheLaw.UI
     {
         BattleController _controller;
         int _defId;
+        int _cardInstanceId;
         CanvasGroup _cg;
         DG.Tweening.Tween _fadeTween; // 拖出淡出 tween（显式管理，防销毁后访问）
 
-        public int DefId => _defId; // 差异重建时按 defId 复用卡片
+        public int DefId => _defId;
+        public int CardInstanceId => _cardInstanceId; // 差异重建与请求按 Card 实例精确识别
 
         public void CancelVisualTween()
         {
@@ -2180,10 +2207,11 @@ namespace TheLaw.UI
             DG.Tweening.DOTween.Kill(transform);
         }
 
-        public void Init(BattleController controller, int defId, int cardIndex)
+        public void Init(BattleController controller, int defId, int cardInstanceId, int cardIndex)
         {
             _controller = controller;
             _defId = defId;
+            _cardInstanceId = cardInstanceId;
             _cg = GetComponent<CanvasGroup>();
             if (_cg == null) _cg = gameObject.AddComponent<CanvasGroup>();
         }
@@ -2204,7 +2232,7 @@ namespace TheLaw.UI
         public void OnBeginDrag(PointerEventData eventData)
         {
             if (!_controller.CanDragCard(_defId)) return;
-            _controller.OnCardDragStart(_defId, gameObject);
+            _controller.OnCardDragStart(_defId, _cardInstanceId, gameObject);
             // 拖出动画：淡出 + 缩小（失败时 RestoreDragCard 恢复）
             _fadeTween = DOTween.To(() => _cg.alpha, a => _cg.alpha = a, 0f, 0.15f);
             DOTween.Kill(transform);

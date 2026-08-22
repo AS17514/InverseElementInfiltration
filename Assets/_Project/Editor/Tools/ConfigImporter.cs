@@ -60,6 +60,60 @@ namespace TheLaw.EditorTools
             CollectToBootstrap(
                 new[] { "_pieceConfigs", "_abilityConfigs", "_floorConfigs", "_mapConfigs", "_aiParamConfigs", "_eventPoolConfigs", "_eventConfigs", "_relicConfigs", "_templateConfigs" },
                 new[] { typeof(PieceDef), typeof(SpecialAbilityDef), typeof(FloorConfig), typeof(MapConfig), typeof(AIParams), typeof(EventPool), typeof(EventDefinition), typeof(RelicDef), typeof(TemplateDef) });
+            // 描述表 TextAsset（2026-08-23：_buffDescriptions 曾空引用（fileID: 0）导致 buff 名称查表失效回退机器码——
+            // 一并收集修复；slot-descriptions/slot-values 已拖的幂等刷新（按文件名精确匹配，不改逻辑）
+            CollectTextRefsToBootstrap(
+                new[] { "_slotDescriptions", "_buffDescriptions", "_slotValues" },
+                new[] { "slot-descriptions.json", "buffs-descriptions.json", "slot-values.json" });
+        }
+
+        /// <summary>
+        /// 描述表 TextAsset 收集（2026-08-23）：Bootstrap 单引用字段（_slotDescriptions/_buffDescriptions/_slotValues）——
+        /// 按文件名全库精确匹配 TextAsset 填入（幂等：已拖的保持不变，空引用被修复）。
+        /// 依赖项目约定：Assets/Data/Pieces/slot-descriptions.json、buffs-descriptions.json；Assets/Data/Templates/slot-values.json。
+        /// </summary>
+        private static void CollectTextRefsToBootstrap(string[] fieldNames, string[] jsonFileNames)
+        {
+            if (fieldNames.Length != jsonFileNames.Length)
+            {
+                Debug.LogError("[配置导入器] 描述表字段与文件名数量不一致——内部错误");
+                return;
+            }
+
+            string prefabPath = FindBootstrapPrefabPath();
+            if (string.IsNullOrEmpty(prefabPath)) return;
+
+            var contents = PrefabUtility.LoadPrefabContents(prefabPath);
+            MonoBehaviour bootstrap = FindBootstrapComponent(contents);
+            if (bootstrap == null)
+            {
+                PrefabUtility.UnloadPrefabContents(contents);
+                Debug.LogError("[配置导入器] Bootstrap.prefab 内未找到 Bootstrap 组件");
+                return;
+            }
+
+            var so = new SerializedObject(bootstrap);
+            for (int i = 0; i < fieldNames.Length; i++)
+            {
+                var prop = so.FindProperty(fieldNames[i]);
+                if (prop == null)
+                {
+                    Debug.LogError($"[配置导入器] Bootstrap 组件上未找到 {fieldNames[i]} 字段——检查脚本是否已编译最新版");
+                    continue;
+                }
+                var asset = FindTextAssetByName(jsonFileNames[i]);
+                if (asset == null)
+                {
+                    Debug.LogWarning($"[配置导入器] 未找到描述表 {jsonFileNames[i]}（Assets/Data 下）——{fieldNames[i]} 保持原值");
+                    continue;
+                }
+                prop.objectReferenceValue = asset;
+                Debug.Log($"[配置导入器] {fieldNames[i]} ← {asset.name}");
+            }
+            so.ApplyModifiedProperties();
+            PrefabUtility.SaveAsPrefabAsset(contents, prefabPath);
+            PrefabUtility.UnloadPrefabContents(contents);
+            Debug.Log($"[配置导入器] 描述表 TextAsset 收集完成（{prefabPath}）");
         }
 
         /// <summary>
@@ -76,34 +130,13 @@ namespace TheLaw.EditorTools
             }
 
             // 找 Bootstrap 预制体资产（Prefabs/Bootstrap.prefab——按名字搜，不硬编码路径）
-            string prefabPath = null;
-            foreach (var guid in AssetDatabase.FindAssets("Bootstrap t:Prefab"))
-            {
-                var p = AssetDatabase.GUIDToAssetPath(guid);
-                if (p.EndsWith("Bootstrap.prefab"))
-                {
-                    prefabPath = p;
-                    break;
-                }
-            }
-            if (string.IsNullOrEmpty(prefabPath))
-            {
-                Debug.LogError("[配置导入器] 未找到 Bootstrap.prefab——检查 Prefabs 目录");
-                return;
-            }
+            string prefabPath = FindBootstrapPrefabPath();
+            if (string.IsNullOrEmpty(prefabPath)) return;
             Debug.Log($"[配置导入器] 找到预制体：{prefabPath}");
 
             // 修改预制体资产内容（不碰场景实例——实例 override 与资产分离；实例无配置 override 时改资产即生效）
             var contents = PrefabUtility.LoadPrefabContents(prefabPath);
-            MonoBehaviour bootstrap = null;
-            foreach (var mb in contents.GetComponentsInChildren<MonoBehaviour>(true))
-            {
-                if (mb.GetType().Name == "Bootstrap")
-                {
-                    bootstrap = mb;
-                    break;
-                }
-            }
+            MonoBehaviour bootstrap = FindBootstrapComponent(contents);
             if (bootstrap == null)
             {
                 PrefabUtility.UnloadPrefabContents(contents);
@@ -143,6 +176,48 @@ namespace TheLaw.EditorTools
             PrefabUtility.SaveAsPrefabAsset(contents, prefabPath);
             PrefabUtility.UnloadPrefabContents(contents);
             Debug.Log($"[配置导入器] 已填充 {fieldNames.Length} 个字段共 {total} 条到 {prefabPath}（预制体已保存）");
+        }
+
+        /// <summary>找 Bootstrap 预制体资产路径（按名字搜，不硬编码路径；找不到返回 null）。</summary>
+        private static string FindBootstrapPrefabPath()
+        {
+            foreach (var guid in AssetDatabase.FindAssets("Bootstrap t:Prefab"))
+            {
+                var p = AssetDatabase.GUIDToAssetPath(guid);
+                if (p.EndsWith("Bootstrap.prefab"))
+                {
+                    return p;
+                }
+            }
+            Debug.LogError("[配置导入器] 未找到 Bootstrap.prefab——检查 Prefabs 目录");
+            return null;
+        }
+
+        /// <summary>在预制体内容中按组件类型名找 Bootstrap 组件（不引用 UI 程序集——Editor 不依赖 UI）。</summary>
+        private static MonoBehaviour FindBootstrapComponent(GameObject contents)
+        {
+            foreach (var mb in contents.GetComponentsInChildren<MonoBehaviour>(true))
+            {
+                if (mb.GetType().Name == "Bootstrap")
+                {
+                    return mb;
+                }
+            }
+            return null;
+        }
+
+        /// <summary>按文件名全库精确匹配 TextAsset（描述表——Assets/Data 下；找不到返回 null）。</summary>
+        private static TextAsset FindTextAssetByName(string fileName)
+        {
+            foreach (var guid in AssetDatabase.FindAssets("t:TextAsset"))
+            {
+                var path = AssetDatabase.GUIDToAssetPath(guid);
+                if (System.IO.Path.GetFileName(path) == fileName)
+                {
+                    return AssetDatabase.LoadAssetAtPath<TextAsset>(path);
+                }
+            }
+            return null;
         }
 
         // ========== 遗物 ==========

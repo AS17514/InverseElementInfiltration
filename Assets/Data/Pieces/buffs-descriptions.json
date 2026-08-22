@@ -24,6 +24,11 @@
     "desc": "该棋子本回合已执行过行动，不能再普通执行（下一回合开始时恢复）",
     "format": "plain"
   },
+  "promote_announced": {
+    "name": "升变预告",
+    "desc": "该敌方棋子将在倒计时结束后升变（临时文案——2026-08-23，待正式文案/策划确认）",
+    "format": "count"
+  },
   "ability_2119510590": {
     "name": "击杀回能",
     "desc": "击杀敌人后获得一次免费行动（Ability_ExtraAction_OnKill_1）",

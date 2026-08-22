@@ -446,6 +446,13 @@ namespace TheLaw.Gameplay
             // OnKill 触发点（层差异 + 遗物 + 特殊能力——动作进待执行队列）
             OnKillTriggers(victim, killer);
 
+            // 升变预告清理（2026-08-23）：死亡 = 预告随棋子结束生命周期（残留预告逢倒计时也会被移除，
+            // 但此处立即清 + 发 BuffsChanged——"死亡即结束"语义 + buff 区即时不残留）
+            if (_state.PromoteAnnouncements.RemoveAll(a => a.pieceId == victim.Id) > 0)
+            {
+                EventCenter.Instance.EventTrigger(GameEvent.BuffsChanged, victim.Id);
+            }
+
             EventCenter.Instance.EventTrigger(GameEvent.PieceDied, new DeathInfo { PieceId = victim.Id, Side = victim.side, KillerId = killer != null ? killer.Id : -1 });
         }
 

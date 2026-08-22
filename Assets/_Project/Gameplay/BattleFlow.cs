@@ -290,6 +290,7 @@ namespace TheLaw.Gameplay
                 };
                 _state.PromoteAnnouncements.Add(ann);
                 EventCenter.Instance.EventTrigger(GameEvent.PromoteAnnounced, ann);
+                EventCenter.Instance.EventTrigger(GameEvent.BuffsChanged, piece.Id); // 升变预告挂载 → buff 变化（2026-08-23：预告走 buff 显示，玩家可在 buff 区查看）
             }
         }
 
@@ -900,6 +901,7 @@ namespace TheLaw.Gameplay
                 if (ann.countdown <= 0)
                 {
                     _state.PromoteAnnouncements.Remove(ann);
+                    EventCenter.Instance.EventTrigger(GameEvent.BuffsChanged, ann.pieceId); // 预告结束（升变执行/移除）→ buff 消失（2026-08-23）
                     var piece = _state.GetPiece(ann.pieceId);
                     if (piece != null && piece.side == Side.Enemy)
                     {
@@ -1006,6 +1008,7 @@ namespace TheLaw.Gameplay
                                     countdown = 1, // 下一波次升变
                                 });
                                 EventCenter.Instance.EventTrigger(GameEvent.PromoteAnnounced, new PromoteAnnouncement { pieceId = target.Id, newDefId = promo.toDefId, countdown = 1 });
+                                EventCenter.Instance.EventTrigger(GameEvent.BuffsChanged, target.Id); // 升变预告挂载 → buff 变化（2026-08-23 同 autoPromote 口径）
                             }
                         }
                     }

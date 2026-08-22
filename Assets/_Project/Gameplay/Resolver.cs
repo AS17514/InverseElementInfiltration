@@ -138,6 +138,7 @@ namespace TheLaw.Gameplay
                 Damage = elementHit && !died ? 0 : damage, // 相生无伤（Damage=0——前端"柔"表现）；相克改用实际（已死——Damage 仍显示原数值）
                 TargetDied = died,
                 FriendlyFire = action.template.friendlyFire,
+                AttackMode = action.template.mode, // 2026-08-23 攻击音分发（前端契约）
             });
         }
 
@@ -177,6 +178,7 @@ namespace TheLaw.Gameplay
                         Damage = damage,
                         TargetDied = died,
                         FriendlyFire = action.template.friendlyFire,
+                        AttackMode = action.template.mode, // 2026-08-23 攻击音分发（前端契约——AOE 命中）
                     });
                 }
             }
@@ -191,6 +193,7 @@ namespace TheLaw.Gameplay
                     Damage = damage,
                     TargetDied = false,
                     FriendlyFire = action.template.friendlyFire,
+                    AttackMode = action.template.mode, // 2026-08-23 攻击音分发（前端契约——AOE 空放）
                 });
             }
         }
@@ -1233,6 +1236,7 @@ namespace TheLaw.Gameplay
         public int Damage;
         public bool TargetDied;
         public bool FriendlyFire;
+        public AttackMode AttackMode;   // 2026-08-23：本次攻击类型透传（前端攻击音分发契约——李毕待办；单体/AOE 命中/空放三处已填）
     }
 
     public class DeployInfo

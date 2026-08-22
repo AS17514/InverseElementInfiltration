@@ -38,6 +38,23 @@ namespace TheLaw.Gameplay
         private ExecContext _ctx;
         private bool _waitingCellSelect;     // 等玩家选格（落点/目标）
         private bool _waitingPresentation;   // 表现等待（等 UI 播完发"表现完成"）
+        // ⚠️ 2026-08-21 表现回执 token + 超时降级（D/C 方案）：
+        private static int _nextSessionId = 1;      // 跨实例递增（每场战斗一个 session）
+        private int _battleSessionId;                // 本场战斗会话 id（StartBattle 分配）
+        private int _actionCounter;                  // 本场战斗等待动作计数（递增）
+        private int _waitingActionId;                // 当前等待的动作 token（-1=未等待）
+        private bool _timeoutFallbackActive;         // 当前等待已超时降级（防重复降级）
+        private float _timeoutWaitStart;             // 当前等待开始时间（Time.time——超时计）
+        /// <summary>表现等待超时阈值（秒）——0/负 = 完全禁用超时降级（回到无限等）；超时后降级放行 + LogError 预警（诊断入档）。</summary>
+        public static float PresentationTimeoutSeconds = 3f;
+        // _battleEnded 已删除（2026-08-11 收尾链）：Reset 移出事件回调栈后
+        // Phase==GameOver 防御不会被破坏——补丁退休
+        private bool _enemyTurnEndPending;   // 敌方回合结束待定——本阶段表现全部播完才切回玩家回合（动画优先）
+        private bool _hadEnemyPresentation;  // 本轮敌方回合是否有表现（有→表现完即切；无→等阶段展示信号）
+        private bool _deployedThisRound;     // 本轮波次是否部署（部署动画挂起点）
+        private bool _pendingAutoPromote;    // 自动预告挂起（2026-08-19：本波第 1 回合结束后预告离中心最近 2 棋子，第 3 回合随机升变）
+        private int _enemyBudget; // 敌方回合行动次数预算（逐步决策——每步一个行动；2026-08-13 替代请求队列）
+        private readonly HashSet<int> _actedEnemyPieces = new HashSet<int>(); // 本回合已行动的敌方棋子（① 排除——防 requests[0] 固定重复执行）
 
         public BattleFlow(GameState state, BoardRules boardRules, IntentResolver intentResolver,
             Resolver resolver, EnemyAI enemyAI, RelicSystem relicSystem)
@@ -50,13 +67,32 @@ namespace TheLaw.Gameplay
             _relicSystem = relicSystem;
 
             EventCenter.Instance.AddEventListener(GameEvent.PresentationFinished, OnPresentationFinished);
+            EventCenter.Instance.AddEventListener(GameEvent.PhaseDisplayed, OnPhaseDisplayed);
             EventCenter.Instance.AddEventListener(GameEvent.PlacementFinished, OnPlacementFinished);
+        }
+
+        /// <summary>
+        /// 销毁钩子（2026-08-13 战斗级"进入创建、离开销毁"改造）：注销全部事件监听。
+        /// ⚠️ 必须对称于构造注册——漏注销 = 旧实例幽灵回调 + 新实例双处理（表现完成双推进）。
+        /// 销毁路径全枚举：胜利/失败（TowerFlow.OnBattleEnded）、战斗中退出/新游戏（Bootstrap 经 TowerFlow.DisposeCurrentBattle）。
+        /// </summary>
+        public void Dispose()
+        {
+            EventCenter.Instance.RemoveEventListener(GameEvent.PresentationFinished, OnPresentationFinished);
+            EventCenter.Instance.RemoveEventListener(GameEvent.PhaseDisplayed, OnPhaseDisplayed);
+            EventCenter.Instance.RemoveEventListener(GameEvent.PlacementFinished, OnPlacementFinished);
+            _waitingPresentation = false; // 2026-08-21：停止超时守望协程（防实例引用滞留——协程循环退出）
         }
 
         // ========== 开战 / 阶段 ==========
 
         public void StartBattle(FloorConfig floor, AIParams aiParams)
         {
+            _state.ResetForBattle(); // 战斗态重置（2026-08-13：跨战斗残留——TurnCount/棋盘/波次分每场战斗重来）
+            ResetState(); // 新局统一清瞬态执行状态（防跨局残留——后端待办 #5：多次重开卡死根因）
+            _battleSessionId = _nextSessionId++; // 2026-08-21：本场战斗会话 id（表现回执 token——跨战斗隔离）
+            _actionCounter = 0;
+            _waitingActionId = -1;
             _floor = floor;
             _aiParams = aiParams;
             _floorRules = FloorRulesFactory.Create(floor.Id);
@@ -65,20 +101,66 @@ namespace TheLaw.Gameplay
             _state.EnemyAPMax = floor.enemyMaxAP;
             _state.WaveEndCountdown = -1;
             _floorRules.OnBattleStart(_state, _resolver);
-            ChangePhase(BattlePhase.Placement);
+            // 先分离非初始牌，再创建 Placement UI；避免构筑结果在准备阶段短暂显示为满手牌。
+            // StartPlayerTurn 仍保留幂等防御调用，首回合只负责自动抽 4 张。
+            _resolver.SetupDrawPile();
+            ChangePhase(BattlePhase.Placement, force: true); // 强制：塔流程 Phase 可能已停在 Placement——必须发事件让 UI 创建战斗控制器
+            // 开局部署首波（startTurn=1 的波——玩家摆位需要看到敌方位置参照）
+            HandleWaveAndPromotions();
             // Placement：玩家布置 Hand 中 Initial 棋子（起始标记自由摆）→ UI 摆完发 PlacementFinished
+        }
+
+        /// <summary>
+        /// 重置瞬态执行状态（新局必清——重置清单集中一处，防再漏）。
+        /// 泄漏实例（后端待办 #5）：波次部署动画 WaitPresentation 在 _ctx==null 时置 _waitingPresentation=true，
+        /// ChangePhase(GameOver) 清理分支要求 _ctx!=null 才清 → 漏清进新局 → 敌方回合 TryEndEnemyTurn 永远等表现卡死。
+        /// </summary>
+        private void ResetState()
+        {
+            _ctx = null;
+            _waitingCellSelect = false;
+            _waitingPresentation = false;
+            _enemyTurnEndPending = false;
+            _hadEnemyPresentation = false;
+            _deployedThisRound = false;
+            _pendingAutoPromote = false; // 新字段必须进重置清单——防跨局残留（预告挂起未消费）
+            _enemyBudget = 0; // 敌方行动预算（新字段必须进重置清单——防跨局残留）
+            _actedEnemyPieces.Clear(); // 已行动棋子集合（新字段必须进重置清单——防跨局残留）
         }
 
         private void OnPlacementFinished(object data)
         {
-            if (_state.Phase == BattlePhase.Placement)
+            if (_state.Phase != BattlePhase.Placement)
             {
-                StartPlayerTurn();
+                return;
             }
+            // 前置条件：手牌中不得还有初始棋子——必须摆完全部起始棋子才能结束摆放（防"跳过摆放"）
+            // ⚠️ 2026-08-15：类型 = 价值档位推导（初始 = 0-3 档；编辑跨档后种类随价值变化）
+            // ⚠️ 2026-08-20 牌结构：仅棋子牌参与（麻将牌非棋子跳过）
+            foreach (var card in _state.Hand)
+            {
+                if (card.IsPiece && _state.GetEffectiveType(card.defId) == PieceType.Initial)
+                {
+                    EventCenter.Instance.EventTrigger(GameEvent.StateChanged, "placement-incomplete"); // 通知 UI 继续摆放
+                    return;
+                }
+            }
+            StartPlayerTurn();
         }
 
         public void StartPlayerTurn()
         {
+            // ⚠️ 2026-08-19 抽牌堆机制（策划确认）：第一回合（TurnCount==0）开始——
+            // ① 手牌中【部署/升变】种类转入抽牌堆（初始种类已全摆完——Placement 校验兜底）
+            // ② 自动抽 4 张（抽牌堆 → 手牌）；此后靠"1 AP 抽 1"行动补充
+            if (_state.TurnCount == 0)
+            {
+                _resolver.SetupDrawPile();
+                for (int n = 0; n < 4 && _state.DrawPile.Count > 0; n++)
+                {
+                    _resolver.DrawCard();
+                }
+            }
             _state.PlayerAP = _state.PlayerAPMax;
             ChangePhase(BattlePhase.PlayerTurn);
             _floorRules.OnTurnStart(_state, _resolver);
@@ -104,26 +186,167 @@ namespace TheLaw.Gameplay
             ResolveEnemyTurn();
         }
 
+        /// <summary>
+        /// 敌方回合：逐步决策-执行循环（2026-08-13 改造——替代"批量入队"）。
+        /// 每步基于【最新实时状态】决策一个行动 → 执行完（FinishExecute）→ 再基于最新状态决策下一步——
+        /// 决策状态 = 执行状态（零间隔）→ 决策-执行漂移从结构上消除（击杀漂移/打己方/空挥不再可能）。
+        /// 收尾条件：预算用完 / 无可行动棋子 / 战斗结束。
+        /// </summary>
         private void ResolveEnemyTurn()
         {
-            var requests = _enemyAI.DecideTurn(_state);
-            foreach (var request in requests)
+            // ⚠️ 2026-08-13 回合级字段统一复位（此前 _actedEnemyPieces 只在战斗级 ResetState 清——
+            // 跨回合残留导致敌方棋子只行动一次后永久站着；_hadEnemyPresentation 同样跨回合残留致无动画回合闪切）
+            _enemyBudget = _state.EnemyAPMax; // 行动次数预算（逐步决策——每步一个行动）
+            _actedEnemyPieces.Clear();        // 已行动棋子——每回合重置（本回合行动过的不带入下回合）
+            _hadEnemyPresentation = false;    // 本回合是否有表现——每回合复位（表现发生时再锁存）
+            TryNextEnemyDecision();
+        }
+
+        /// <summary>
+        /// 逐步决策核心（FinishExecute 后调用——side==Enemy 时）：基于最新状态决策一个行动。
+        /// 三出口：战斗结束→停；预算 0 / 无可行动棋子→敌方回合收尾；否则执行第一个请求。
+        /// ⚠️ 2026-08-13 ①：决策排除本回合已行动的棋子（防同一棋子反复被选、其他棋子饿死）。
+        /// </summary>
+        private void TryNextEnemyDecision()
+        {
+            if (_state.Phase == BattlePhase.GameOver)
             {
-                ProcessRequest(request, Side.Enemy);
+                return; // 战斗已结束——不再决策（防御：防失败后误判胜利）
             }
+            if (_enemyBudget <= 0)
+            {
+                EndEnemyTurn();
+                return;
+            }
+            var requests = _enemyAI.DecideTurn(_state, _actedEnemyPieces); // 基于最新实时状态决策（每步重算；排除已行动）
+            if (requests.Count == 0)
+            {
+                EndEnemyTurn();
+                return;
+            }
+            _enemyBudget--;
+            if (requests[0] is ExecuteRequest exec)
+            {
+                _actedEnemyPieces.Add(exec.pieceId); // ① 记录已行动棋子——后续步骤不再选中
+            }
+            ProcessRequest(requests[0], Side.Enemy); // 每步只执行第一个行动（决策时状态=执行时状态——无漂移）
+        }
+
+        /// <summary>敌方回合收尾（全部请求处理完后）：AP 清零/回合计数/胜负判定/回合切换挂起（动画优先）。</summary>
+        private void EndEnemyTurn()
+        {
             _state.EnemyAP = 0;
+            // ⚠️ 计分：敌方回合收尾统一结算（2026-08-20——策划"每个回合结束时（对手的该回合结束）"；
+            // 第 1 关（WipeOut）不结算；由 SettleTurnScore 统一处理，避免重复结算。
             _state.TurnCount++;
+            SettleTurnScore(); // 策划契约：敌方回合结束统一结算本回合基础分
             CheckVictory(false);
             if (_state.Phase != BattlePhase.GameOver)
             {
+                // 自动预告（2026-08-19）：本波第 1 回合结束后（敌方执行完行动）——离中心最近 2 个敌方棋子获升变预告
+                if (_pendingAutoPromote)
+                {
+                    _pendingAutoPromote = false;
+                    AnnounceAutoPromotions();
+                }
+                // 动画优先：敌方回合展示到本阶段表现全部播完（含波次部署/AI 行动动画）再切回玩家回合
+                _enemyTurnEndPending = true;
+                // ⚠️ 2026-08-12：_hadEnemyPresentation 不在此采样（串行化后采样时表现已完成、_waitingPresentation 已清，
+                // 且 PhaseDisplayed 在回合开始 1 帧后发出早已被丢弃——无波次回合两条收尾路径均不满足软锁）
+                // 改为 WaitPresentation 表现发生时锁存（有表现即标记，不依赖采样时机）
+                TryEndEnemyTurn();
+            }
+        }
+
+        /// <summary>
+        /// 自动预告（2026-08-19）：敌方场上离棋盘中心 (3.5,3.5) 最近的两个棋子获升变预告——
+        /// countdown=2（第 2 回合递减→1、第 3 回合递减→0 升变）；newDefId=0 表示升变时从升变类棋子随机（RandomManager）。
+        /// </summary>
+        private void AnnounceAutoPromotions()
+        {
+            var enemyPieces = new List<PieceInstance>();
+            foreach (var piece in _state.Pieces.Values)
+            {
+                if (piece.side == Side.Enemy)
+                {
+                    enemyPieces.Add(piece);
+                }
+            }
+            enemyPieces.Sort((a, b) => DistToCenter(a.position).CompareTo(DistToCenter(b.position)));
+            int take = Mathf.Min(2, enemyPieces.Count);
+            for (int i = 0; i < take; i++)
+            {
+                var piece = enemyPieces[i];
+                var ann = new PromoteAnnouncement
+                {
+                    pieceId = piece.Id,
+                    newDefId = 0,   // 升变时随机（RandomManager——种子相关可复现）
+                    countdown = 2,  // 本波第 3 回合开始升变
+                };
+                _state.PromoteAnnouncements.Add(ann);
+                EventCenter.Instance.EventTrigger(GameEvent.PromoteAnnounced, ann);
+            }
+        }
+
+        /// <summary>离棋盘中心 (3.5,3.5) 的曼哈顿距离。</summary>
+        private static float DistToCenter(Vector2Int cell)
+        {
+            return Mathf.Abs(cell.x - 3.5f) + Mathf.Abs(cell.y - 3.5f);
+        }
+
+        /// <summary>从升变类棋子（价值档位 Promoted）随机抽一个（RandomManager.Range——可复现）；池空返回 0。</summary>
+        private int PickRandomPromotedDef()
+        {
+            var candidates = new List<int>();
+            foreach (var def in ConfigTable.All<PieceDef>())
+            {
+                if (_state.GetEffectiveType(def.Id) == PieceType.Promoted)
+                {
+                    candidates.Add(def.Id);
+                }
+            }
+            if (candidates.Count == 0)
+            {
+                return 0;
+            }
+            return candidates[RandomManager.Instance.Range(0, candidates.Count)];
+        }
+
+        /// <summary>敌方回合收尾：表现全部完成才切回玩家回合——阶段切换留动画时间。</summary>
+        private void TryEndEnemyTurn()
+        {
+            if (!_enemyTurnEndPending) return;
+            if (_state.Phase == BattlePhase.GameOver)
+            {
+                _enemyTurnEndPending = false;
+                return;
+            }
+            if (_waitingPresentation || _ctx != null) return; // 动画未播完/执行未结束——继续等
+            if (_hadEnemyPresentation)
+            {
+                // 动画路径：表现已完成（PresentationFinished 驱动到达）——直接切回玩家回合
+                _enemyTurnEndPending = false;
+                StartPlayerTurn();
+            }
+            // 无动画路径：等 UI 阶段展示信号（PhaseDisplayed——阶段名至少展示一帧）
+        }
+
+        /// <summary>UI 阶段展示信号：无动画的敌方回合至少展示一帧后才切回玩家回合。</summary>
+        private void OnPhaseDisplayed(object data)
+        {
+            if (!(data is BattlePhase phase) || phase != BattlePhase.EnemyTurn) return;
+            if (_enemyTurnEndPending && !_waitingPresentation && _ctx == null)
+            {
+                _enemyTurnEndPending = false;
                 StartPlayerTurn();
             }
         }
 
         /// <summary>阶段切换（唯一入口——内部校验转移合法性；副作用只在切换触发）。</summary>
-        public void ChangePhase(BattlePhase newPhase)
+        /// <param name="force">强制切换：阶段相同也发事件（StartBattle 用——塔流程 Phase 可能停在 Placement，幂等 return 会漏发事件导致 UI 无感知）。</param>
+        public void ChangePhase(BattlePhase newPhase, bool force = false)
         {
-            if (_state.Phase == newPhase)
+            if (!force && _state.Phase == newPhase)
             {
                 return;
             }
@@ -135,6 +358,10 @@ namespace TheLaw.Gameplay
                 _waitingPresentation = false;
                 _waitingCellSelect = false;
             }
+            if (newPhase == BattlePhase.GameOver)
+            {
+                _enemyTurnEndPending = false; // 终局：不再切回玩家回合
+            }
             _state.Phase = newPhase;
             EventCenter.Instance.EventTrigger(GameEvent.PhaseChanged, newPhase);
         }
@@ -144,6 +371,10 @@ namespace TheLaw.Gameplay
         public void OnPlayerRequestDeploy(DeployRequest request) => ProcessRequest(request, Side.Player);
         public void OnPlayerRequestPromote(PromoteRequest request) => ProcessRequest(request, Side.Player);
         public void OnPlayerRequestExecute(ExecuteRequest request) => ProcessRequest(request, Side.Player);
+        public void OnPlayerRequestDraw(DrawCardRequest request) => ProcessRequest(request, Side.Player);
+        public void OnPlayerRequestPlayMahjong(PlayMahjongRequest request) => ProcessRequest(request, Side.Player);
+        public void OnPlayerRequestMochi(MochiRequest request) => ProcessRequest(request, Side.Player);
+        public void OnPlayerRequestHu(HuRequest request) => ProcessRequest(request, Side.Player);
 
         private void ProcessRequest(Request request, Side side)
         {
@@ -166,9 +397,18 @@ namespace TheLaw.Gameplay
                 switch (request)
                 {
                     case DeployRequest deploy:
-                        if (IsValidDeployCell(side, deploy.cell))
+                        // 部署合法性校验（请求校验清单）：
+                        //   ① 格子合法（部署区/界内/不占用）
+                        //   ② 玩家：阶段限定种类（Placement=Initial / PlayerTurn=Deployable）+ 手牌持有（防重复部署）
+                        //   ③ 敌方（波次）：不受种类/手牌限制（波次部署直接 Resolve，不走此分支——此处仅防御）
+                        var deployDef = ConfigTable.Find<PieceDef>(deploy.pieceDefId);
+                        bool deployValid = IsValidDeployCell(side, deploy.cell)
+                            && deployDef != null
+                            && (side == Side.Enemy || IsDeployAllowed(deployDef, _state.Phase));
+                        if (deployValid)
                         {
-                            _resolver.Resolve(new DeployAction(deploy.pieceDefId, side, deploy.cell));
+                            var deployAction = new DeployAction(deploy.pieceDefId, side, deploy.cell) { cardInstanceId = deploy.cardInstanceId }; // 2026-08-21：精确消费实例 id
+                            _resolver.Resolve(deployAction);
                             DeductActionPoint(request.free, side);
                         }
                         break;
@@ -176,20 +416,70 @@ namespace TheLaw.Gameplay
                         var piece = _state.GetPiece(promote.pieceId);
                         var promoteDef = ConfigTable.Find<PieceDef>(promote.newDefId);
                         // 升变规则（放宽）：任意【非升变】棋子 + 手牌有【升变牌】→ 可升变（无映射限制）
+                        // ⚠️ 2026-08-15：类型 = 价值档位推导（升变 = 7+ 档；编辑跨档后判定随之变化）
                         bool promoteValid = piece != null && piece.side == side
-                            && piece.def.pieceType != PieceType.Promoted
-                            && promoteDef != null && promoteDef.pieceType == PieceType.Promoted
-                            && _state.Hand.Contains(promote.newDefId);
+                            && _state.GetEffectiveType(piece.DefId) != PieceType.Promoted
+                            && promoteDef != null && _state.GetEffectiveType(promoteDef.Id) == PieceType.Promoted
+                            && HasPieceInHand(promote.newDefId);
                         if (promoteValid)
                         {
-                            _resolver.Resolve(new PromoteAction(promote.pieceId, promote.newDefId));
+                            var promoteAction = new PromoteAction(promote.pieceId, promote.newDefId) { cardInstanceId = promote.cardInstanceId }; // 2026-08-21：精确消费实例 id
+                            _resolver.Resolve(promoteAction);
                             DeductActionPoint(request.free, side);
                         }
                         break;
                     case ExecuteRequest execute:
                         if (_state.GetPiece(execute.pieceId)?.side == side)
                         {
-                            ExecutePiece(execute.pieceId, request.free, side); // 玩家逐槽选择 / AI 自动选（内部按 side 分流）
+                            // 免费执行资格（额外行动——方案 B）：有资格 → 本次免费 + 资格用掉（保留到使用为止，有效期待策划拍板）
+                            // ⚠️ 2026-08-20 统一入口：资格用掉经 Resolver（ConsumeFreeExecute）——BattleFlow 不再直写状态（回归落账纪律）
+                            bool free = request.free || _state.FreeExecutes.Contains(execute.pieceId);
+                            if (free)
+                            {
+                                _resolver.ConsumeFreeExecute(execute.pieceId);
+                            }
+                            ExecutePiece(execute.pieceId, free, side); // 玩家逐槽选择 / AI 自动选（内部按 side 分流）
+                        }
+                        break;
+                    case DrawCardRequest:
+                        // 抽牌行动（2026-08-19 策划确认）：1 AP 抽 1 张；抽牌堆空 → 拒绝（无操作不扣费）
+                        if (side == Side.Player && _state.DrawPile != null && _state.DrawPile.Count > 0)
+                        {
+                            _resolver.DrawCard();
+                            DeductActionPoint(request.free, side);
+                        }
+                        break;
+                    case PlayMahjongRequest pm:
+                        // 麻将·打出墙体（2026-08-20）：手牌有该麻将牌 + 墙体放置合法 → 1 AP
+                        if (side == Side.Player && _state.IsStyleActive(Mahjong.StyleId)
+                            && HasMahjongInHand(pm.mahjongValue))
+                        {
+                            // 从手牌取第一张该点数的麻将牌（Card 构造）
+                            var mahjongCard = Card.Mahjong(pm.mahjongValue);
+                            if (_resolver.PlayMahjongWall(mahjongCard, pm.cell))
+                            {
+                                DeductActionPoint(request.free, side);
+                            }
+                        }
+                        break;
+                    case MochiRequest mo:
+                        // 麻将·摸切（2026-08-20）：手牌有该麻将牌 → 填牌山 + 抽一张；1 AP
+                        if (side == Side.Player && _state.IsStyleActive(Mahjong.StyleId)
+                            && HasMahjongInHand(mo.mahjongValue))
+                        {
+                            _resolver.MochiCut(Card.Mahjong(mo.mahjongValue));
+                            DeductActionPoint(request.free, side);
+                        }
+                        break;
+                    case HuRequest:
+                        // 麻将·和牌（2026-08-20）：手牌有雀头（任意两牌价值相同）且番数 > 0 → 1 AP → 倍率+番数、番数清零
+                        if (side == Side.Player && _state.IsStyleActive(Mahjong.StyleId)
+                            && _state.FanCount > 0 && HasHuHeadInHand())
+                        {
+                            if (_resolver.Hu(_state.FanCount))
+                            {
+                                DeductActionPoint(request.free, side);
+                            }
                         }
                         break;
                 }
@@ -197,13 +487,6 @@ namespace TheLaw.Gameplay
             finally
             {
                 _guard.Exit();
-            }
-            // 守卫退出后：落账级挂起 + 流程级额外执行（防重入的"待执行队列"出口）
-            _resolver.FlushPendingActions();
-            var extraExecutes = _resolver.TakePendingExtraExecutes();
-            foreach (var pieceId in extraExecutes)
-            {
-                ExecutePiece(pieceId, true, side);
             }
             CheckVictory(false);
             CheckActionPoints();
@@ -314,16 +597,51 @@ namespace TheLaw.Gameplay
                     else
                     {
                         // 敌方 AI 自动选目标（HighestValue）→ 落账 → 表现等待
+                        // ⚠️ 2026-08-13 ②：候选过滤为【玩家占位格】——无玩家目标 → Skip（不空放、不打己方——
+                        // 与决策层"移动后位置评估"一致：决策判定能打到玩家才产请求，执行时打玩家目标；
+                        // 空放成为玩家专属（A2b 玩家语义保持）；玩家侧路径不受影响）
                         var aiAttackOptions = _intentResolver.GetAttackOptions(_state, piece, attack);
-                        if (aiAttackOptions.Count == 0)
+                        var playerTargets = new List<Vector2Int>();
+                        if (aiAttackOptions.Count > 0)
                         {
-                            _resolver.Resolve(new SkipAction(piece.Id, SkipReason.NoTarget));
-                            _ctx.slotIndex++;
-                            AdvanceSlot();
+                            foreach (var cell in aiAttackOptions)
+                            {
+                                var t = _state.GetPieceAt(cell);
+                                if (t != null && t.side == Side.Player)
+                                {
+                                    playerTargets.Add(cell);
+                                }
+                            }
+                        }
+                        if (playerTargets.Count == 0)
+                        {
+                            // ✅ 2026-08-19 策划确认（"就是空放"）：敌方无玩家目标 → **空放**（攻击空格——挥空动画）。
+                            // 选空格挥空（不打己方——候选可能含敌方棋子）；候选无空格（全是己方格）→ 仍 Skip
+                            Vector2Int? emptyCell = null;
+                            foreach (var cell in aiAttackOptions)
+                            {
+                                if (_state.GetPieceAt(cell) == null)
+                                {
+                                    emptyCell = cell;
+                                    break;
+                                }
+                            }
+                            if (emptyCell != null)
+                            {
+                                _resolver.Resolve(_intentResolver.ResolveAttack(_state, piece, emptyCell.Value, attack)); // 空格挥空（DamageDealt TargetId=-1——UI 挥空动画）
+                                _ctx.slotIndex++;
+                                WaitPresentation();
+                            }
+                            else
+                            {
+                                _resolver.Resolve(new SkipAction(piece.Id, SkipReason.NoTarget)); // 无空格可挥（候选全是己方格）
+                                _ctx.slotIndex++;
+                                AdvanceSlot();
+                            }
                         }
                         else
                         {
-                            var aiTarget = _intentResolver.PickTarget(_state, piece, aiAttackOptions, _aiParams.targetRule);
+                            var aiTarget = _intentResolver.PickTarget(_state, piece, playerTargets, _aiParams.targetRule);
                             _resolver.Resolve(_intentResolver.ResolveAttack(_state, piece, aiTarget, attack));
                             _ctx.slotIndex++;
                             WaitPresentation();
@@ -331,7 +649,15 @@ namespace TheLaw.Gameplay
                     }
                     break;
                 case SkipTemplate:
+                    // ⚠️ 2026-08-15：新规则行动槽仅移动/攻击/效果（无跳过槽——不可编排）；
+                    // 本分支为兼容保留（运行时自动跳过 NoMove/NoTarget 仍走 SkipAction——执行兜底不可删）
                     _resolver.Resolve(new SkipAction(piece.Id, SkipReason.NoMove));
+                    _ctx.slotIndex++;
+                    AdvanceSlot();
+                    break;
+                case EffectTemplate effect:
+                    // ✅ 2026-08-19 效果模块执行语义（策划确认）：**不耗 AP、被动、有模块即生效**——
+                    // 执行序列中不产生行动（跳过不落账不扣费）；能力生效 = PieceInstance.GetAllAbilities 动态并入（装配即生效）。
                     _ctx.slotIndex++;
                     AdvanceSlot();
                     break;
@@ -349,6 +675,9 @@ namespace TheLaw.Gameplay
             var piece = _state.GetPiece(_ctx.pieceId);
             if (piece == null)
             {
+                // ⚠️ 2026-08-12：选格时棋子死亡（防御分支）——原直接 return 残留 _ctx（不落账不扣 AP）；
+                // 改 FinishExecute 完整结算（补扣 AP + 清 _ctx——发起过执行就该结账）
+                FinishExecute();
                 return;
             }
             if (_ctx.slotIndex >= _ctx.program.Count)
@@ -361,9 +690,11 @@ namespace TheLaw.Gameplay
             switch (slot)
             {
                 case MoveTemplate move:
-                    if (!_boardRules.IsCellPassable(_state, cell))
+                    // ⚠️ 2026-08-12：原只查 IsCellPassable（界内/非障碍/非占用）——不查移动候选内，
+                    // UI 镜像分叉时棋子可瞬移到模板范围外；改候选内校验（与攻击槽对称——规则层不依赖 UI）
+                    if (!_intentResolver.GetMoveOptions(_state, piece, move).Contains(cell))
                     {
-                        _waitingCellSelect = true; // 非法落点——重新选
+                        _waitingCellSelect = true; // 不在移动候选内——重新选
                         return;
                     }
                     _resolver.Resolve(_intentResolver.ResolveMove(piece, cell));
@@ -398,34 +729,104 @@ namespace TheLaw.Gameplay
             {
                 CheckActionPoints();
             }
+            // 敌方逐步决策（2026-08-13）：当前行动完整执行完（扣费后）→ 基于最新状态决策下一步；预算 0/无行动 → 收尾
+            if (side == Side.Enemy)
+            {
+                TryNextEnemyDecision();
+            }
         }
 
-        // ========== 表现等待（等"表现完成"事件——无限等 + 日志）==========
+        // ========== 表现等待（等"表现完成"事件——token 回执 + 超时降级；2026-08-21）==========
 
         private void WaitPresentation()
         {
             _waitingPresentation = true;
+            _timeoutFallbackActive = false;
+            _waitingActionId = ++_actionCounter; // 分配等待 token（战斗内递增）
+            _timeoutWaitStart = UnityEngine.Time.time;
+            if (PresentationTimeoutSeconds > 0)
+            {
+                CoroutineHost.Instance.Run(TimeoutWatch()); // 超时守望（主动计时——普通类无 Update）
+            }
+            // 敌方回合表现发生时即锁存"本回合有表现"（2026-08-12：供 EndEnemyTurn 判定动画路径——
+            // 串行化后收尾采样时机已过（表现完成、PhaseDisplayed 丢弃），锁存不依赖采样时机；玩家回合不受影响）
+            if (_state.Phase == BattlePhase.EnemyTurn)
+            {
+                _hadEnemyPresentation = true;
+            }
             // 等待日志（卡住时定位：谁在等、等哪个表现组）
-            Debug.Log($"[BattleFlow] 表现等待开始 piece={_ctx?.pieceId} slot={_ctx?.slotIndex}（等'表现完成'事件）");
+            Debug.Log($"[BattleFlow] 表现等待开始 piece={_ctx?.pieceId} slot={_ctx?.slotIndex} token=({_battleSessionId},{_waitingActionId})（等'表现完成'事件；超时 {PresentationTimeoutSeconds}s）");
+        }
+
+        /// <summary>当前表现等待 token（2026-08-21：前端播完动画后读取并原样带回回执；未等待 = actionId -1）。</summary>
+        public (int sessionId, int actionId) CurrentPresentationToken
+            => (_battleSessionId, _waitingPresentation ? _waitingActionId : -1);
+
+        /// <summary>
+        /// 超时守望协程（2026-08-21）：等待超过 PresentationTimeoutSeconds 未收到匹配回执 →
+        /// 降级放行（推进）+ LogError 显著预警（防"降级掩盖问题"）+ 诊断入档（存档可查）。
+        /// 禁用：将 PresentationTimeoutSeconds 置 0/负（回到无限等）。
+        /// </summary>
+        private System.Collections.IEnumerator TimeoutWatch()
+        {
+            while (_waitingPresentation && !_timeoutFallbackActive)
+            {
+                float waited = UnityEngine.Time.time - _timeoutWaitStart;
+                if (waited >= PresentationTimeoutSeconds)
+                {
+                    _timeoutFallbackActive = true;
+                    int waitMs = (int)(waited * 1000f);
+                    // ⚠️ 显著预警：超时 = 前端表现疑似异常（不是静默容忍——请排查前端表现链路）
+                    Debug.LogError($"[BattleFlow] 表现回执超时降级：session={_battleSessionId} action={_waitingActionId} 等待 {PresentationTimeoutSeconds}s 无回执——前端表现疑似异常（本次已放行，请排查）");
+                    _state.AppendTimeoutRecord(_battleSessionId, _waitingActionId, waitMs, _state.Phase.ToString()); // 诊断入档（存档可查）
+                    _waitingPresentation = false;
+                    _timeoutWaitStart = 0f;
+                    if (_ctx != null)
+                    {
+                        AdvanceSlot();
+                    }
+                    TryEndEnemyTurn();
+                    yield break;
+                }
+                yield return null;
+            }
         }
 
         private void OnPresentationFinished(object data)
         {
-            if (_waitingPresentation)
+            // ⚠️ 2026-08-21：token 校验——新协议回执带 (sessionId, actionId)（PresentationInfo）；
+            // 旧协议（无数据/宽松）兼容：不回执 token（null/actionId<=0）→ 视同当前等待（过渡期）。
+            bool matched = true;
+            if (data is PresentationInfo info)
+            {
+                matched = info.SessionId == _battleSessionId
+                    && (info.ActionId <= 0 || info.ActionId == _waitingActionId);
+                if (!matched)
+                {
+                    // 迟到/重复回执：不推进、不误认（日志留痕）
+                    Debug.LogWarning($"[BattleFlow] 表现回执 token 不匹配——迟到/重复回执（收到 session={info.SessionId} action={info.ActionId}，当前等待 action={_waitingActionId}）——忽略");
+                    return;
+                }
+            }
+            if (_waitingPresentation && matched)
             {
                 _waitingPresentation = false;
+                _timeoutWaitStart = 0f;
                 if (_ctx != null)
                 {
                     AdvanceSlot();
                 }
             }
+            TryEndEnemyTurn(); // 动画播完（一轮表现队列排干）——检查敌方回合能否收尾
         }
 
         // ========== 波次调度 + 敌方升变预告 ==========
 
         private void HandleWaveAndPromotions()
         {
-            // 升变预告倒计时（波次 N 开始预告波次 N+1；此处波次推进时处理）
+            // 升变预告倒计时（波次 N 开始预告波次 N+1）。
+            // 【语义确认 2026-08-13】按"每次 HandleWaveAndPromotions（每敌方回合）"递减——countdown=1 的预告
+            // 在下一敌方回合即升变（比"下波部署时升变"提前数回合）。该语义已确认保持现状（按实现），暂不改。
             foreach (var ann in new List<PromoteAnnouncement>(_state.PromoteAnnouncements))
             {
                 ann.countdown--;
@@ -435,46 +836,110 @@ namespace TheLaw.Gameplay
                     var piece = _state.GetPiece(ann.pieceId);
                     if (piece != null && piece.side == Side.Enemy)
                     {
-                        _resolver.Resolve(new PromoteAction(ann.pieceId, ann.newDefId));
+                        // ⚠️ 2026-08-19：newDefId=0 → 自动预告模式——升变目标从升变类棋子随机（RandomManager，种子相关可复现）
+                        int targetDefId = ann.newDefId;
+                        if (targetDefId == 0)
+                        {
+                            targetDefId = PickRandomPromotedDef();
+                        }
+                        if (targetDefId != 0)
+                        {
+                            _resolver.Resolve(new PromoteAction(ann.pieceId, targetDefId));
+                        }
                     }
                 }
             }
 
             // 波次部署（按回合数触发；free=true 不走 AP——规则强制部分）
+            _deployedThisRound = false;
             while (_deployedWaveIndex < _floor.waveDefs.Count)
             {
                 var wave = _floor.waveDefs[_deployedWaveIndex];
-                if (wave.startTurn > _state.TurnCount)
+                // 波 N 在第 N 回合开始时在场（TurnCount=0 开局部署首波——玩家摆位参照敌方位置）
+                if (wave.startTurn - 1 > _state.TurnCount)
                 {
                     break;
                 }
                 var deployedThisWave = new List<PieceInstance>();
-                foreach (var defId in wave.pieceDefIds)
+                bool anyDeployed = false;
+                // 阵容：固定列表 或 随机池（2026-08-19——从初始/部署类棋子随机抽 count 个，可重复；RandomManager 可复现）
+                var defIds = wave.pieceDefIds;
+                if (wave.randomPool)
                 {
-                    var cell = FindDeployCell(Side.Enemy);
+                    var candidates = new List<int>();
+                    foreach (var def in ConfigTable.All<PieceDef>())
+                    {
+                        if (_state.GetEffectiveType(def.Id) == wave.poolType)
+                        {
+                            candidates.Add(def.Id);
+                        }
+                    }
+                    if (candidates.Count == 0)
+                    {
+                        Debug.LogWarning($"[BattleFlow] 波次随机池为空（{wave.poolType}）——本波不部署");
+                        defIds = new List<int>();
+                    }
+                    else
+                    {
+                        defIds = new List<int>();
+                        for (int i = 0; i < Mathf.Max(0, wave.count); i++)
+                        {
+                            defIds.Add(candidates[RandomManager.Instance.Range(0, candidates.Count)]);
+                        }
+                    }
+                }
+                int slot = 0;
+                foreach (var defId in defIds)
+                {
+                    // 固定站位（与阵容顺序对应）；空 = 部署区自动找位；固定位被占用（前一波残留）→ 跳过该棋子
+                    var cell = wave.positions.Count > 0
+                        ? (slot < wave.positions.Count ? wave.positions[slot] : new Vector2Int(-1, -1))
+                        : FindDeployCell(Side.Enemy);
+                    slot++;
                     if (cell.x < 0)
                     {
-                        break; // 部署区无空位
+                        break; // 固定站位耗尽 / 部署区无空位
+                    }
+                    if (wave.positions.Count > 0 && (_state.Pieces.ContainsKey(cell) || _state.Obstacles.Contains(cell)))
+                    {
+                        continue; // 固定站位被占用——跳过（前一波棋子未清理）
                     }
                     var deployAction = new DeployAction(defId, Side.Enemy, cell) { waveIndex = _deployedWaveIndex }; // 打波次标（每波得分）
                     _resolver.Resolve(deployAction);
                     deployedThisWave.Add(_state.GetPieceAt(cell));
+                    anyDeployed = true;
                 }
-                // 本波开始 → 预告下一波升变（配置的升变棋子）
-                foreach (var promo in wave.promotions)
+                if (!anyDeployed)
                 {
-                    if (promo.pieceIndexInWave >= 0 && promo.pieceIndexInWave < deployedThisWave.Count)
+                    // ⚠️ 2026-08-13：部署区满零落地——原实现仍推进波次索引（该波永久丢失）+
+                    // 置 _deployedThisRound 等待表现（无 PieceDeployed 事件 → AI 无表现时软锁）。
+                    // 改为：本波不推进、不等待（下回合波次判定仍成立会重试）。
+                    break;
+                }
+                _deployedThisRound = true;
+                // 自动预告模式（2026-08-19）：本波第 1 回合结束后预告离中心最近 2 个敌方棋子（EndEnemyTurn 触发）——此处仅挂起
+                if (wave.autoPromote)
+                {
+                    _pendingAutoPromote = true;
+                }
+                // 本波开始 → 预告下一波升变（配置的升变棋子——旧机制；autoPromote 自动预告模式时互斥跳过）
+                if (!wave.autoPromote)
+                {
+                    foreach (var promo in wave.promotions)
                     {
-                        var target = deployedThisWave[promo.pieceIndexInWave];
-                        if (target != null)
+                        if (promo.pieceIndexInWave >= 0 && promo.pieceIndexInWave < deployedThisWave.Count)
                         {
-                            _state.PromoteAnnouncements.Add(new PromoteAnnouncement
+                            var target = deployedThisWave[promo.pieceIndexInWave];
+                            if (target != null)
                             {
-                                pieceId = target.Id,
-                                newDefId = promo.toDefId,
-                                countdown = 1, // 下一波次升变
-                            });
-                            EventCenter.Instance.EventTrigger(GameEvent.PromoteAnnounced, new PromoteAnnouncement { pieceId = target.Id, newDefId = promo.toDefId, countdown = 1 });
+                                _state.PromoteAnnouncements.Add(new PromoteAnnouncement
+                                {
+                                    pieceId = target.Id,
+                                    newDefId = promo.toDefId,
+                                    countdown = 1, // 下一波次升变
+                                });
+                                EventCenter.Instance.EventTrigger(GameEvent.PromoteAnnounced, new PromoteAnnouncement { pieceId = target.Id, newDefId = promo.toDefId, countdown = 1 });
+                            }
                         }
                     }
                 }
@@ -486,11 +951,21 @@ namespace TheLaw.Gameplay
                     _state.WaveEndCountdown = wave.endCountdown;
                 }
             }
+            // 部署动画优先：本回合有波次部署 → 挂起等部署表现播完（阶段切换留动画时间）
+            if (_deployedThisRound)
+            {
+                WaitPresentation();
+            }
 
             // 末波倒计时 → 强制结算
             if (_waveEnded && _state.WaveEndCountdown >= 0)
             {
-                _state.WaveEndCountdown--;
+                // ⚠️ 2026-08-13：末波部署当回合不递减——原"设置后同调用立即递减"少 1 回合
+                // （配置 endCountdown=3 实际只有 2 回合多；=1 时部署当回合即强制判负）
+                if (!_deployedThisRound)
+                {
+                    _state.WaveEndCountdown--;
+                }
                 if (_state.WaveEndCountdown <= 0)
                 {
                     CheckVictory(true);
@@ -507,13 +982,77 @@ namespace TheLaw.Gameplay
                 for (int x = 0; x < 8; x++)
                 {
                     var cell = new Vector2Int(x, y);
-                    if (!_state.Pieces.ContainsKey(cell))
+                    // ⚠️ 2026-08-13：+障碍物检查（原只查占用——部署区配障碍物时棋子会部署到障碍物格上；
+                    // 与移动落点 IsCellPassable 三条件对称：界内+非占用+非障碍）
+                    if (!_state.Pieces.ContainsKey(cell) && !_state.Obstacles.Contains(cell))
                     {
                         return cell;
                     }
                 }
             }
             return new Vector2Int(-1, -1); // 无空位
+        }
+
+        /// <summary>玩家部署是否允许：阶段限定种类（Placement=初始 / PlayerTurn=部署）+ 手牌持有（防重复部署）。
+        /// ⚠️ 2026-08-15：种类 = 价值档位推导（初始 0-3 / 部署 4-6——编辑跨档后判定随之变化）。</summary>
+        private bool IsDeployAllowed(PieceDef def, BattlePhase phase)
+        {
+            if (phase == BattlePhase.Placement && _state.GetEffectiveType(def.Id) != PieceType.Initial)
+            {
+                return false; // 摆放阶段只能放初始棋子
+            }
+            if (phase == BattlePhase.PlayerTurn && _state.GetEffectiveType(def.Id) != PieceType.Deployable)
+            {
+                return false; // 部署阶段只能放部署棋子（升变棋子靠升变操作上场）
+            }
+            return HasPieceInHand(def.Id); // 手牌持有（防重复部署）
+        }
+
+        /// <summary>手牌是否持有该棋子的牌（2026-08-20 牌结构：仅棋子牌——麻将牌不算持有棋子）。</summary>
+        private bool HasPieceInHand(int defId)
+        {
+            foreach (var card in _state.Hand)
+            {
+                if (card.IsPiece && card.defId == defId) return true;
+            }
+            return false;
+        }
+
+        /// <summary>手牌是否有该点数的麻将牌（2026-08-20 麻将：打出/摸切用）。</summary>
+        private bool HasMahjongInHand(int value)
+        {
+            foreach (var card in _state.Hand)
+            {
+                if (card.IsMahjong && card.value == value) return true;
+            }
+            return false;
+        }
+
+        /// <summary>
+        /// 手牌是否存在雀头（2026-08-20 麻将和牌条件：**任意两牌价值相同**——不限麻将牌：
+        /// 麻将牌价值 = 点数；棋子牌价值 = 棋子价值（GetEffectiveValue）。
+        /// </summary>
+        private bool HasHuHeadInHand()
+        {
+            for (int i = 0; i < _state.Hand.Count; i++)
+            {
+                for (int j = i + 1; j < _state.Hand.Count; j++)
+                {
+                    if (CardValue(_state.Hand[i]) == CardValue(_state.Hand[j]))
+                    {
+                        return true; // 两张价值相同 → 雀头
+                    }
+                }
+            }
+            return false;
+        }
+
+        /// <summary>牌的价值（雀头判定用）：麻将牌 = 点数；棋子牌 = 棋子价值（生效程序推导）。</summary>
+        private int CardValue(Card card)
+        {
+            if (card.IsMahjong) return card.value;
+            if (card.IsPiece) return _state.GetEffectiveValue(card.defId);
+            return 0;
         }
 
         private bool IsValidDeployCell(Side side, Vector2Int cell)
@@ -530,35 +1069,60 @@ namespace TheLaw.Gameplay
             {
                 return false;
             }
-            return !_state.Pieces.ContainsKey(cell);
+            // ⚠️ 2026-08-13：+障碍物检查（与 FindDeployCell/IsCellPassable 三条件对称——部署区配障碍物时不可部署到障碍物格）
+            return !_state.Pieces.ContainsKey(cell) && !_state.Obstacles.Contains(cell);
         }
 
         // ========== 胜负（非对称：玩家判负 + 关卡 victoryRule）==========
 
+        /// <summary>
+        /// 常规关卡的回合结算入口。WipeOut 为纯战斗关，不产生分数。
+        /// 仅在敌方回合收尾或终局兜底调用，避免玩家每次请求后清空 BaseScore。
+        /// </summary>
+        private void SettleTurnScore()
+        {
+            if (_floor != null && _floor.victoryRule != VictoryRule.WipeOut)
+            {
+                _resolver.SettleScore(_state.WaveScores.Count - 1);
+            }
+        }
+
         public void CheckVictory(bool force)
         {
+            // 防御：GameOver 后不再判定（收尾链后 Reset 在栈外执行——Phase 防御不会被破坏）
             if (_state.Phase == BattlePhase.GameOver)
             {
                 return;
             }
-            // 玩家失败（无棋且无手牌——仅玩家侧）
+            // ⚠️ 不在每次请求后结算；主结算在 EndEnemyTurn，终局分支在 EndBattle 前兜底。
+            // 玩家失败：终局兜底结算，防本回合已累计基础分在失败结算面板中丢失。
             if (_state.IsPlayerDefeated())
             {
+                SettleTurnScore();
                 EndBattle(Side.Enemy);
                 return;
             }
+
+            // 敌方全灭且所有波次均已部署时，本场已到终局；先结算最后击杀所得，
+            // 再按含分数的胜利规则判断。force 同样是末波倒计时的终局兜底。
+            bool terminalWipe = AllWavesDeployed() && _boardRules.IsEnemyWiped(_state);
+            if (force || terminalWipe)
+            {
+                SettleTurnScore();
+            }
+
             // 玩家胜利（按关卡规则）
             bool playerWins = false;
             switch (_floor.victoryRule)
             {
                 case VictoryRule.WipeOut:
-                    playerWins = _boardRules.IsEnemyWiped(_state);
+                    playerWins = AllWavesDeployed() && _boardRules.IsEnemyWiped(_state);
                     break;
                 case VictoryRule.ScoreTarget:
-                    playerWins = _boardRules.IsEnemyWiped(_state) || _boardRules.IsScoreTargetReached(_state, _floor);
+                    playerWins = (AllWavesDeployed() && _boardRules.IsEnemyWiped(_state)) || _boardRules.IsScoreTargetReached(_state, _floor);
                     break;
                 case VictoryRule.Both:
-                    playerWins = _boardRules.IsEnemyWiped(_state) && _boardRules.IsScoreTargetReached(_state, _floor);
+                    playerWins = AllWavesDeployed() && _boardRules.IsEnemyWiped(_state) && _boardRules.IsScoreTargetReached(_state, _floor);
                     break;
                 case VictoryRule.PerWaveScore:
                     playerWins = _waveEnded && _boardRules.IsEnemyWiped(_state) &&
@@ -576,14 +1140,28 @@ namespace TheLaw.Gameplay
             }
         }
 
-        /// <summary>第 3 关"每波得分均达标"（骨架：每波得分 &gt; 0 视为达标——达标线数值待策划回填）。</summary>
+        /// <summary>全部波次已部署（未出完波前的空棋盘不算全灭胜利——防开局误判）。</summary>
+        private bool AllWavesDeployed()
+        {
+            return _deployedWaveIndex >= _floor.waveDefs.Count;
+        }
+
+        /// <summary>
+        /// 第 3 关"每波得分均达标"（2026-08-19：按 WaveDef.waveScoreTarget 判断——0 = 未配置，旧骨架每波 &gt; 0；
+        /// 达标线数值待策划回填）。
+        /// </summary>
         private bool AllWavesScored()
         {
             for (int i = 0; i < _state.WaveScores.Count; i++)
             {
-                if (_state.WaveScores[i] <= 0)
+                int target = i < _floor.waveDefs.Count ? _floor.waveDefs[i].waveScoreTarget : 0;
+                if (target > 0)
                 {
-                    return false;
+                    if (_state.WaveScores[i] < target) return false;
+                }
+                else if (_state.WaveScores[i] <= 0)
+                {
+                    return false; // 未配置达标线 → 旧骨架（每波 > 0 视为达标）
                 }
             }
             return true;
@@ -591,11 +1169,19 @@ namespace TheLaw.Gameplay
 
         public void EndBattle(Side winner)
         {
+            // 幂等：已 GameOver 不再发（收尾链后 Reset 栈外执行——防御不会被破坏）
             if (_state.Phase == BattlePhase.GameOver)
             {
                 return;
             }
+            // ⚠️ 计分终局兜底（2026-08-20）：战斗结束前补一次结算——玩家回合内全灭/判负/末波强制等
+            // 非"EndEnemyTurn 正常收尾"路径——防战斗结束丢最后未结算的基础分；WipeOut（第 1 关）不结算；幂等
+            if (_floor.victoryRule != VictoryRule.WipeOut)
+            {
+                _resolver.SettleScore(_state.WaveScores.Count - 1);
+            }
             ChangePhase(BattlePhase.GameOver);
+            _waitingPresentation = false; // 2026-08-21：终局停止表现等待（防超时协程 GameOver 后误报/滞留）
             EventCenter.Instance.EventTrigger(GameEvent.StateChanged, winner);
         }
     }
@@ -606,5 +1192,17 @@ namespace TheLaw.Gameplay
         public Side Side;
         public int Current;
         public int Max;
+    }
+
+    /// <summary>
+    /// 表现回执数据（2026-08-21——前端播完表现后带回 token：sessionId + actionId——
+    /// 从 BattleFlow.CurrentPresentationToken 读取；后端校验匹配才推进（迟到/重复忽略）。
+    /// 旧前端可不带（null/0——宽松兼容过渡期）。
+    /// </summary>
+    [System.Serializable] // 全限定——BattleFlow 无 using System（避免头部引入潜在符号冲突）
+    public class PresentationInfo
+    {
+        public int SessionId;
+        public int ActionId;
     }
 }

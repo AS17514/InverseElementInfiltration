@@ -12,6 +12,7 @@ namespace TheLaw.Gameplay
     {
         private readonly GameState _state;
         private readonly Resolver _resolver;
+        private string _consumedEventId; // 已消费选项的事件 id（每个 OpenEvent 只允许一次选项消费——2026-08-12 防重复点选双落账）
 
         public EventNodeSystem(GameState state, Resolver resolver)
         {
@@ -48,11 +49,22 @@ namespace TheLaw.Gameplay
             var picked = RandomManager.Instance.NextWeighted(candidates, e => e.weight);
             _state.CurrentEventId = picked.eventId;
             _state.DrawnEventIds.Add(picked.eventId);
+            _consumedEventId = null; // 新事件 = 新消费机会（2026-08-12：事件级只允许一次选项消费）
+            // 通知 UI：事件关打开（携带当前事件 id——UI 据此打开事件界面）
+            EventCenter.Instance.EventTrigger(GameEvent.EventOpened, _state.CurrentEventId);
         }
 
-        /// <summary>选择选项（availability 校验 + 防重入——执行效果）。</summary>
+        /// <summary>
+        /// 选择选项（availability 校验 + 事件级消费守卫——每个事件只允许一次选项消费）。
+        /// ⚠️ 2026-08-12 防重：UI 延迟完成窗口内重复点选 → 效果二次落账（双遗物/双卡）+ 迟到推进跳节点——
+        /// 守卫拒绝非当前事件/已消费事件的选项。
+        /// </summary>
         public void OnOptionSelected(string eventId, int optionIndex)
         {
+            if (eventId != _state.CurrentEventId || eventId == _consumedEventId)
+            {
+                return; // 非当前事件 / 已消费过——拒绝（防重复点选）
+            }
             var ev = FindEvent(eventId);
             if (ev == null || optionIndex < 0 || optionIndex >= ev.options.Count)
             {
@@ -64,6 +76,7 @@ namespace TheLaw.Gameplay
                 return; // 二次校验（UI 已灰显）
             }
             ExecuteEffects(option.effects);
+            _consumedEventId = eventId; // 消费标记——本事件后续选项调用一律拒绝
         }
 
         /// <summary>目标选择（targetRule 空时走这步——玩家手动选目标棋子）。</summary>
@@ -86,8 +99,9 @@ namespace TheLaw.Gameplay
                         _resolver.ModifyTargetDurability(effect.targetDefId, effect.amount); // 目标棋子（简化：按 defId 首棋子）
                         break;
                     case EffectType.EditProgram:
-                        // 棋子编辑事件：打开编辑器（UI 交互——由 UI 层触发 EditorSession；此处占位）
-                        EventCenter.Instance.EventTrigger(GameEvent.StateChanged, "edit");
+                        // 棋子编辑事件（2026-08-19 流程落地）：抽三选一候选（未修改基础棋子，三类型各 1）
+                        // + 抽 6 候选模块（移动/攻击/效果各 2——RandomManager 种子相关）→ 发事件（UI 显示三选一面板）
+                        DrawEditCandidates();
                         break;
                     case EffectType.GrantAbility:
                         _resolver.GrantTempAbility(effect.targetDefId, effect.abilityId); // 给予临时特殊能力
@@ -117,6 +131,65 @@ namespace TheLaw.Gameplay
                 }
             }
             return null;
+        }
+
+        /// <summary>
+        /// 编辑事件候选抽取（2026-08-19 流程落地）：
+        /// ① 三选一：未修改基础棋子（CurrentPrograms 无该棋子 = 无编辑差异）按类型（初始/部署/升变）各随机 1（RandomManager——可复现）；
+        /// ② 6 候选模块：模板库按类型分组（移动/攻击/效果）各随机抽 2（无放回）。
+        /// 结果写 GameState（存档字段）→ 发 EditCandidatesDrawn（UI 三选一面板；选 1 后调 EditorSession.ConfirmEditPiece + BeginEdit）。
+        /// </summary>
+        private void DrawEditCandidates()
+        {
+            // ① 三选一（三类型各抽 1；该组无未修改棋子 → 跳过）
+            var pieces = new List<int>();
+            foreach (var type in new[] { PieceType.Initial, PieceType.Deployable, PieceType.Promoted })
+            {
+                var pool = new List<int>();
+                foreach (var def in ConfigTable.All<PieceDef>())
+                {
+                    if (def.pieceType == type && !_state.CurrentPrograms.ContainsKey(def.Id))
+                    {
+                        pool.Add(def.Id);
+                    }
+                }
+                if (pool.Count > 0)
+                {
+                    pieces.Add(pool[RandomManager.Instance.Range(0, pool.Count)]);
+                }
+            }
+            // ② 6 候选模块（移动/攻击/效果各抽 2；某池为空 → 实际数量可能 < 6——防御）
+            var modules = new List<Template>();
+            var movePool = new List<Template>();
+            var attackPool = new List<Template>();
+            var effectPool = new List<Template>();
+            foreach (var t in TemplateLibrary.All())
+            {
+                if (t is MoveTemplate) movePool.Add(t);
+                else if (t is AttackTemplate) attackPool.Add(t);
+                else if (t is EffectTemplate) effectPool.Add(t);
+            }
+            modules.AddRange(DrawTwo(movePool));
+            modules.AddRange(DrawTwo(attackPool));
+            modules.AddRange(DrawTwo(effectPool));
+
+            _state.EditCandidates = pieces;
+            _state.EditModuleCandidates = modules;
+            EventCenter.Instance.EventTrigger(GameEvent.EditCandidatesDrawn, null);
+        }
+
+        /// <summary>从池随机抽 2（无放回——RandomManager.Range 种子相关可复现）；池空/不足 → 实际数量。</summary>
+        private static List<Template> DrawTwo(List<Template> pool)
+        {
+            var result = new List<Template>();
+            var copy = new List<Template>(pool);
+            while (result.Count < 2 && copy.Count > 0)
+            {
+                int idx = RandomManager.Instance.Range(0, copy.Count);
+                result.Add(copy[idx]);
+                copy.RemoveAt(idx);
+            }
+            return result;
         }
     }
 }

@@ -1,10 +1,10 @@
 {
   "floorName": "floor1",
   "displayName": "第 1 层·试炼场",
-  "description": "测试用第 1 层——基础对战（全灭敌方获胜），3 波敌方（含升变棋子直接部署）",
+  "description": "第 1 层（2026-08-19 策划规则）：敌方每回合 2 AP；3 波间隔 3 回合；波 1 初始棋子随机 4（可重复）、波 2/3 部署棋子随机 4（可重复）；固定站位（Unity 坐标 x=列 y=行——对应策划口述坐标 x=行向下 y=列向右）；每波自动预告离中心最近 2 棋子并在第 3 回合随机升变（RandomManager 可复现）",
   "victoryRule": "WipeOut",
   "targetScore": 0,
-  "enemyMaxAP": 3,
+  "enemyMaxAP": 2,
   "eventSequence": [
     "ability",
     "edit",
@@ -18,21 +18,30 @@
   "waves": [
     {
       "startTurn": 1,
-      "pieceDefIds": ["Soldier", "Soldier", "Swordsman"],
+      "pool": "Initial",
+      "count": 4,
+      "positions": [{"dx":0,"dy":7},{"dx":1,"dy":7},{"dx":6,"dy":7},{"dx":7,"dy":7}],
       "isLastWave": false,
-      "endCountdown": 0
+      "endCountdown": 0,
+      "autoPromote": true
     },
     {
       "startTurn": 4,
-      "pieceDefIds": ["Knight", "ShortArcher"],
+      "pool": "Deployable",
+      "count": 4,
+      "positions": [{"dx":0,"dy":6},{"dx":2,"dy":6},{"dx":5,"dy":6},{"dx":7,"dy":6}],
       "isLastWave": false,
-      "endCountdown": 0
+      "endCountdown": 0,
+      "autoPromote": true
     },
     {
       "startTurn": 7,
-      "pieceDefIds": ["Assassin", "Cannoner"],
+      "pool": "Deployable",
+      "count": 4,
+      "positions": [{"dx":2,"dy":7},{"dx":3,"dy":7},{"dx":4,"dy":7},{"dx":5,"dy":7}],
       "isLastWave": true,
-      "endCountdown": 3
+      "endCountdown": 3,
+      "autoPromote": true
     }
   ]
 }

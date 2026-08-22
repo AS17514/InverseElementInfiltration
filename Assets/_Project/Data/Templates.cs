@@ -70,13 +70,26 @@ namespace TheLaw.Data
     [Serializable]
     public abstract class Template
     {
+        /// <summary>
+        /// 程序块编号（种类内编号，如 Move-1/Attack-2——同结构可复用同 id）。
+        /// JSON modules 手动指定；描述表（slot-descriptions.json）按"种类+编号"查描述；0 = 未编号（回退代码生成）。
+        /// </summary>
+        public int id;
     }
 
-    /// <summary>移动模板：路径选项集合（多条路径独立计算；可达格 = 各路径落点合集；移动方式由模板决定，可编辑）。</summary>
+    /// <summary>移动模板：路径选项集合（多条路径独立计算；可达格 = 各路径落点合集；移动方式由模板决定，可编辑）。
+    /// ⚠️ 2026-08-16：+ jumpOffsets（跳跃落点——与常规路径共存，落点并集；跳跃只查落点合法性，不查中间路径）。</summary>
     [Serializable]
     public class MoveTemplate : Template
     {
         public List<MovePath> paths = new List<MovePath>();
+
+        /// <summary>
+        /// 跳跃落点（2026-08-16）：相对棋子位置的偏移集合（绝对方向——与攻击模板 points 同语义，不随 facing 旋转）。
+        /// 与常规路径共存（GetLegalMoves 落点并集）；跳跃只查落点合法性（界内 + 非占用 + 非障碍），不查中间路径。
+        /// 配置来源：templates.json jumpOffsets / 棋子 JSON 移动模块 jumpOffsets。
+        /// </summary>
+        public List<Vector2Int> jumpOffsets = new List<Vector2Int>();
 
         public MoveTemplate() { }
 
@@ -86,7 +99,25 @@ namespace TheLaw.Data
         }
     }
 
-    /// <summary>攻击模板：可选方向集 + 射程 + 伤害 + 友伤 + 攻击方式（攻击参数全部由模板决定，可编辑）。</summary>
+    /// <summary>攻击射程步（方案 B，2026-08-16）：方向 → 可选射程集合（与移动 MoveStep 同构对称）。
+    /// ranges=[1,2,3] = 该方向 1~3 格皆可攻击；[2] = 固定第 2 格；判定逐格、首个棋子/障碍截断（同直射）。</summary>
+    [Serializable]
+    public class AttackRangeStep
+    {
+        public Direction direction;         // 相对棋子 facing（解析时旋转——与 directions 同语义）
+        public List<int> ranges = new List<int>(); // 可选射程集合
+
+        public AttackRangeStep() { }
+
+        public AttackRangeStep(Direction direction, List<int> ranges)
+        {
+            this.direction = direction;
+            this.ranges = ranges;
+        }
+    }
+
+    /// <summary>攻击模板：可选方向集 + 射程 + 伤害 + 友伤 + 攻击方式（攻击参数全部由模板决定，可编辑）。
+    /// ⚠️ 2026-08-16：+ rangeSteps（方向→射程集合，方案 B）——非空时优先于 directions+range（每方向独立射程）。</summary>
     [Serializable]
     public class AttackTemplate : Template
     {
@@ -97,6 +128,12 @@ namespace TheLaw.Data
         public bool friendlyFire = true;           // 友伤开关（默认 true——"大部分有友伤"）
         public AttackShape shape = AttackShape.Single; // 范围形状（保留——攻击模板不再使用；特殊能力附着用 Cross）
         public List<Vector2Int> points = new List<Vector2Int>(); // 抛射/法术：自由点选攻击点（相对棋子锚点的偏移集合，无射程概念、任意形状、对点攻击无视障碍）
+
+        /// <summary>
+        /// 方向→射程集合（方案 B，2026-08-16）：非空时优先于 directions+range——
+        /// 支持"正前射程 3、两斜各 2"等多方向独立射程；近战 range&gt;1 时逐格、首个棋子/障碍截断（与直射同语义）。
+        /// </summary>
+        public List<AttackRangeStep> rangeSteps = new List<AttackRangeStep>();
 
         public AttackTemplate() { }
 
@@ -111,7 +148,32 @@ namespace TheLaw.Data
         }
     }
 
-    /// <summary>空操作槽（主动编排的"什么都不做"）。</summary>
+    /// <summary>
+    /// 效果模块（EffectTemplate——2026-08-19 数据层落地；**术语规范：模块 = 槽位内容，槽 = 4 个固定位置**）：
+    /// 效果 = 可装备模块（装配即被动获得该能力；价值表 Effect-N）。
+    /// 引用特殊能力资产：abilityKey = SpecialAbilityDef 资产名（如 "Ability_ShieldBlock_OnDamaged_1"——运行时 ConfigTable 查）。
+    /// ⚠️ 执行语义（2026-08-19 确认）：**不耗 AP、被动、有模块即生效**——BattleFlow 执行遇效果模块跳过（不落账不扣费）；
+    /// 能力生效 = PieceInstance.GetAllAbilities 动态并入（装配即生效）。
+    /// </summary>
+    [Serializable]
+    public class EffectTemplate : Template
+    {
+        public string abilityKey; // 特殊能力资产名（templates.json ability 字段；导入器原样填写）
+
+        public EffectTemplate() { }
+
+        public EffectTemplate(string abilityKey)
+        {
+            this.abilityKey = abilityKey;
+        }
+    }
+
+    /// <summary>
+    /// 空操作槽（主动编排的"什么都不做"）。
+    /// ⚠️ 2026-08-15 策划新案：行动槽仅移动/攻击/效果三类——**无跳过槽**。本类保留不删：
+    /// ① 运行时自动跳过机制（BattleFlow 无路可走/无目标 → SkipAction）仍依赖执行分支；
+    /// ② 模板库（templates.json）无 skip 条目——实际不可编排；此分支为兼容保留（暂无用代码）。
+    /// </summary>
     [Serializable]
     public class SkipTemplate : Template
     {

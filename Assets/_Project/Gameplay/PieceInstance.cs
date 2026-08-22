@@ -24,6 +24,7 @@ namespace TheLaw.Gameplay
         public bool isDeployed;                 // 是否已部署上场
         public int waveIndex = -1;              // 所属波次（-1=非波次棋子；每波得分按此累计）
         public int shieldCount;                 // 剩余护盾（抵挡伤害用，一次性不恢复；入快照）
+        public Element element = Element.None;  // 属性（2026-08-20「属性」玩法——创建时随机/复制牌带属性；None=无属性）
 
         public PieceInstance(PieceDef def, Side side, Vector2Int position)
         {
@@ -31,10 +32,34 @@ namespace TheLaw.Gameplay
             _defId = def.Id;
             this.side = side;
             this.position = position;
-            durability = def.durability;
-            facing = def.defaultFacing;
+            ApplyDefProperties(); // 承伤/护盾按 def 初始化（与升变共用同一初始化路径——防属性只初始化一条路径再漏）
+            // 敌方与我方对向——初始朝向翻转（我方朝上/向前，敌方朝下/向后；朝向只在创建时定，升变保留原朝向）
+            facing = side == Side.Enemy ? OppositeFacing(def.defaultFacing) : def.defaultFacing;
             isDeployed = true;
-            shieldCount = GetShieldAmount(); // 初始护盾 = 固有 ShieldBlock 能力 amount 之和
+        }
+
+        /// <summary>
+        /// 按当前 def 重算"def 决定的可变实例属性"（创建与升变共用）。
+        /// ⚠️ 2026-08-12：升变此前只更新 durability、漏了 shieldCount（新身体护盾丢失）——提炼统一方法根治；
+        /// 以后新增"def 决定的可变属性"只需在此添加，创建/升变两条路径自动覆盖。
+        /// </summary>
+        public void ApplyDefProperties()
+        {
+            durability = def.durability;
+            shieldCount = GetShieldAmount(); // 固有 + 临时护盾能力之和（临时能力保留——实例状态不因升变消失）
+        }
+
+        /// <summary>朝向翻转（上下互换/左右互换）——敌方与我方对向。</summary>
+        public static Facing OppositeFacing(Facing f)
+        {
+            switch (f)
+            {
+                case Facing.Up: return Facing.Down;
+                case Facing.Down: return Facing.Up;
+                case Facing.Left: return Facing.Right;
+                case Facing.Right: return Facing.Left;
+                default: return f;
+            }
         }
 
         /// <summary>护盾量 = 该棋子全部 ShieldBlock 能力（固有 + 临时）amount 之和。</summary>
@@ -73,13 +98,46 @@ namespace TheLaw.Gameplay
             return null;
         }
 
-        /// <summary>该棋子全部特殊能力（固有 + 临时）——被动修正/触发/附着的查询源。</summary>
+        /// <summary>
+        /// 该棋子全部特殊能力（固有 + 效果模块装配 + 临时）——被动修正/触发/附着的查询源。
+        /// ⚠️ 2026-08-19 效果模块"装配即生效"（策划确认：不耗 AP、被动、有模块即生效）：
+        /// 程序（实例覆盖① > 编辑差异② > Def 默认③）中的 EffectTemplate 能力动态并入——
+        /// 编辑程序后自动生效（无需重新物化）；能力引用经 ConfigTable.FindByName（abilityKey）。
+        /// ⚠️ 2026-08-19 叠加语义（用户确认"护盾可叠加"）：**不去重**——同能力资产的多个来源（内部模块 +
+        /// 外部模块——如盾兵 Effect-1 + 外部 Effect-4 护盾）按实例各计一次（护盾 1+1=2）；
+        /// 棋子固有能力已迁移为程序效果模块（abilities 字段移除——"特殊能力=行动槽"）。
+        /// </summary>
         public List<SpecialAbilityDef> GetAllAbilities()
         {
             var result = new List<SpecialAbilityDef>();
             if (def != null)
             {
                 result.AddRange(def.specialAbilities);
+            }
+            // 效果模块（装配即生效）：程序中的 EffectTemplate → 能力并入（按实例叠加——不去重）
+            var state = GameState.Instance;
+            if (state != null)
+            {
+                var program = GetProgram(state);
+                if (program != null)
+                {
+                    foreach (var slot in program)
+                    {
+                        if (slot is EffectTemplate effect && !string.IsNullOrEmpty(effect.abilityKey))
+                        {
+                            var ability = ConfigTable.FindByName<SpecialAbilityDef>(effect.abilityKey);
+                            if (ability != null)
+                            {
+                                result.Add(ability);
+                            }
+                            else
+                            {
+                                // ⚠️ 2026-08-19 防御（评审加固）：能力资产名是静默字符串契约——查不到打 Warning（防静默失效）
+                                UnityEngine.Debug.LogWarning($"[PieceInstance] 效果模块能力资产缺失：{effect.abilityKey}（棋子 {DefId}——检查导入/注册）");
+                            }
+                        }
+                    }
+                }
             }
             result.AddRange(tempAbilities);
             return result;

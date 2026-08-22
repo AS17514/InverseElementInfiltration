@@ -3,20 +3,32 @@
     {
       "poolName": "ability_pool",
       "entries": [
-        { "eventId": "ability_relic_range", "weight": 1 },
-        { "eventId": "ability_relic_move", "weight": 1 }
+        {
+          "eventId": "ability_relic_range",
+          "weight": 1
+        },
+        {
+          "eventId": "ability_relic_move",
+          "weight": 1
+        }
       ]
     },
     {
       "poolName": "edit_pool",
       "entries": [
-        { "eventId": "edit_standard", "weight": 1 }
+        {
+          "eventId": "edit_standard",
+          "weight": 1
+        }
       ]
     },
     {
       "poolName": "deck_pool",
       "entries": [
-        { "eventId": "deck_standard", "weight": 1 }
+        {
+          "eventId": "deck_standard",
+          "weight": 1
+        }
       ]
     }
   ],
@@ -24,13 +36,16 @@
     {
       "eventId": "ability_relic_range",
       "title": "神秘遗物",
-      "description": "路边石台上放着一枚鹰眼符石，微微发着光。你感到一股力量在注视着你。",
+      "description": "路边石台上放着一枚鹰眼符石，微微发着光。\n你感到一股力量在注视着你。",
       "options": [
         {
           "optionId": "take_range",
           "label": "拾取鹰眼符石（攻击射程+1）",
           "effects": [
-            { "effectType": "GrantRelic", "relicName": "relic_range" }
+            {
+              "effectType": "GrantRelic",
+              "relicName": "relic_range"
+            }
           ]
         }
       ]
@@ -38,13 +53,16 @@
     {
       "eventId": "ability_relic_move",
       "title": "神秘遗物",
-      "description": "一间废弃的武器铺里，一双疾风之靴静静挂在墙上，仿佛在等待主人。",
+      "description": "一间废弃的武器铺里，\n一双疾风之靴静静挂在墙上，仿佛在等待主人。",
       "options": [
         {
           "optionId": "take_move",
           "label": "拾取疾风之靴（移动步数+1）",
           "effects": [
-            { "effectType": "GrantRelic", "relicName": "relic_move" }
+            {
+              "effectType": "GrantRelic",
+              "relicName": "relic_move"
+            }
           ]
         }
       ]
@@ -52,13 +70,15 @@
     {
       "eventId": "edit_standard",
       "title": "工坊匠人",
-      "description": "一位老匠人打量着你的棋子：『我可以帮你调整行动编排，把新的战术模块嵌进空槽位。』（测试：可向棋子的 4 槽中填入/替换行动模块：移动[正前方1格] / 攻击[后·左·右选一格]）",
+      "description": "一位老匠人打量着你的棋子：\n“我可以帮你调整行动编排，把新的战术模块嵌进空槽位。”\n\n（测试：可向棋子的 4 槽中填入/替换行动模块：\n移动[正前方1格] / 攻击[后·左·右选一格]）",
       "options": [
         {
           "optionId": "start_edit",
           "label": "开始编排（编辑棋子程序）",
           "effects": [
-            { "effectType": "EditProgram" }
+            {
+              "effectType": "EditProgram"
+            }
           ]
         },
         {
@@ -71,13 +91,19 @@
     {
       "eventId": "deck_standard",
       "title": "整备营地",
-      "description": "战斗前最后的整备点。你可以调整随身的棋子牌组，为接下来的战斗做准备。",
+      "description": "战斗前最后的整备点。\n你可以调整随身的棋子牌组，为接下来的战斗做准备。",
+      "deckSizeLimit": 12,
+      "totalValueLimit": 30,
+      "allowDuplicate": true,
+      "promoteLimitByInitial": true,
       "options": [
         {
           "optionId": "start_deck",
-          "label": "构筑牌组（进入战斗）",
+          "label": "构筑牌组（构筑完成后进入战斗）",
           "effects": [
-            { "effectType": "DeckBuild" }
+            {
+              "effectType": "DeckBuild"
+            }
           ]
         }
       ]

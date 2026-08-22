@@ -1,5 +1,6 @@
 using System.Collections.Generic;
 using UnityEngine;
+using UnityEngine.InputSystem;
 
 namespace TheLaw.UI
 {
@@ -14,8 +15,6 @@ namespace TheLaw.UI
     {
         const float CardScale = 0.35f;         // 叠放基准缩放
         const float HoverScale = 0.7f;         // hover 放大（2 倍）
-        const float SparseGap = 15f;           // 牌少：卡间空隙
-        const float DenseReveal = 48f;         // 牌多：每张露出宽度
         const float HoverPushFactor = 0.5f;    // 相邻让位衰减（0.5^距离）
         const float HoverPush = 160f;          // 让位幅度（保序约束：< 4×最小间距=192）
         const float HoverLift = 500f;          // hover 整体上浮（卡顶高出 手牌区顶 500px）
@@ -29,17 +28,23 @@ namespace TheLaw.UI
         float _cardWidth = 100f;
         float _cardHeight = 200f;
         bool _collapsed; // 手牌区收起状态（BattleController 阶段驱动，显式设置）
+        bool _dragging;  // 拖拽中标记：冻结 hover/让位，防被拖卡受布局插值干扰
 
         void Awake()
         {
             _root = (RectTransform)transform;
             // 从父级找 Canvas（跳过自身——Grp_Hand 运行时加了 overrideSorting 子 Canvas，worldCamera 为 null）
             _canvas = transform.parent != null ? transform.parent.GetComponentInParent<Canvas>() : null;
-            // 手牌区独立渲染层（最高 sortingOrder）——hover 卡提层即可盖住手牌区外 UI
-            // 挂在容器上而非卡片上：动态增删卡片 Canvas 会破坏 UGUI 射线（拖拽失效）
+            // 手牌区独立排序，但渲染模式、相机、planeDistance 必须继承根 Canvas。
+            // 子 Canvas 不能混用 Overlay 与父级 ScreenSpaceCamera，否则坐标和射线口径分裂。
             var containerCanvas = GetComponent<Canvas>();
             if (containerCanvas == null) containerCanvas = gameObject.AddComponent<Canvas>();
-            containerCanvas.renderMode = RenderMode.ScreenSpaceOverlay; // 子 Canvas 保持 Overlay（渲染跟随父）——防被升级逻辑误改成 ScreenSpaceCamera
+            if (_canvas != null)
+            {
+                containerCanvas.renderMode = _canvas.renderMode;
+                containerCanvas.worldCamera = _canvas.worldCamera;
+                containerCanvas.planeDistance = _canvas.planeDistance;
+            }
             containerCanvas.overrideSorting = true;
             containerCanvas.sortingOrder = 50;
             if (GetComponent<UnityEngine.UI.GraphicRaycaster>() == null)
@@ -52,6 +57,13 @@ namespace TheLaw.UI
         public void SetCollapsed(bool collapsed)
         {
             _collapsed = collapsed;
+        }
+
+        /// <summary>拖拽中冻结 hover（BattleController 拖拽起止时调用）——被拖卡不再参与 hover 让位/提层，手感更稳。</summary>
+        public void SetDragging(bool dragging)
+        {
+            _dragging = dragging;
+            if (_dragging) SetHover(-1); // 立即清 hover，防拖拽瞬间残留放大/让位
         }
 
         /// <summary>手牌重建后调用：重新收集卡片。instant=true 立即落位（无动画）；false 让布局插值滑动过渡。</summary>
@@ -76,13 +88,7 @@ namespace TheLaw.UI
 
         void Update()
         {
-            // 每帧保证根 Canvas 为 ScreenSpaceCamera（升级时机不可靠——面板创建回调里设置会被某种时机重置）
-            if (_canvas != null && (_canvas.renderMode != RenderMode.ScreenSpaceCamera || _canvas.worldCamera == null))
-            {
-                var uiCam = UnityEngine.Object.FindObjectOfType<UICameraViewport>();
-                _canvas.renderMode = RenderMode.ScreenSpaceCamera;
-                _canvas.worldCamera = uiCam != null ? uiCam.GetComponent<Camera>() : null;
-            }
+            // 根 Canvas 由 PanelBase/UIRoot 装配；布局组件只读，不得每帧改全局 Canvas。
             UpdateHoverBySlot();
             ApplyLayout(instant: false);
         }
@@ -90,6 +96,11 @@ namespace TheLaw.UI
         /// <summary>光标在手牌区内 → 按水平 N 等分 slot 判定 hover 卡（实时切换）。</summary>
         void UpdateHoverBySlot()
         {
+            if (_dragging)
+            {
+                SetHover(-1);
+                return;
+            }
             int n = _cards.Count;
             if (n == 0)
             {
@@ -102,7 +113,8 @@ namespace TheLaw.UI
                 SetHover(-1);
                 return;
             }
-            if (RectTransformUtility.ScreenPointToLocalPointInRectangle(_root, Input.mousePosition, uiCam, out Vector2 local))
+            // 2026-08-12：activeInputHandler=2（纯 Input System）——旧 Input.mousePosition 失效 → 迁移 InputSystem
+            if (RectTransformUtility.ScreenPointToLocalPointInRectangle(_root, Mouse.current != null ? Mouse.current.position.ReadValue() : Vector2.zero, uiCam, out Vector2 local))
             {
                 float halfW = _root.rect.width * 0.5f;
                 // 光标必须完整在手牌区矩形内（x + y）
@@ -148,12 +160,8 @@ namespace TheLaw.UI
             float cardW = _cardWidth * CardScale;          // 显示宽 270.7
             float halfW = _root.rect.width * 0.5f;         // 570
 
-            // 间距：≤4 展开（卡宽+15），≥8 堆叠（露出 48），中间平滑插值
-            float expanded = cardW + SparseGap;
-            float spacing;
-            if (n <= 4) spacing = expanded;
-            else if (n >= 8) spacing = DenseReveal;
-            else spacing = Mathf.Lerp(expanded, DenseReveal, Mathf.SmoothStep(0f, 1f, (n - 4) / 4f));
+            // 间距 = 手牌区全宽均分——与 UpdateHoverBySlot 的 N 等分判定完全对齐（显示位置 = hover 触发区域）
+            float spacing = n > 0 ? _root.rect.width / n : 0f;
 
             // y：基础 = 顶部贴当前手牌区顶（随收起自适应）；hover = 上浮基准固定（展开态 250 高度）——
             // 收起时补齐高度差，上浮卡顶不因手牌区变矮而降低

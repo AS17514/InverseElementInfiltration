@@ -1,0 +1,4 @@
+{
+  "_note": "编辑规则配置（2026-08-19）：replacedModuleVisibility = show（被替换模块进候选池展示——双池/隐藏格，可放回；默认）/ hide（策划方案：被替换模块候选区直接隐藏——回退靠撤销/还原；模块数据永不删除）。切换后重启生效。",
+  "replacedModuleVisibility": "show"
+}

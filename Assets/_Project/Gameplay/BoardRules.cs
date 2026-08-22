@@ -26,14 +26,14 @@ namespace TheLaw.Gameplay
 
         public bool IsCellPassable(GameState state, Vector2Int cell)
         {
-            // 落点可通行 = 界内 + 无障碍物 + 无棋子占用（落点不可重叠）
-            return IsInsideBoard(cell) && !state.Obstacles.Contains(cell) && !IsCellOccupied(state, cell);
+            // 落点可通行 = 界内 + 无障碍物（含麻将墙——2026-08-20 统一 IsBlocked）+ 无棋子占用（落点不可重叠）
+            return IsInsideBoard(cell) && !state.IsBlocked(cell) && !IsCellOccupied(state, cell);
         }
 
-        /// <summary>路径格可通行 = 界内 + 无障碍物（棋子可穿过——路径经过棋子不阻挡）。</summary>
+        /// <summary>路径格可通行 = 界内 + 无障碍物（棋子可穿过——路径经过棋子不阻挡；2026-08-20 统一 IsBlocked 含麻将墙）。</summary>
         public bool IsPathCellPassable(GameState state, Vector2Int cell)
         {
-            return IsInsideBoard(cell) && !state.Obstacles.Contains(cell);
+            return IsInsideBoard(cell) && !state.IsBlocked(cell);
         }
 
         public bool IsPathClear(GameState state, PieceInstance piece, Vector2Int to)
@@ -49,6 +49,7 @@ namespace TheLaw.Gameplay
         /// 每条路径独立计算（起点 = 棋子位置）：段序列顺序执行，段间从各终点继续；
         /// 段内 moves（方向→可选步数）选一个执行——段内多选项产生多个终点（分支）。
         /// 路径格检查：界内 + 非障碍（棋子可穿过）；落点 = 最后一段终点，额外检查非占用（不可重叠）。
+        /// 【方向语义】MoveStep.direction = 相对棋子 facing（正前方）——解析时按 facing 旋转到世界方向。
         /// 解析时应用被动修正：步数 + MoveStep 修正（作用于每段每个选项）。
         /// </summary>
         public List<Vector2Int> GetLegalMoves(GameState state, PieceInstance piece, MoveTemplate template)
@@ -70,7 +71,7 @@ namespace TheLaw.Gameplay
                             foreach (var k in move.steps)
                             {
                                 int steps = k + stepModifier;
-                                var dirVec = DirectionToVector(move.direction);
+                                var dirVec = RotateVector(DirectionToVector(move.direction), piece.facing); // 相对 facing → 世界方向
                                 var cursor = start;
                                 bool blocked = false;
                                 for (int i = 0; i < steps; i++)
@@ -108,6 +109,16 @@ namespace TheLaw.Gameplay
                     }
                 }
             }
+            // 跳跃落点（2026-08-16）：相对棋子位置偏移（绝对方向——与攻击 points 同语义，不随 facing 旋转）；
+            // 与常规路径共存（落点并集）；跳跃只查落点合法性（界内 + 非占用 + 非障碍），不查中间路径
+            foreach (var offset in template.jumpOffsets)
+            {
+                var cell = piece.position + offset;
+                if (IsCellPassable(state, cell))
+                {
+                    reachable.Add(cell);
+                }
+            }
             return new List<Vector2Int>(reachable);
         }
 
@@ -122,6 +133,8 @@ namespace TheLaw.Gameplay
         ///       近战     → 射程 1（相邻格，无阻挡概念）
         ///       近战群攻 → 范围内全部格子被攻击（玩家选一格仅作确认；无阻挡概念）
         /// 攻击时玩家从候选格集合中选一格（普通攻击打所选格；近战群攻打范围内全部）。
+        /// 【方向语义】directions = 相对棋子 facing（正前方）——解析时按 facing 旋转到世界方向
+        ///   （敌方 facing 已镜像——Up↔Down——方向自动朝向我方，无需额外按阵营翻转）
         /// 解析时应用被动修正：射程 + AttackRange 修正（对点模式不适用）。
         /// </summary>
         public List<Vector2Int> GetAttackableCells(GameState state, PieceInstance piece, AttackTemplate template)
@@ -142,6 +155,39 @@ namespace TheLaw.Gameplay
             }
 
             var result = new List<Vector2Int>();
+
+            // 方案 B：方向→射程集合（2026-08-16）——每方向独立射程（如正前 3、两斜各 2）；
+            // 近战/直射：逐格、首个棋子/障碍截断（近战 range>1 语义同直射——第一格有棋只能打第一格）；
+            // 近战群攻：范围内全部不截断；被动射程修正逐方向作用
+            if (template.rangeSteps.Count > 0)
+            {
+                int rangeMod = GetPassiveModifier(state, piece, PassiveTarget.AttackRange);
+                foreach (var step in template.rangeSteps)
+                {
+                    int maxR = 0;
+                    foreach (var r in step.ranges) maxR = Mathf.Max(maxR, r);
+                    if (maxR <= 0) continue;
+                    var dirVec = RotateVector(DirectionToVector(step.direction), piece.facing);
+                    var cursor = piece.position;
+                    for (int i = 1; i <= maxR + rangeMod; i++)
+                    {
+                        cursor += dirVec;
+                        if (!IsInsideBoard(cursor)) break;
+                        bool inRange = step.ranges.Contains(i - rangeMod);
+                        if (template.mode == AttackMode.MeleeAOE)
+                        {
+                            if (inRange) result.Add(cursor); // 群攻：范围内全部被攻击，不截断
+                            continue;
+                        }
+                        // 近战/直射：障碍截断 + 首个棋子截断（目标并截断；2026-08-20 统一 IsBlocked 含麻将墙）
+                        if (state.IsBlocked(cursor)) break;
+                        if (inRange) result.Add(cursor);
+                        if (IsCellOccupied(state, cursor)) break;
+                    }
+                }
+                return result;
+            }
+
             int range = template.range + GetPassiveModifier(state, piece, PassiveTarget.AttackRange);
             for (int dir = 1; dir <= (int)Direction.DownRight; dir <<= 1)
             {
@@ -149,7 +195,7 @@ namespace TheLaw.Gameplay
                 {
                     continue;
                 }
-                var dirVec = DirectionToVector((Direction)dir);
+                var dirVec = RotateVector(DirectionToVector((Direction)dir), piece.facing); // 相对 facing → 世界方向
                 var cursor = piece.position;
                 for (int i = 0; i < range; i++)
                 {
@@ -158,10 +204,11 @@ namespace TheLaw.Gameplay
                     {
                         break;
                     }
-                    if (template.mode == AttackMode.DirectFire)
+                    if (template.mode == AttackMode.DirectFire || template.mode == AttackMode.Melee)
                     {
-                        // 直射：障碍物格截断（不可达）；棋子格 = 目标并截断（第一个可攻击物阻挡）
-                        if (state.Obstacles.Contains(cursor))
+                        // 直射/近战（2026-08-16：近战 range>1 语义同直射——逐格、首个棋子/障碍截断；range=1 无差别）：
+                        // 障碍物格截断（不可达）；棋子格 = 目标并截断（第一个可攻击物阻挡；2026-08-20 统一 IsBlocked 含麻将墙）
+                        if (state.IsBlocked(cursor))
                         {
                             break;
                         }
@@ -172,7 +219,7 @@ namespace TheLaw.Gameplay
                         }
                         continue;
                     }
-                    // 近战/近战群攻/抛射/法术（points 空回退）：无视障碍
+                    // 近战群攻/抛射/法术（points 空回退）：无视障碍
                     result.Add(cursor);
                 }
             }
@@ -251,6 +298,26 @@ namespace TheLaw.Gameplay
         }
 
         // ========== 工具 ==========
+
+        /// <summary>
+        /// 相对方向向量按棋子 facing 旋转到世界方向（方向语义：directions = 相对正前方）。
+        /// 旋转表：Up 无旋转 / Down 180° / Left 90° / Right -90°（向量变换验证）。
+        /// </summary>
+        private Vector2Int RotateVector(Vector2Int v, Facing facing)
+        {
+            switch (facing)
+            {
+                case Facing.Down:
+                    return new Vector2Int(-v.x, -v.y); // 180°
+                case Facing.Left:
+                    return new Vector2Int(-v.y, v.x);  // 相对Up(0,1)→世界Left(-1,0)
+                case Facing.Right:
+                    return new Vector2Int(v.y, -v.x);  // 相对Up(0,1)→世界Right(1,0)
+                case Facing.Up:
+                default:
+                    return v; // 无旋转（默认正前方=世界上方）
+            }
+        }
 
         private Vector2Int DirectionToVector(Direction dir)
         {

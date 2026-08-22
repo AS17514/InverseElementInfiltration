@@ -19,19 +19,25 @@ MonoBehaviour:
   durability: 1
   footprint: 0
   defaultFacing: 0
-  specialAbilities:
-  - {fileID: 11400000, guid: ef89ead9d7aa079469803dc3920f382e, type: 2}
+  specialAbilities: []
   programSet:
   - slots:
-    - rid: 7823913780353171495
-    - rid: 7823913780353171496
+    - rid: 7823914081908686881
+    - rid: 7823914081908686882
+    - rid: 7823914081908686883
   promotionConfigId: 0
   references:
     version: 2
     RefIds:
-    - rid: 7823913780353171495
+    - rid: 7823914081908686881
+      type: {class: EffectTemplate, ns: TheLaw.Data, asm: Data}
+      data:
+        id: 1
+        abilityKey: Ability_ShieldBlock_OnDamaged_1
+    - rid: 7823914081908686882
       type: {class: MoveTemplate, ns: TheLaw.Data, asm: Data}
       data:
+        id: 4
         paths:
         - segments:
           - moves:
@@ -41,9 +47,11 @@ MonoBehaviour:
               steps: 01000000
             - direction: 32
               steps: 01000000
-    - rid: 7823913780353171496
+        jumpOffsets: []
+    - rid: 7823914081908686883
       type: {class: AttackTemplate, ns: TheLaw.Data, asm: Data}
       data:
+        id: 1
         mode: 0
         directions: 1
         range: 1
@@ -51,3 +59,4 @@ MonoBehaviour:
         friendlyFire: 1
         shape: 0
         points: []
+        rangeSteps: []

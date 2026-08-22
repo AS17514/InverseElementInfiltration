@@ -17,8 +17,23 @@ MonoBehaviour:
     m_SerializedData: []
   m_GUID: 892f34792af6aac4ebf2853746d97501
   m_SerializeEntries:
+  - m_GUID: 1459885f645322748bb724c581742915
+    m_Address: Tag_WaveNode
+    m_ReadOnly: 0
+    m_SerializedLabels: []
+    FlaggedDuringContentUpdateRestriction: 0
   - m_GUID: 1c800e9f11fd543489c70a6725f57e7d
     m_Address: LoadingPanel
+    m_ReadOnly: 0
+    m_SerializedLabels: []
+    FlaggedDuringContentUpdateRestriction: 0
+  - m_GUID: 24a7f68fdc5d5ed44b45220b531a4acb
+    m_Address: ItemGettingPanel
+    m_ReadOnly: 0
+    m_SerializedLabels: []
+    FlaggedDuringContentUpdateRestriction: 0
+  - m_GUID: 29bf12b147abb444e8f60bcf197798f0
+    m_Address: EditCandidatePanel
     m_ReadOnly: 0
     m_SerializedLabels: []
     FlaggedDuringContentUpdateRestriction: 0
@@ -37,13 +52,13 @@ MonoBehaviour:
     m_ReadOnly: 0
     m_SerializedLabels: []
     FlaggedDuringContentUpdateRestriction: 0
-  - m_GUID: 6c3fa049300e2b7489fde55e9ea3b506
-    m_Address: EditPanel
+  - m_GUID: 762d95d0ad199124da63764f776ae705
+    m_Address: PieceEditPanel
     m_ReadOnly: 0
     m_SerializedLabels: []
     FlaggedDuringContentUpdateRestriction: 0
-  - m_GUID: 762d95d0ad199124da63764f776ae705
-    m_Address: PieceEditPanel
+  - m_GUID: 78f53f3ccb515474389ee0dd142b4b5e
+    m_Address: Tag_DeckLimit
     m_ReadOnly: 0
     m_SerializedLabels: []
     FlaggedDuringContentUpdateRestriction: 0
@@ -67,18 +82,18 @@ MonoBehaviour:
     m_ReadOnly: 0
     m_SerializedLabels: []
     FlaggedDuringContentUpdateRestriction: 0
-  - m_GUID: 8d2878eea917a4a429b959435a569a47
-    m_Address: SettingsPanel
+  - m_GUID: 9555e7c0417a2d94bb6b1f6036e327d6
+    m_Address: ConfirmPanel
     m_ReadOnly: 0
     m_SerializedLabels: []
     FlaggedDuringContentUpdateRestriction: 0
   - m_GUID: a4c6d20acbc7860479ac44fc12e5fccf
-    m_Address: BehaviorTooltip
+    m_Address: TipPanel
     m_ReadOnly: 0
     m_SerializedLabels: []
     FlaggedDuringContentUpdateRestriction: 0
-  - m_GUID: b7bea0b451040c34d9181aaf50364ecd
-    m_Address: SaveLoadPanel
+  - m_GUID: b5ff9ad8e5f797348b50f16e552b1d41
+    m_Address: Image
     m_ReadOnly: 0
     m_SerializedLabels: []
     FlaggedDuringContentUpdateRestriction: 0
@@ -97,8 +112,8 @@ MonoBehaviour:
     m_ReadOnly: 0
     m_SerializedLabels: []
     FlaggedDuringContentUpdateRestriction: 0
-  - m_GUID: c56ad6bd754007847b4ea8108fb7a50a
-    m_Address: ConfirmPanel
+  - m_GUID: d0ea73cd91b7cc94096e9a5ac020fe31
+    m_Address: SettingsPanel
     m_ReadOnly: 0
     m_SerializedLabels: []
     FlaggedDuringContentUpdateRestriction: 0

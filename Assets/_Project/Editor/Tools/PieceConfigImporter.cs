@@ -8,10 +8,13 @@ using Newtonsoft.Json;
 namespace TheLaw.EditorTools
 {
     /// <summary>
-    /// 棋子配置导入器：读取 Assets/Data/Pieces/*.json（配置器导出）→ 生成 PieceDef SO 资产。
+    /// 棋子配置导入器：读取 Assets/Data/Pieces/*.json（配置器导出）→ 生成/更新 PieceDef SO 资产。
     /// 菜单：工具 → 导入棋子配置（JSON）
     /// 资产落位：棋子 → Assets/Settings/Pieces/；特殊能力 → Assets/Settings/Abilities/（按能力指纹去重复用）
     /// 命名：资产名 = assetName（英文）；displayName = pieceName（中文显示）；Id = 稳定哈希（assetName，重复导入不变）
+    /// ⚠️ 增量模式（2026-08-09）：资产已存在 → 更新字段不删建（GUID 不变，场景引用不断）；
+    ///    不存在 → 新建。旧"清空重建"模式已废弃（删旧建新会让场景 Bootstrap 引用全部断掉）。
+    /// 程序块编号：JSON modules 的 id 字段（种类内编号，同结构可复用同 id——描述表按"种类+编号"查描述）。
     /// </summary>
     public static class PieceConfigImporter
     {
@@ -25,12 +28,15 @@ namespace TheLaw.EditorTools
             EnsureFolder(PieceAssetsDir);
             EnsureFolder(AbilityAssetsDir);
 
-            ClearAssetsIn(PieceAssetsDir); // 清空旧棋子资产（重建——防残留/改名遗留）
-
             var jsonFiles = Directory.GetFiles(PiecesJsonDir, "*.json");
             int ok = 0;
             foreach (var file in jsonFiles)
             {
+                // 描述表（*descriptions.json——文案数据）不是棋子配置——跳过（防误解析报格式错误）
+                if (Path.GetFileName(file).EndsWith("-descriptions.json"))
+                {
+                    continue;
+                }
                 try
                 {
                     if (ImportOne(file))
@@ -44,7 +50,7 @@ namespace TheLaw.EditorTools
                 }
             }
             AssetDatabase.SaveAssets();
-            Debug.Log($"[导入器] 完成：{ok}/{jsonFiles.Length} 个棋子导入成功");
+            Debug.Log($"[导入器] 完成：{ok}/{jsonFiles.Length} 个棋子导入成功（增量模式——GUID 不变）");
         }
 
         private static bool ImportOne(string jsonPath)
@@ -71,9 +77,15 @@ namespace TheLaw.EditorTools
                 }
             }
 
-            // 棋子资产（目录已清空——直接创建）
+            // 棋子资产（增量模式：已存在 → 更新字段不删建——GUID 不变，场景引用不断；不存在 → 新建）
             string assetPath = $"{PieceAssetsDir}/{assetName}.asset";
-            var piece = ScriptableObject.CreateInstance<PieceDef>();
+            var piece = AssetDatabase.LoadAssetAtPath<PieceDef>(assetPath);
+            bool created = piece == null;
+            if (created)
+            {
+                piece = ScriptableObject.CreateInstance<PieceDef>();
+                AssetDatabase.CreateAsset(piece, assetPath);
+            }
             piece.name = assetName;
             piece.displayName = dto.pieceName; // 中文显示名
             piece.pieceType = ParseEnum(dto.pieceType, PieceType.Initial);
@@ -82,7 +94,8 @@ namespace TheLaw.EditorTools
             piece.footprint = ParseEnum(dto.footprint, Footprint.Size1x1);
             piece.specialAbilities = abilities;
 
-            // 程序（默认模组 = programSet[0]）
+            // 程序（默认模组 = programSet[0]；增量更新先清空防叠加）
+            piece.programSet.Clear();
             if (dto.modules != null && dto.modules.Count > 0)
             {
                 var slots = new List<Template>();
@@ -97,9 +110,26 @@ namespace TheLaw.EditorTools
                 piece.programSet.Add(new ProgramDef(slots));
             }
 
-            AssetDatabase.CreateAsset(piece, assetPath);
-            SetId(piece, StableHash(assetName)); // 稳定 Id（按资产名哈希——重复导入不变）
-            Debug.Log($"[导入器] 导入：{dto.pieceName}（{assetName}，模块 {(piece.programSet.Count > 0 ? piece.programSet[0].slots.Count : 0)} 个，能力 {abilities.Count} 个，Id={StableHash(assetName)}）");
+            if (piece.Id == 0)
+            {
+                SetId(piece, StableHash(assetName)); // 稳定 Id（按资产名哈希——幂等：已有 Id 不重设）
+            }
+            // ⚠️ 2026-08-19 防御（评审加固）：旧资产双轨检测——固有能力（specialAbilities）与程序效果模块并存
+            // （未重跑导入的旧棋子资产仍带 abilities → GetAllAbilities 双计——如旧盾兵 2 护盾）——重导入即清空，检测告警
+            if (abilities.Count > 0 && piece.programSet.Count > 0)
+            {
+                bool hasEffectModule = false;
+                foreach (var slot in piece.programSet[0].slots)
+                {
+                    if (slot is EffectTemplate) { hasEffectModule = true; break; }
+                }
+                if (hasEffectModule)
+                {
+                    Debug.LogWarning($"[导入器] {dto.pieceName}：固有能力与程序效果模块并存（{abilities.Count} 个能力）——请确认已迁移（能力应只由效果模块表达）");
+                }
+            }
+            EditorUtility.SetDirty(piece); // 增量更新必须标脏（新建资产 CreateAsset 已标）
+            Debug.Log($"[导入器] {(created ? "新建" : "更新")}：{dto.pieceName}（{assetName}，模块 {(piece.programSet.Count > 0 ? piece.programSet[0].slots.Count : 0)} 个，能力 {abilities.Count} 个，Id={piece.Id}）");
             return true;
         }
 
@@ -107,21 +137,36 @@ namespace TheLaw.EditorTools
 
         private static Template ParseModule(ModuleJson m)
         {
+            Template template;
             switch (m.moduleType)
             {
                 case "Move":
-                    return ParseMove(m);
+                    template = ParseMove(m);
+                    break;
                 case "Melee":
                 case "MeleeAOE":
                 case "DirectFire":
-                    return ParseDirectionalAttack(m);
+                    template = ParseDirectionalAttack(m);
+                    break;
                 case "Arcing":
                 case "Spell":
-                    return ParsePointAttack(m);
+                    template = ParsePointAttack(m);
+                    break;
+                case "Effect":
+                    // 效果模块（2026-08-19 内部效果模块——棋子默认程序最上面）：ability 内嵌定义 →
+                    // 生成能力资产（GetOrCreateAbility 指纹去重——盾兵护盾/外部 Effect-4 同资产）+ abilityKey 引用资产名
+                    var effectAbility = m.ability != null ? GetOrCreateAbility(m.ability) : null;
+                    template = new EffectTemplate { abilityKey = effectAbility != null ? effectAbility.name : null };
+                    break;
                 default:
                     Debug.LogWarning($"[导入器] 未知模块类型：{m.moduleType}");
                     return null;
             }
+            if (template != null)
+            {
+                template.id = m.id; // 程序块编号（种类内编号，同结构可复用——描述表按此查）
+            }
+            return template;
         }
 
         private static Template ParseMove(ModuleJson m)
@@ -156,11 +201,38 @@ namespace TheLaw.EditorTools
                 }
                 template.paths.Add(movePath);
             }
+            // 跳跃落点（2026-08-16：棋子 JSON 移动模块 jumpOffsets——与模板库同构）
+            if (m.jumpOffsets != null)
+            {
+                foreach (var p in m.jumpOffsets)
+                {
+                    template.jumpOffsets.Add(new Vector2Int(p.dx, p.dy));
+                }
+            }
             return template;
         }
 
         private static Template ParseDirectionalAttack(ModuleJson m)
         {
+            // 方案 B（2026-08-16）：方向→射程集合（每方向独立射程）——非空优先
+            if (m.rangeSteps != null && m.rangeSteps.Count > 0)
+            {
+                var atkSteps = new AttackTemplate
+                {
+                    mode = ParseEnum(m.moduleType, AttackMode.Melee),
+                    damage = m.damage,
+                    friendlyFire = m.friendlyFire,
+                };
+                foreach (var rs in m.rangeSteps)
+                {
+                    atkSteps.rangeSteps.Add(new AttackRangeStep
+                    {
+                        direction = ParseDirection(rs.direction),
+                        ranges = rs.ranges != null ? new List<int>(rs.ranges) : new List<int>(),
+                    });
+                }
+                return atkSteps;
+            }
             return new AttackTemplate(
                 ParseEnum(m.moduleType, AttackMode.Melee),
                 ParseDirections(m.directions),
@@ -226,6 +298,14 @@ namespace TheLaw.EditorTools
                 ability.attachShape = ParseEnum(a.attachShape, AttackShape.Cross);
                 ability.attachDamage = a.attachDamage;
             }
+            else if (ability.type == SpecialAbilityType.Passive)
+            {
+                // ⚠️ 2026-08-13：补 Passive 分支（原只有 Trigger/Attach——Passive JSON 会被误解析成 Trigger；
+                // 解析逻辑与关卡导入器 ConfigImporter 的 Passive 实现一致）
+                ability.passiveTarget = ParseEnum(a.passiveTarget, PassiveTarget.AttackRange);
+                ability.passiveValue = a.passiveValue;
+                ability.applyBeforeResolve = a.applyBeforeResolve;
+            }
             AssetDatabase.CreateAsset(ability, path);
             SetId(ability, StableHash(name)); // 能力稳定 Id（按指纹名哈希）
             return ability;
@@ -236,7 +316,11 @@ namespace TheLaw.EditorTools
             // 按能力参数生成去重名（同参数共享同一资产）
             if (a.type == "Attach")
             {
-                return $"Ability_Attach_{a.attachPoint ?? "OnAttack"}_{a.attachShape ?? "Cross"}";
+                // ⚠️ 2026-08-13：补 attachDamage 区分——原指纹不含伤害，不同 attachDamage 的附着能力错误共享资产；
+                // ⚠️ 2026-08-19：attachDamage=0（沿用主伤害——默认）**不带后缀**（兼容旧资产名 Ability_Attach_OnAttack_Cross——
+                // 旧资产已注册 Bootstrap；避免生成 _0 孤立资产未注册导致能力查不到）；非 0 带后缀区分
+                string damageSuffix = a.attachDamage != 0 ? $"_{a.attachDamage}" : "";
+                return $"Ability_Attach_{a.attachPoint ?? "OnAttack"}_{a.attachShape ?? "Cross"}{damageSuffix}";
             }
             return $"Ability_{a.effect ?? "Effect"}_{a.triggerPoint ?? "Trigger"}_{a.amount}";
         }
@@ -250,20 +334,6 @@ namespace TheLaw.EditorTools
                 string parent = Path.GetDirectoryName(path).Replace('\\', '/');
                 string folder = Path.GetFileName(path);
                 AssetDatabase.CreateFolder(parent, folder);
-            }
-        }
-
-        /// <summary>清空目录内全部资产（重建用——防残留/改名遗留）。</summary>
-        private static void ClearAssetsIn(string dir)
-        {
-            if (!AssetDatabase.IsValidFolder(dir))
-            {
-                return;
-            }
-            foreach (var guid in AssetDatabase.FindAssets("t:Object", new[] { dir }))
-            {
-                var path = AssetDatabase.GUIDToAssetPath(guid);
-                AssetDatabase.DeleteAsset(path);
             }
         }
 
@@ -327,13 +397,18 @@ namespace TheLaw.EditorTools
         private class ModuleJson
         {
             public string moduleType;
+            public int id;                            // 程序块编号（种类内编号，同结构可复用；0=未编号回退代码生成）
             public List<PathJson> paths;              // Move
+            public List<PointJson> jumpOffsets;       // Move 跳跃落点（2026-08-16）
+            public List<AttackRangeStepJson> rangeSteps; // 攻击：方向→射程集合（方案 B，2026-08-16）
             public List<string> directions;           // 方向集攻击
             public int range;
             public int damage;
             public bool friendlyFire;
             public List<PointJson> points;            // 抛射/法术自由点选
+            public AbilityJson ability;               // Effect：能力内嵌定义（导入器生成能力资产 + abilityKey 引用）
         }
+        private class AttackRangeStepJson { public string direction; public List<int> ranges; }
 
         private class PathJson
         {
@@ -359,13 +434,16 @@ namespace TheLaw.EditorTools
 
         private class AbilityJson
         {
-            public string type;          // Trigger / Attach
+            public string type;          // Trigger / Attach / Passive
             public string triggerPoint;  // OnKill / OnDamaged / ...
             public string effect;        // ExtraAction / ShieldBlock / ...
             public int amount;
             public string attachPoint;   // OnAttack
             public string attachShape;   // Cross
             public int attachDamage;
+            public string passiveTarget; // Passive（2026-08-13 补：MoveStep/AttackDamage/AttackRange/Durability）
+            public int passiveValue;
+            public bool applyBeforeResolve = true;
         }
     }
 }

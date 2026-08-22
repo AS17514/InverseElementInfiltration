@@ -10,8 +10,10 @@ namespace TheLaw.Core
     /// </summary>
     public class RandomManager : BaseManager<RandomManager>, ISnapshot
     {
-        private Random _random = new Random(0);
-        private int _seed;
+        // ⚠️ 2026-08-13：启动随机种子（原固定 0 → 每次 play 抽取序列完全确定 → 事件池永远抽同一事件"每次疾风之靴"）。
+        // 读档路径 FromJson 会用存档种子覆盖（序列可复现保留）；SetSeed 供测试复现。
+        private Random _random = new Random(Environment.TickCount);
+        private int _seed = Environment.TickCount;
         private int _callCount;
 
         public string Key => "RandomManager";
@@ -24,11 +26,15 @@ namespace TheLaw.Core
             _random = new Random(seed);
         }
 
-        /// <summary>[minInclusive, maxExclusive) 随机整数。</summary>
+        /// <summary>[minInclusive, maxExclusive) 随机整数。
+        /// ⚠️ 2026-08-19：改用 NextDouble 实现（原 `_random.Next(min,max)` 整数消耗与 FromJson 重放的
+        /// NextDouble 补不一致 → 读档序列漂移——记忆 #18 警告场景；同款 NextDouble 补必然对齐）。</summary>
         public int Range(int minInclusive, int maxExclusive)
         {
             _callCount++;
-            return _random.Next(minInclusive, maxExclusive);
+            int span = maxExclusive - minInclusive;
+            if (span <= 0) return minInclusive;
+            return minInclusive + (int)(_random.NextDouble() * span);
         }
 
         /// <summary>加权随机取一项（事件池抽取等）。items 空抛异常。</summary>
@@ -69,10 +75,13 @@ namespace TheLaw.Core
             _seed = state.Seed;
             _callCount = state.CallCount;
             _random = new Random(_seed);
-            // 重放 _callCount 次调用（保证读档后序列与存档时一致）
+            // 重放 _callCount 次调用（保证读档后序列与存档时一致）。
+            // ⚠️ 2026-08-13：补的方式必须与消耗方式一致（调用端只用 NextDouble——事件池抽取）——
+            // 原用 Next() 整数补，两种方式内部消耗的随机原料数可能不同（旧 .NET 实现）→ 补不齐序列漂移。
+            // 用同款 NextDouble 补 → 无论内部消耗几份原料都必然对齐。
             for (int i = 0; i < _callCount; i++)
             {
-                _random.Next();
+                _random.NextDouble();
             }
         }
 

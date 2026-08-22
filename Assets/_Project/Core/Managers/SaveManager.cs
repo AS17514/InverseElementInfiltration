@@ -1,5 +1,6 @@
 using System.Collections.Generic;
 using System.IO;
+using System.Linq;
 using Newtonsoft.Json;
 using UnityEngine;
 
@@ -13,6 +14,8 @@ namespace TheLaw.Core
     {
         private readonly Dictionary<string, ISnapshot> _snapshots = new Dictionary<string, ISnapshot>();
 
+        private const int MaxHistoryCount = 5; // 历史存档保留上限（2026-08-13：整局结束归档保留 N 份，超出删除最旧——排查可回溯）
+
         private string SavePath => Path.Combine(Application.persistentDataPath, "save.json");
 
         /// <summary>注册快照（构造期由 Bootstrap 调用；重复注册覆盖）。</summary>
@@ -21,31 +24,94 @@ namespace TheLaw.Core
             _snapshots[snapshot.Key] = snapshot;
         }
 
-        /// <summary>保存全部快照（key → json 打包为一个文件）。</summary>
+        /// <summary>
+        /// 保存全部快照（key → json 打包为一个文件）。
+        /// ⚠️ 2026-08-13 原子写：先写临时文件再替换——防"写到一半进程被杀"留下半个 JSON 损坏存档。
+        /// </summary>
         public void SaveAll()
+        {
+            string tmpPath = SavePath + ".tmp";
+            File.WriteAllText(tmpPath, JsonConvert.SerializeObject(CollectBundle()));
+            if (File.Exists(SavePath))
+            {
+                File.Delete(SavePath);
+            }
+            File.Move(tmpPath, SavePath);
+        }
+
+        /// <summary>
+        /// 整局结束归档（2026-08-13）：当前局完整状态（含回放）存为历史存档——排查可回溯。
+        /// ⚠️ 主档随后由收尾链清空（ResetForNewRun + SaveAll）——历史档保留最近 N 份，超出删除最旧。
+        /// 触发点：Bootstrap.FinalizeRun（ResetForNewRun 之前调用——必须存局终完整状态）。
+        /// </summary>
+        public void ArchiveHistory()
+        {
+            try
+            {
+                string stamp = System.DateTime.Now.ToString("yyyyMMdd_HHmmss");
+                string path = Path.Combine(Application.persistentDataPath, $"save_history_{stamp}.json");
+                File.WriteAllText(path, JsonConvert.SerializeObject(CollectBundle()));
+                CleanupHistory();
+            }
+            catch (System.Exception e)
+            {
+                UnityEngine.Debug.LogError($"[SaveManager] 历史归档失败：{e.Message}");
+            }
+        }
+
+        /// <summary>收集全部快照（key → json——SaveAll/ArchiveHistory 共用）。</summary>
+        private Dictionary<string, string> CollectBundle()
         {
             var bundle = new Dictionary<string, string>();
             foreach (var pair in _snapshots)
             {
                 bundle[pair.Key] = pair.Value.ToJson();
             }
-            File.WriteAllText(SavePath, JsonConvert.SerializeObject(bundle));
+            return bundle;
         }
 
-        /// <summary>读取全部快照并分发（文件不存在则跳过）。</summary>
+        /// <summary>清理历史存档：数量超过上限 → 删除最旧（文件名 yyyyMMdd_HHmmss 字典序 = 时间序）。</summary>
+        private void CleanupHistory()
+        {
+            var files = System.IO.Directory.GetFiles(Application.persistentDataPath, "save_history_*.json")
+                .OrderBy(f => f).ToList();
+            while (files.Count > MaxHistoryCount)
+            {
+                File.Delete(files[0]);
+                files.RemoveAt(0);
+            }
+        }
+
+        /// <summary>
+        /// 读取全部快照并分发（文件不存在则跳过）。
+        /// ⚠️ 2026-08-13 健壮性：损坏存档（半个 JSON/解析异常）→ 跳过不崩（LogError），后续快照不恢复——
+        /// 宁可丢存档也不崩游戏（原实现异常上抛中断 LoadAll）。
+        /// </summary>
         public void LoadAll()
         {
             if (!File.Exists(SavePath))
             {
                 return;
             }
-            var bundle = JsonConvert.DeserializeObject<Dictionary<string, string>>(File.ReadAllText(SavePath));
-            foreach (var pair in bundle)
+            try
             {
-                if (_snapshots.TryGetValue(pair.Key, out var snapshot))
+                var bundle = JsonConvert.DeserializeObject<Dictionary<string, string>>(File.ReadAllText(SavePath));
+                if (bundle == null)
                 {
-                    snapshot.FromJson(pair.Value);
+                    UnityEngine.Debug.LogError("[SaveManager] 存档为空或格式错误——跳过读档");
+                    return;
                 }
+                foreach (var pair in bundle)
+                {
+                    if (_snapshots.TryGetValue(pair.Key, out var snapshot))
+                    {
+                        snapshot.FromJson(pair.Value);
+                    }
+                }
+            }
+            catch (System.Exception e)
+            {
+                UnityEngine.Debug.LogError($"[SaveManager] 读档失败（存档损坏？）：{e.Message}");
             }
         }
 

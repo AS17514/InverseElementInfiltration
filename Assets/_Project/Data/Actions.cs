@@ -51,6 +51,7 @@ namespace TheLaw.Data
         public Side side;
         public Vector2Int cell;
         public int waveIndex = -1; // 所属波次（-1=非波次棋子；每波得分按此累计）
+        public int cardInstanceId; // 2026-08-21：消耗的牌实例 id（0=隐式选择回退）
 
         public DeployAction(int pieceDefId, Side side, Vector2Int cell)
         {
@@ -66,6 +67,7 @@ namespace TheLaw.Data
     {
         public int pieceId;
         public int newDefId;
+        public int cardInstanceId; // 2026-08-21：消耗的升变牌实例 id（0=隐式选择回退）
 
         public PromoteAction(int pieceId, int newDefId)
         {

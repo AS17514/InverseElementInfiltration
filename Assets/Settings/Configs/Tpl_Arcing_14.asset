@@ -1,0 +1,35 @@
+%YAML 1.1
+%TAG !u! tag:unity3d.com,2011:
+--- !u!114 &11400000
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 0}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: 9f7d2e55ca2606a40bec93292acdb194, type: 3}
+  m_Name: Tpl_Arcing_14
+  m_EditorClassIdentifier: 
+  _id: 1527055832
+  templateKey: Attack-14
+  template:
+    rid: 4463436046253948935
+  references:
+    version: 2
+    RefIds:
+    - rid: 4463436046253948935
+      type: {class: AttackTemplate, ns: TheLaw.Data, asm: Data}
+      data:
+        id: 14
+        mode: 3
+        directions: 1
+        range: 1
+        damage: 1
+        friendlyFire: 1
+        shape: 0
+        points:
+        - {x: -1, y: -2}
+        - {x: 1, y: -2}
+        rangeSteps: []

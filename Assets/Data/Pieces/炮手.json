@@ -6,7 +6,17 @@
   "footprint": "Size1x1",
   "modules": [
     {
+      "moduleType": "Effect",
+      "id": 3,
+      "ability": {
+        "type": "Attach",
+        "attachPoint": "OnAttack",
+        "attachShape": "Cross"
+      }
+    },
+    {
       "moduleType": "Arcing",
+      "id": 10,
       "points": [
         {
           "dx": -2,
@@ -34,6 +44,7 @@
     },
     {
       "moduleType": "Move",
+      "id": 9,
       "paths": [
         {
           "segments": [
@@ -56,14 +67,6 @@
           ]
         }
       ]
-    }
-  ],
-  "abilities": [
-    {
-      "type": "Attach",
-      "attachPoint": "OnAttack",
-      "attachShape": "Cross",
-      "attachDamage": 0
     }
   ],
   "assetName": "Cannoner"

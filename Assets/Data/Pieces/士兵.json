@@ -7,6 +7,7 @@
   "modules": [
     {
       "moduleType": "Move",
+      "id": 1,
       "paths": [
         {
           "segments": [
@@ -26,6 +27,7 @@
     },
     {
       "moduleType": "Melee",
+      "id": 1,
       "directions": [
         "Up"
       ],

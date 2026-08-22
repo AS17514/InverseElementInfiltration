@@ -44,6 +44,7 @@ mono_crash.*
 /test/
 /test/**/*.meta
 Assets/test.meta
+Assets/test/
 
 # 内部文档（私人笔记，不提交）——统一放 内部文档/ 目录，新增直接放进去即可，无需改本文件
 内部文档/
@@ -59,4 +60,9 @@ Assets/test.meta
 
 /Assets/Screenshots/
 /Assets/Screenshots.meta
+
+# MCP 截图（本机排查产物，协作者不需要）
+/Assets/MCP/
+/Assets/MCP.meta
+
 docs/personal/

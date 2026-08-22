@@ -1,13 +1,20 @@
+using System;
 using TMPro;
 using UnityEngine;
 using UnityEngine.UI;
 
 namespace TheLaw.UI
 {
-    /// <summary>主菜单：标题 + 开始游戏。（纯代码构建 UI——测试阶段不依赖手搓 prefab）</summary>
+    /// <summary>主菜单：标题 + 开始/继续/设置/退出。（prefab 布局优先，代码构建兜底——按钮点击一律转发事件）</summary>
     public class MainMenuPanel : PanelBase
     {
         public override string Key => "MainMenu";
+
+        // 按钮事件（Bootstrap 订阅响应——面板只转发输入，不持有规则层引用）
+        public event Action OnNewGameClicked;
+        public event Action OnContinueClicked;
+        public event Action OnSettingsClicked;
+        public event Action OnQuitClicked;
 
         private void Awake()
         {
@@ -16,6 +23,33 @@ namespace TheLaw.UI
             {
                 Build();
             }
+            BindButtons();
+        }
+
+        private void BindButtons()
+        {
+            // lambda 直接引用事件字段（运行时读最新值）——传参数会捕获订阅前的 null 快照，点击时永远不触发
+            Bind("Btn_NewGame", () => OnNewGameClicked?.Invoke());
+            Bind("Btn_ContinueGame", () => OnContinueClicked?.Invoke());
+            Bind("Btn_Settings", () => OnSettingsClicked?.Invoke());
+            Bind("Btn_QuitGame", () => OnQuitClicked?.Invoke());
+        }
+
+        private void Bind(string buttonName, Action handler)
+        {
+            Button btn = null;
+            foreach (var b in GetComponentsInChildren<Button>(true))
+            {
+                if (b.name == buttonName) { btn = b; break; } // 按钮可能在分组子级下（如 Grp_MenuOptions/Btn_NewGame）
+            }
+            if (btn == null)
+            {
+                Debug.LogWarning($"[MainMenu] 未找到按钮 {buttonName}");
+                return;
+            }
+            btn.onClick.RemoveAllListeners(); // 防重复绑定（面板重建）
+            btn.onClick.AddListener(() => { Debug.Log($"[MainMenu] 点击 {buttonName}"); handler?.Invoke(); });
+            Debug.Log($"[MainMenu] 绑定按钮 {buttonName}");
         }
 
         private void Build()
@@ -30,7 +64,7 @@ namespace TheLaw.UI
             title.color = Color.white;
             Stretch(titleGo.GetComponent<RectTransform>(), new Vector2(0.5f, 0.65f), new Vector2(0.5f, 0.65f), new Vector2(0, 0), new Vector2(1200, 160));
 
-            // 开始按钮
+            // 开始按钮（代码版兜底——prefab 路径不会走到这）
             var btnGo = new GameObject("StartButton", typeof(RectTransform));
             btnGo.transform.SetParent(transform, false);
             var img = btnGo.AddComponent<Image>();
@@ -48,13 +82,7 @@ namespace TheLaw.UI
             label.color = Color.white;
             Stretch(labelGo.GetComponent<RectTransform>(), new Vector2(0.5f, 0.5f), new Vector2(0.5f, 0.5f), Vector2.zero, Vector2.zero);
 
-            btn.onClick.AddListener(OnStartClicked);
-        }
-
-        private void OnStartClicked()
-        {
-            // TODO: 接入爬塔地图（TowerFlow.EnterFloor(0)）——棋盘/地图面板就绪后接通
-            Debug.Log("[MainMenu] 开始游戏（待接入爬塔地图）");
+            btn.onClick.AddListener(() => OnNewGameClicked?.Invoke());
         }
 
         private static void Stretch(RectTransform rt, Vector2 anchorMin, Vector2 anchorMax, Vector2 anchoredPos, Vector2 size)

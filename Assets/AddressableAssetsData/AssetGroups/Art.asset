@@ -1,0 +1,85 @@
+%YAML 1.1
+%TAG !u! tag:unity3d.com,2011:
+--- !u!114 &11400000
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 0}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: bbb281ee3bf0b054c82ac2347e9e782c, type: 3}
+  m_Name: Art
+  m_EditorClassIdentifier: 
+  m_GroupName: Art
+  m_Data:
+    m_SerializedData: []
+  m_GUID: a91094174b93bdb4fb3abff2bc17d682
+  m_SerializeEntries:
+  - m_GUID: 091112939ebdadf4cb9f6f726dd3315c
+    m_Address: Cannoner
+    m_ReadOnly: 0
+    m_SerializedLabels: []
+    FlaggedDuringContentUpdateRestriction: 0
+  - m_GUID: 1a13285a1fbfc1e49ae82f564f4e3796
+    m_Address: Marksman
+    m_ReadOnly: 0
+    m_SerializedLabels: []
+    FlaggedDuringContentUpdateRestriction: 0
+  - m_GUID: 2735e7315edd99240b6ec7ca6b2fc31a
+    m_Address: LightCavalry
+    m_ReadOnly: 0
+    m_SerializedLabels: []
+    FlaggedDuringContentUpdateRestriction: 0
+  - m_GUID: 3d8ce8b80c638d34083298f43a90c46e
+    m_Address: Soldier
+    m_ReadOnly: 0
+    m_SerializedLabels: []
+    FlaggedDuringContentUpdateRestriction: 0
+  - m_GUID: 47d0e4eb4ab62ef4c904577301825a67
+    m_Address: Knight
+    m_ReadOnly: 0
+    m_SerializedLabels: []
+    FlaggedDuringContentUpdateRestriction: 0
+  - m_GUID: 6a2d713141fb86d4a911e707f0dddb5e
+    m_Address: ShortArcher
+    m_ReadOnly: 0
+    m_SerializedLabels: []
+    FlaggedDuringContentUpdateRestriction: 0
+  - m_GUID: 7b0daee225a8abe45af48da57f8a8aec
+    m_Address: Swordsman
+    m_ReadOnly: 0
+    m_SerializedLabels: []
+    FlaggedDuringContentUpdateRestriction: 0
+  - m_GUID: c659db84df3251f4896dd57ce5e14fbe
+    m_Address: Wizard
+    m_ReadOnly: 0
+    m_SerializedLabels: []
+    FlaggedDuringContentUpdateRestriction: 0
+  - m_GUID: dbe51cdcf0e49964fbc312233ed0d21f
+    m_Address: Berserker
+    m_ReadOnly: 0
+    m_SerializedLabels: []
+    FlaggedDuringContentUpdateRestriction: 0
+  - m_GUID: e0636d5642b956a4db2dbb482cb7d1d8
+    m_Address: Ranger
+    m_ReadOnly: 0
+    m_SerializedLabels: []
+    FlaggedDuringContentUpdateRestriction: 0
+  - m_GUID: f45a35264cba84d47990e222a541a219
+    m_Address: ShieldGuard
+    m_ReadOnly: 0
+    m_SerializedLabels: []
+    FlaggedDuringContentUpdateRestriction: 0
+  - m_GUID: fd14f8466fa760f478782ee49c91f839
+    m_Address: Assassin
+    m_ReadOnly: 0
+    m_SerializedLabels: []
+    FlaggedDuringContentUpdateRestriction: 0
+  m_ReadOnly: 0
+  m_Settings: {fileID: 11400000, guid: 47cc120f2a625024bb26fdfb7b9fdeeb, type: 2}
+  m_SchemaSet:
+    m_Schemas:
+    - {fileID: 11400000, guid: 4c7d8e63d034f6048b3a9c4b776dd90e, type: 2}
+    - {fileID: 11400000, guid: e4546b49faa28dc45abc0026dd21db57, type: 2}

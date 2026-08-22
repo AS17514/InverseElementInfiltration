@@ -6,7 +6,18 @@
   "footprint": "Size1x1",
   "modules": [
     {
+      "moduleType": "Effect",
+      "id": 2,
+      "ability": {
+        "type": "Trigger",
+        "triggerPoint": "OnKill",
+        "effect": "ExtraAction",
+        "amount": 1
+      }
+    },
+    {
       "moduleType": "Move",
+      "id": 7,
       "paths": [
         {
           "segments": [
@@ -68,6 +79,7 @@
     },
     {
       "moduleType": "Melee",
+      "id": 8,
       "directions": [
         "Up",
         "Down",
@@ -79,14 +91,6 @@
       "range": 1,
       "damage": 1,
       "friendlyFire": true
-    }
-  ],
-  "abilities": [
-    {
-      "type": "Trigger",
-      "triggerPoint": "OnKill",
-      "effect": "ExtraAction",
-      "amount": 1
     }
   ],
   "assetName": "Assassin"

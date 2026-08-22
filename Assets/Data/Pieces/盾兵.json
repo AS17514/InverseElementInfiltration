@@ -6,7 +6,18 @@
   "footprint": "Size1x1",
   "modules": [
     {
+      "moduleType": "Effect",
+      "id": 1,
+      "ability": {
+        "type": "Trigger",
+        "triggerPoint": "OnDamaged",
+        "effect": "ShieldBlock",
+        "amount": 1
+      }
+    },
+    {
       "moduleType": "Move",
+      "id": 4,
       "paths": [
         {
           "segments": [
@@ -38,20 +49,13 @@
     },
     {
       "moduleType": "Melee",
+      "id": 1,
       "directions": [
         "Up"
       ],
       "range": 1,
       "damage": 1,
       "friendlyFire": true
-    }
-  ],
-  "abilities": [
-    {
-      "type": "Trigger",
-      "triggerPoint": "OnDamaged",
-      "effect": "ShieldBlock",
-      "amount": 1
     }
   ],
   "assetName": "ShieldGuard"

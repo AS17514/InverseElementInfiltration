@@ -88,3 +88,17 @@ Assets/
 
 ### 字体
 - 字体使用子集化 SDF，在 Assets/Fonts 中管理，动态字体兜底
+
+## 常见问题（FAQ）
+
+### 启动时报读档错误：`Error converting value ... to type 'TheLaw.Data.Card'. Path 'Hand[0]'`
+
+**原因**：本地存在**旧版本存档**——存档里的牌数据是旧格式（int 列表），而最新的牌结构是 `Card`（多字段），两者不兼容，读档失败。
+
+**解决**：删除旧存档文件即可（游戏会正常开新局）：
+
+- **Windows** 存档目录：`%USERPROFILE%\AppData\LocalLow\Zhong\InverseElementInfiltration\`
+  （即 `C:\Users\<你的用户名>\AppData\LocalLow\Zhong\InverseElementInfiltration\`）
+- 删除该目录下的：`save.json`（主档）以及 `save_history_*.json`（历史档——建议一并删）
+
+> 吐槽：因为听说有人因为盘解析符操作错误而导致误伤了整个盘，所以本来想着在 Unity 内部集成一个清存档的按钮，但是最后还是选择了放弃。（手动删文件最安全）

@@ -181,6 +181,8 @@ namespace TheLaw.UI
         // Main/UI 下的 3D TMP 计分字段（标题 *_K 由场景维护，数值节点由控制器刷新）。
         TMP_Text _totalScoreText, _waveScoreText, _baseScoreText, _multiplierText, _turnScoreText;
         bool _scoreRefsWarningLogged;
+        int _lastHandCount = -1;
+        int _lastPlayerScore = -1;
         SpriteRenderer[] _infoProgramBlocks = new SpriteRenderer[4]; // 行为逻辑块（SpriteRenderer）
         List<Template> _infoProgram; // 当前信息面板显示的程序（浮窗内容源）
 
@@ -198,7 +200,7 @@ namespace TheLaw.UI
             EventCenter.Instance.RemoveEventListener(GameEvent.PromoteAnnounced, OnPromoteAnnounced);
             EventCenter.Instance.RemoveEventListener(GameEvent.StateChanged, OnStateChanged);
             EventCenter.Instance.RemoveEventListener(GameEvent.BuffsChanged, OnBuffsChanged);
-            EventCenter.Instance.RemoveEventListener(GameEvent.ExtraActionGranted, OnBuffsChanged);
+            EventCenter.Instance.RemoveEventListener(GameEvent.ExtraActionGranted, OnExtraActionGranted);
             EventCenter.Instance.RemoveEventListener(GameEvent.RelicObtained, OnRelicObtained);
             if (_handPosTween != null) _handPosTween.Kill();
             if (_handSizeTween != null) _handSizeTween.Kill();
@@ -245,7 +247,7 @@ namespace TheLaw.UI
             EventCenter.Instance.AddEventListener(GameEvent.PromoteAnnounced, OnPromoteAnnounced);
             EventCenter.Instance.AddEventListener(GameEvent.StateChanged, OnStateChanged);
             EventCenter.Instance.AddEventListener(GameEvent.BuffsChanged, OnBuffsChanged); // buff 变化 → 刷新选中棋子信息面板
-            EventCenter.Instance.AddEventListener(GameEvent.ExtraActionGranted, OnBuffsChanged); // 免费行动授予同刷新
+            EventCenter.Instance.AddEventListener(GameEvent.ExtraActionGranted, OnExtraActionGranted); // 免费行动授予 → 刷新并播放提示音
             EventCenter.Instance.AddEventListener(GameEvent.RelicObtained, OnRelicObtained); // 道中获得遗物/能力 → 刷新全局能力栏
 
             // UI 架构重构 §五：面板局内缓存（Bootstrap 管理生命周期）——每场绑定不创建
@@ -285,6 +287,7 @@ namespace TheLaw.UI
             }
             if (_relicDisplay != null) _relicDisplay.gameObject.SetActive(false); // 默认隐藏
             RefreshAll();
+            _lastHandCount = _state.Hand != null ? _state.Hand.Count : 0;
             UpdateHandPositionByPhase(); // 初始阶段即应用手牌区状态（准备阶段高度 250）
             ClearPieceInfo(); // 初始：信息面板隐藏（无选中/无临时状态）
             // 补齐开局已有棋子视觉（首波部署早于控制器创建——PieceDeployed 事件已丢）
@@ -536,7 +539,7 @@ namespace TheLaw.UI
             ClearSelection();
         }
 
-        /// <summary>选中后只显示首个逻辑块的范围（移动=绿块；攻击=红框）——多个范围杂糅不易读。</summary>
+        /// <summary>选中后显示首个有候选逻辑块的范围（移动=绿块；攻击=红框）。</summary>
         void PreviewRange(int pieceId)
         {
             var piece = _state.GetPiece(pieceId);
@@ -547,7 +550,24 @@ namespace TheLaw.UI
                 ClearHighlights();
                 return;
             }
-            switch (program[0])
+
+            // 镜像 TryExecuteSelected：跳过不产生行动的效果/Skip 槽及无候选动作槽。
+            int index = 0;
+            while (index < program.Count)
+            {
+                var slot = program[index];
+                if (slot is SkipTemplate || slot is EffectTemplate) { index++; continue; }
+                if (slot is MoveTemplate move && _intentResolver.GetMoveOptions(_state, piece, move).Count == 0) { index++; continue; }
+                if (slot is AttackTemplate atk && _boardRules.GetAttackableCells(_state, piece, atk).Count == 0) { index++; continue; }
+                break;
+            }
+            if (index >= program.Count)
+            {
+                ClearHighlights();
+                return;
+            }
+
+            switch (program[index])
             {
                 case MoveTemplate move:
                     ShowHighlights(_intentResolver.GetMoveOptions(_state, piece, move), null);
@@ -556,7 +576,7 @@ namespace TheLaw.UI
                     ShowHighlights(null, _boardRules.GetAttackableCells(_state, piece, atk));
                     break;
                 default:
-                    ClearHighlights(); // Skip 等：无范围
+                    ClearHighlights();
                     break;
             }
         }
@@ -574,7 +594,7 @@ namespace TheLaw.UI
             while (execIndex < program.Count)
             {
                 var s = program[execIndex];
-                if (s is SkipTemplate) { execIndex++; continue; }
+                if (s is SkipTemplate || s is EffectTemplate) { execIndex++; continue; }
                 if (s is MoveTemplate mm && _intentResolver.GetMoveOptions(_state, piece, mm).Count == 0) { execIndex++; continue; }
                 if (s is AttackTemplate aa && _boardRules.GetAttackableCells(_state, piece, aa).Count == 0) { execIndex++; continue; }
                 break;
@@ -618,6 +638,11 @@ namespace TheLaw.UI
                     return;
                 }
                 var slot = _execProgram[_execIndex];
+                if (slot is EffectTemplate)
+                {
+                    _execIndex++;
+                    continue;
+                }
                 switch (slot)
                 {
                     case MoveTemplate move:
@@ -851,6 +876,7 @@ namespace TheLaw.UI
                 var outline = FindPromotionView(info.PieceId);
                 if (outline != null) outline.PlayPromotionFlash();
             }
+            AudioManager.Instance.PlaySFX(AudioRefs.SfxPromote);
             if (info.PieceId == _selectedPieceId)
             {
                 var piece = _state.GetPiece(info.PieceId);
@@ -914,6 +940,12 @@ namespace TheLaw.UI
             }
         }
 
+        void OnExtraActionGranted(object data)
+        {
+            OnBuffsChanged(data);
+            AudioManager.Instance.PlaySFX(AudioRefs.SfxFreeAction);
+        }
+
         void OnRelicObtained(object data)
         {
             RefreshEventAbilities();
@@ -949,13 +981,15 @@ namespace TheLaw.UI
 
         IEnumerator PlayDamage(DamageInfo info)
         {
+            var target = _state.GetPiece(info.TargetId);
+            // DamageDealt 在护盾结算后发出；若目标仍有护盾且本次有伤害，则此次伤害包含护盾抵挡。
+            bool shieldBlocked = target != null && info.Damage > 0 && target.shieldCount > 0;
             // 攻击者挥动闪白（动作反馈——2026-08-12 恢复：dacb39b 改闪目标时攻击者动作被整体删除；
             // 含空挥 TargetId=-1（AttackerId 所有攻击路径均有效））
             // ⚠️ 组内去重（#6 前端部分）：AOE 多目标同组并行——同一攻击者只闪一次（HashSet.Add 首次 true）
             if (_batchFlashAttackers == null || _batchFlashAttackers.Add(info.AttackerId))
             {
-                // 后端尚未在 DamageInfo 透传 AttackMode，暂以近战音保底；字段到位后改为 GetAttackSfx(info.AttackMode)。
-                AudioManager.Instance.PlaySFX(AudioRefs.SfxAttackMelee); // 攻击（挥击）音效——同组只播一次
+                AudioManager.Instance.PlaySFX(GetAttackSfx(info.AttackMode)); // 攻击（挥击）音效——按本次攻击类型分发，同组只播一次
                 var attacker = _pieceViews.Get(info.AttackerId);
                 if (attacker != null)
                 {
@@ -973,7 +1007,7 @@ namespace TheLaw.UI
             var go = _pieceViews.Get(info.TargetId);
             if (go != null)
             {
-                AudioManager.Instance.PlaySFX(AudioRefs.SfxHit); // 受击音效（逐目标）
+                AudioManager.Instance.PlaySFX(shieldBlocked ? AudioRefs.SfxShield : AudioRefs.SfxHit); // 护盾抵挡与受击音区分（逐目标）
                 var sr = go.transform.Find("Portrait")?.GetComponent<SpriteRenderer>();
                 if (sr != null)
                 {
@@ -1049,7 +1083,7 @@ namespace TheLaw.UI
         {
             if (_infoProgram == null || slotIndex < 0 || slotIndex >= _infoProgram.Count) return;
             // 2026-08-13 重构：通用 TooltipManager（单实例——加载/定位/防出屏收敛；世界坐标 = 行为块左上角）
-            TooltipManager.Instance.Show(SlotDetailDesc(_infoProgram[slotIndex]), leftTopWorld);
+            TooltipManager.Instance.Show(new TooltipViewData(SlotDetailDesc(_infoProgram[slotIndex])), leftTopWorld);
         }
 
         public void HideBehaviorTooltip()
@@ -1254,6 +1288,12 @@ namespace TheLaw.UI
         void OnHandChanged(object data)
         {
             if (data == null) return; // AddToEnemyWavePool 也发 HandChanged(null)——敌方侧变化不重建玩家手牌
+            int handCount = _state.Hand != null ? _state.Hand.Count : 0;
+            if (_lastHandCount >= 0 && handCount > _lastHandCount)
+            {
+                AudioManager.Instance.PlaySFX(AudioRefs.SfxDraw);
+            }
+            _lastHandCount = handCount;
             RebuildHand();
             RefreshPhaseButton(); // 手牌变化 → 摆放前置状态可能变化（按钮可用性）
             RefreshDrawPile();
@@ -1298,6 +1338,12 @@ namespace TheLaw.UI
         void RefreshScore()
         {
             if (_state == null) return;
+            if (_lastPlayerScore >= 0 && _state.PlayerScore > _lastPlayerScore
+                && (_state.CurrentFloorConfig?.scoreDeductEnabled ?? false))
+            {
+                AudioManager.Instance.PlaySFX(AudioRefs.SfxScore);
+            }
+            _lastPlayerScore = _state.PlayerScore;
             EnsureScoreRefs();
             int waveScore = _state.WaveScores != null && _state.WaveScores.Count > 0
                 ? _state.WaveScores[_state.WaveScores.Count - 1]

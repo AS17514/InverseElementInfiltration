@@ -414,6 +414,7 @@ namespace TheLaw.UI
             // 结算面板不在 UIManager 栈（BattlePanel/EventPanel 直接 Show）——ShowPanel 不影响它；
             // 失败路径：MainMenu 显示在结算面板下层，玩家确认后结算关闭露出 MainMenu
             _uiManager.ShowPanel("MainMenu");
+            AudioManager.Instance.PlayBGM(TheLaw.Core.AudioRefs.BgmMenu);
             _finalizing = false; // 复位——下一局收尾可用
             Debug.Log("[Bootstrap] 返回主菜单（收尾链完成）");
         }

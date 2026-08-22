@@ -57,27 +57,29 @@ namespace TheLaw.UI
         public Color BackgroundColor { get; }
         public string ValueText { get; }
         public string TypeLabel { get; }
+        public string PortraitKey { get; }
         public IReadOnlyList<ProgramIconViewData> ProgramIcons { get; }
 
-        public PieceCardViewData(Color backgroundColor, string valueText, string typeLabel,
+        public PieceCardViewData(Color backgroundColor, string valueText, string typeLabel, string portraitKey,
             IReadOnlyList<ProgramIconViewData> programIcons)
         {
             BackgroundColor = backgroundColor;
             ValueText = valueText ?? string.Empty;
             TypeLabel = typeLabel ?? string.Empty;
+            PortraitKey = portraitKey ?? string.Empty;
             ProgramIcons = programIcons ?? new List<ProgramIconViewData>();
         }
     }
 
     public sealed class HandCardViewData : PieceCardViewData
     {
-        public string PortraitKey { get; }
+        public new string PortraitKey { get; }
         public string VerticalName { get; }
         public IReadOnlyList<ProgramSlotViewData> ProgramSlots { get; }
 
         public HandCardViewData(Color backgroundColor, string portraitKey, string verticalName, string valueText,
             string typeLabel, IReadOnlyList<ProgramSlotViewData> programSlots)
-            : base(backgroundColor, valueText, typeLabel, ToIcons(programSlots))
+            : base(backgroundColor, valueText, typeLabel, portraitKey, ToIcons(programSlots))
         {
             PortraitKey = portraitKey ?? string.Empty;
             VerticalName = verticalName ?? string.Empty;

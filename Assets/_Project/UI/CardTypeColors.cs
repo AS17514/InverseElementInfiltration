@@ -11,9 +11,9 @@ namespace TheLaw.UI
         {
             switch (type)
             {
-                case PieceType.Initial: return new Color(0.38f, 0.58f, 0.38f, 1f);   // 绿
-                case PieceType.Deployable: return new Color(0.38f, 0.52f, 0.70f, 1f); // 蓝
-                default: return new Color(0.68f, 0.42f, 0.42f, 1f);                   // 红（升变）
+                case PieceType.Initial: return new Color(0.80784314f, 1f, 0.72156864f, 1f);      // #CEFFB8
+                case PieceType.Deployable: return new Color(0.59607846f, 0.77254903f, 0.9882353f, 1f); // #98C5FC
+                default: return new Color(1f, 0.6666667f, 0.6666667f, 1f);                          // #FFAAAA（升变）
             }
         }
 

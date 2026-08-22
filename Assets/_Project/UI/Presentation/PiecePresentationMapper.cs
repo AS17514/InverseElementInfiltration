@@ -14,6 +14,7 @@ namespace TheLaw.UI
                 CardTypeColors.For(effectiveType),
                 effectiveValue.ToString(),
                 PieceTypeLabel(effectiveType),
+                def != null ? def.name : string.Empty,
                 ToProgramIcons(program));
         }
 

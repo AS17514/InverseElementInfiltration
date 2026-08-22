@@ -1224,7 +1224,7 @@ namespace TheLaw.UI
             // 我方回合也可部署单位——只有敌方回合收起手牌
             bool expanded = _state.Phase == BattlePhase.Placement || _state.Phase == BattlePhase.PlayerTurn;
             float targetH = expanded ? 210f : 170f;
-            float targetY = expanded ? 50f : -60f;
+            float targetY = expanded ? -40f : -90f;
             // 显式通知布局控制器收起/展开状态（上浮修正依赖）
             var layout = rt.GetComponent<HandLayoutController>();
             if (layout != null) layout.SetCollapsed(!expanded);

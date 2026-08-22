@@ -20,6 +20,7 @@ namespace TheLaw.UI
         private readonly TMP_Text[] _slotIconTexts = new TMP_Text[4];
         private readonly Transform[] _slotDescriptions = new Transform[4];
         private readonly TMP_Text[] _slotDescriptionTexts = new TMP_Text[4];
+        private const float EmptyProgramSlotAlpha = 0.2f;
 
         private void Awake()
         {
@@ -51,18 +52,24 @@ namespace TheLaw.UI
                 var visible = slot != null && slot.Visible;
                 if (_slotIcons[i] != null)
                 {
-                    _slotIcons[i].gameObject.SetActive(visible);
-                    if (_slotIconImages[i] != null && slot != null)
+                    _slotIcons[i].gameObject.SetActive(true);
+                    if (_slotIconImages[i] != null)
                     {
-                        if (slot.IconSprite != null) _slotIconImages[i].sprite = slot.IconSprite;
-                        if (slot.IconColor.HasValue) _slotIconImages[i].color = slot.IconColor.Value;
+                        if (visible && slot.IconSprite != null) _slotIconImages[i].sprite = slot.IconSprite;
+                        var slotColor = visible && slot.IconColor.HasValue ? slot.IconColor.Value : Color.white;
+                        _slotIconImages[i].color = new Color(slotColor.r, slotColor.g, slotColor.b, visible ? 1f : EmptyProgramSlotAlpha);
                     }
                     if (_slotIconTexts[i] != null) _slotIconTexts[i].text = visible ? slot.TypeLabel : string.Empty;
                 }
                 if (_slotDescriptions[i] != null)
                 {
-                    _slotDescriptions[i].gameObject.SetActive(visible);
-                    if (_slotDescriptionTexts[i] != null) _slotDescriptionTexts[i].text = visible ? slot.Description : string.Empty;
+                    _slotDescriptions[i].gameObject.SetActive(true);
+                    if (_slotDescriptionTexts[i] != null)
+                    {
+                        _slotDescriptionTexts[i].text = visible ? slot.Description : string.Empty;
+                        var descriptionColor = _slotDescriptionTexts[i].color;
+                        _slotDescriptionTexts[i].color = new Color(descriptionColor.r, descriptionColor.g, descriptionColor.b, visible ? 1f : EmptyProgramSlotAlpha);
+                    }
                 }
             }
         }

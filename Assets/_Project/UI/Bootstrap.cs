@@ -289,6 +289,7 @@ namespace TheLaw.UI
         private void OnEventOpened(object data)
         {
             _pendingEventId = data as string;
+            AudioManager.Instance.PlayBGM(TheLaw.Core.AudioRefs.BgmEvent);
             OpenEventPanel();
         }
 
@@ -432,6 +433,7 @@ namespace TheLaw.UI
         private void OnRunEnded(object data)
         {
             bool victory = data is bool b && b;
+            AudioManager.Instance.PlayBGM(TheLaw.Core.AudioRefs.BgmResult);
             Debug.Log($"[Bootstrap] 整局结束 victory={victory}");
             // 2026-08-12：挂起收尾——结算面板确认前保持战斗场景（玩家看结算时下层仍是战斗界面）
             // 确认后（BattleResultPanel.OnConfirmed）才 BackToMainMenu：销毁战斗 → Reset → 主界面

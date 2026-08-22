@@ -73,6 +73,16 @@ namespace TheLaw.Gameplay
         public Dictionary<Vector2Int, ObstacleData> MahjongWalls { get; internal set; } = new Dictionary<Vector2Int, ObstacleData>();
 
         public List<RelicDef> Relics { get; internal set; } = new List<RelicDef>();
+        /// <summary>能力事件三选一候选（2026-08-22：当前能力事件展示的 3 个候选——词条过滤随机抽取；事件进行中入档）。</summary>
+        public List<RelicDef> AbilityCandidates { get; internal set; } = new List<RelicDef>();
+        /// <summary>能力候选刷新次数（2026-08-22：每项各可刷新 1 次——与 AbilityCandidates 顺序对应）。</summary>
+        public List<int> AbilityRefreshLeft { get; internal set; } = new List<int>();
+        /// <summary>行动经济已行动集（2026-08-22：ActionEconomy 激活时——本回合已执行过行动的棋子——回合级，回合开始重置；额外行动穿透不查此集）。</summary>
+        public HashSet<int> ActionEconomyActed { get; internal set; } = new HashSet<int>();
+        /// <summary>本层模块消耗（净增量——2026-08-23 决策 4 定案"消耗制=池子构成规则"）：
+        /// key=类型名:id（外部模块）；值=本层净放入次数。放入 +1（候选消失）；撤销/移除 -1（=0 移除键——候选恢复）；
+        /// EnterFloor 进层清空（跨层复原——池子每层完整，上层用过的模块可再抽）。入档（中断续玩一致）。</summary>
+        public Dictionary<string, int> ConsumedModules { get; internal set; } = new Dictionary<string, int>();
         public List<int> WaveScores { get; internal set; } = new List<int>();     // 每波得分（第 3 关"每波达标"）
         public List<PromoteAnnouncement> PromoteAnnouncements { get; internal set; } = new List<PromoteAnnouncement>();
         public int WaveEndCountdown { get; internal set; } = -1;                  // 末波强制判定倒计时（-1=未启用）
@@ -94,6 +104,43 @@ namespace TheLaw.Gameplay
 
         /// <summary>玩法是否激活（2026-08-20：麻将"mahjong"/属性"element"）。</summary>
         public bool IsStyleActive(string style) => ActiveStyles != null && ActiveStyles.Contains(style);
+
+        /// <summary>
+        /// 是否持有指定基础效果（2026-08-22：能力=遗物效果组合——遍历持有遗物；供统一入口挂点查询）。
+        /// </summary>
+        public bool HasRelicEffect(RelicEffectType type)
+        {
+            foreach (var relic in Relics)
+            {
+                if (relic == null) continue;
+                foreach (var e in relic.effects)
+                {
+                    if (e != null && e.type == type) return true;
+                }
+            }
+            return false;
+        }
+
+        /// <summary>行动经济激活（ActionEconomy——执行不耗 AP + 每棋子每回合一次）。</summary>
+        public bool ActionEconomyActive => HasRelicEffect(RelicEffectType.ActionEconomy);
+
+        /// <summary>己方部署区行数加成（DeployRow——累加）。</summary>
+        public int DeployRowBonus
+        {
+            get
+            {
+                int bonus = 0;
+                foreach (var relic in Relics)
+                {
+                    if (relic == null) continue;
+                    foreach (var e in relic.effects)
+                    {
+                        if (e != null && e.type == RelicEffectType.DeployRow) bonus += e.value;
+                    }
+                }
+                return bonus;
+            }
+        }
 
         /// <summary>追加诊断记录（2026-08-21：超时降级等——环形缓冲，只写不读；存档可查）。</summary>
         public void AppendTimeoutRecord(int sessionId, int actionId, int waitMs, string phase)
@@ -244,6 +291,10 @@ namespace TheLaw.Gameplay
             EditCandidates.Clear();
             EditModuleCandidates.Clear();
             Relics.Clear();
+            AbilityCandidates.Clear();   // 2026-08-22 能力候选（整局重置）
+            AbilityRefreshLeft.Clear();
+            ActionEconomyActed.Clear();
+            ConsumedModules.Clear(); // 2026-08-23：本层模块消耗随整局重置（层内由 EnterFloor 清——跨层复原）
             WaveScores.Clear();
             PromoteAnnouncements.Clear();
             WaveEndCountdown = -1;
@@ -259,8 +310,10 @@ namespace TheLaw.Gameplay
             CurrentNodeIndex = 0;
             NodeStates.Clear();
             ReplayLog.Clear();
-            _nextPieceId = 1;
-            _nextCardId = 1; // 2026-08-21：牌实例 id 计数器随整局重置
+            _nextCardId = 1; // 2026-08-21：牌实例 id 计数器随整局重置（保持现状）
+            // 2026-08-23 决策 1：棋子实例 Id **全局单调递增**——不随新局/战斗重置
+            // （NextPieceId 已入档 = 天然记录"上次用到的位置"；Id 永不重复 → 按 Id 存的状态不可能串到新棋子，
+            // 与 _nextCardId 的业务面区分：棋子 Id 全局延续是本决策，牌 Id 保持原状）
 
             // 初始牌组分区：准备阶段只持有初始棋子；部署/升变棋子预先进入抽牌堆。
             // 首个玩家回合 StartPlayerTurn 自动从 DrawPile 抽 4 张，后续再按 AP 抽牌。
@@ -287,7 +340,7 @@ namespace TheLaw.Gameplay
             Pieces.Clear();
             PiecesById.Clear();
             Obstacles.Clear();
-            _nextPieceId = 1;
+            // 2026-08-23 决策 1：_nextPieceId 不随战斗重置——棋子 Id 全局单调（防 Id 复用串状态）
             PlayerAP = 0;
             EnemyAP = 0;
             PlayerScore = 0;
@@ -297,6 +350,8 @@ namespace TheLaw.Gameplay
             WaveScores.Clear();
             PromoteAnnouncements.Clear();
             WaveEndCountdown = -1;
+            FreeExecutes.Clear();      // 2026-08-23：免费执行资格属战斗内（击杀授予）——跨战斗必须清（_nextPieceId 重置后 Id 复用会串资格）
+            ActionEconomyActed.Clear(); // 2026-08-23：行动经济已行动集属战斗内（玩家回合开始也会重置——战斗边界一并清，防 Id 复用串态）
             // 麻将玩法状态每关清（牌山/番数/墙体随战斗重置）
             MahjongScore.Clear();
             FanCount = 0;
@@ -333,12 +388,15 @@ namespace TheLaw.Gameplay
                 EditCandidates = new List<int>(EditCandidates),
                 EditModuleCandidates = EditModuleCandidates,
                 Relics = Relics.ConvertAll(r => r.Id),
+                AbilityCandidates = AbilityCandidates.ConvertAll(r => r.Id), // 2026-08-22 能力事件候选（事件进行中入档）
+                AbilityRefreshLeft = new List<int>(AbilityRefreshLeft),
                 WaveScores = new List<int>(WaveScores),
                 PromoteAnnouncements = PromoteAnnouncements,
                 WaveEndCountdown = WaveEndCountdown,
                 CurrentEventId = CurrentEventId,
                 DrawnEventIds = new List<string>(DrawnEventIds),
                 FreeExecutes = new List<int>(FreeExecutes),
+                ConsumedModules = ConsumedModules, // 2026-08-23：本层模块消耗（净增量——入档，中断续玩一致）
                 ActiveStyles = new List<string>(ActiveStyles),
                 PresentationTimeouts = PresentationTimeouts, // 2026-08-21 诊断（存档可查——只写不读）
                 MahjongScore = new List<int>(MahjongScore),
@@ -411,12 +469,26 @@ namespace TheLaw.Gameplay
                     }
                 }
             }
+            AbilityCandidates = new List<RelicDef>();
+            if (dto.AbilityCandidates != null)
+            {
+                foreach (var relicId in dto.AbilityCandidates)
+                {
+                    var relic = ConfigTable.Find<RelicDef>(relicId);
+                    if (relic != null)
+                    {
+                        AbilityCandidates.Add(relic);
+                    }
+                }
+            }
+            AbilityRefreshLeft = dto.AbilityRefreshLeft ?? new List<int>();
             WaveScores = dto.WaveScores ?? new List<int>();
             PromoteAnnouncements = dto.PromoteAnnouncements ?? new List<PromoteAnnouncement>();
             WaveEndCountdown = dto.WaveEndCountdown;
             CurrentEventId = dto.CurrentEventId;
             DrawnEventIds = dto.DrawnEventIds ?? new List<string>();
             FreeExecutes = dto.FreeExecutes != null ? new HashSet<int>(dto.FreeExecutes) : new HashSet<int>();
+            ConsumedModules = dto.ConsumedModules ?? new Dictionary<string, int>(); // 2026-08-23：消耗净增量（旧档缺省空——层内重开编辑即重建）
             ActiveStyles = dto.ActiveStyles != null ? new HashSet<string>(dto.ActiveStyles) : new HashSet<string>();
             PresentationTimeouts = dto.PresentationTimeouts ?? new List<TimeoutRecord>(); // 诊断保留（不参与逻辑）
             MahjongScore = dto.MahjongScore ?? new List<int>();
@@ -500,12 +572,15 @@ namespace TheLaw.Gameplay
         public List<int> EditCandidates;                        // 编辑事件三选一候选（defId）
         public List<Template> EditModuleCandidates;             // 编辑事件 6 候选模块
         public List<int> Relics;
+        public List<int> AbilityCandidates;   // 能力事件候选（2026-08-22——id 列表）
+        public List<int> AbilityRefreshLeft;  // 候选刷新次数（2026-08-22）
         public List<int> WaveScores;
         public List<PromoteAnnouncement> PromoteAnnouncements;
         public int WaveEndCountdown;
         public string CurrentEventId;
         public List<string> DrawnEventIds;
         public List<int> FreeExecutes;
+        public Dictionary<string, int> ConsumedModules; // 本层模块消耗净增量（2026-08-23 决策 4）
         public List<string> ActiveStyles;   // 玩法激活（2026-08-20）
         public List<TimeoutRecord> PresentationTimeouts; // 表现回执超时诊断（2026-08-21）
         public List<int> MahjongScore;       // 麻将牌山（2026-08-20）

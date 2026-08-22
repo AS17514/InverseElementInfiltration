@@ -15,6 +15,45 @@
       "abilities": [
         { "type": "Passive", "passiveTarget": "MoveStep", "passiveValue": 1 }
       ]
+    },
+    {
+      "relicName": "ability_draw_extra",
+      "displayName": "过目不忘",
+      "description": "行动点上限 +1；花费行动点抽牌时，可以额外抽一张。",
+      "tags": ["basic"],
+      "effects": [
+        { "effectType": "APBonus", "value": 1 },
+        { "effectType": "DrawExtra", "value": 1 }
+      ]
+    },
+    {
+      "relicName": "ability_promote_copy",
+      "displayName": "军备复制",
+      "description": "行动点上限 +1；花费行动点升变棋子时，若升变的棋子为“部署”棋子，可以将那个棋子的一张复制加入手牌。",
+      "tags": ["basic"],
+      "effects": [
+        { "effectType": "APBonus", "value": 1 },
+        { "effectType": "PromoteCopyDeployable", "value": 1 }
+      ]
+    },
+    {
+      "relicName": "ability_action_economy",
+      "displayName": "士气高昂",
+      "description": "执行棋子的行动不消耗行动点，你场上的所有棋子一回合只能行动一次。",
+      "tags": ["basic"],
+      "effects": [
+        { "effectType": "ActionEconomy", "value": 1 }
+      ]
+    },
+    {
+      "relicName": "ability_deploy_row",
+      "displayName": "战线推进",
+      "description": "行动点上限 +1；己方的部署区增加一行。",
+      "tags": ["basic"],
+      "effects": [
+        { "effectType": "APBonus", "value": 1 },
+        { "effectType": "DeployRow", "value": 1 }
+      ]
     }
   ]
 }

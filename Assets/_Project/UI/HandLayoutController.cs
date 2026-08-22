@@ -17,7 +17,7 @@ namespace TheLaw.UI
         const float HoverScale = 0.7f;         // hover 放大（2 倍）
         const float HoverPushFactor = 0.5f;    // 相邻让位衰减（0.5^距离）
         const float HoverPush = 160f;          // 让位幅度（保序约束：< 4×最小间距=192）
-        const float HoverLift = 500f;          // hover 整体上浮（卡顶高出 手牌区顶 500px）
+        const float HoverLift = 650f;          // hover 整体上浮（卡顶高出 手牌区顶 650px）
         const float CollapseLiftBonus = 100f;   // 收起状态额外高度修正
 
         RectTransform _root;

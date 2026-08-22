@@ -33,6 +33,18 @@ namespace TheLaw.Gameplay
                 list.Add(new BuffInfo { key = $"ability_{ability.Id}", remaining = -1 });
             }
 
+            // 升变预告（数据源：state.PromoteAnnouncements——预告存在即显示；remaining=剩余敌方回合数）
+            // ⚠️ 2026-08-23：预告挂载/倒计时移除（升变）/死亡清理点均已发 BuffsChanged——生命周期与棋子一致：
+            // 升变完成 → 预告移除 → buff 消失；棋子死亡 → 预告随棋子清理 → buff 不残留。
+            foreach (var ann in state.PromoteAnnouncements)
+            {
+                if (ann.pieceId == piece.Id)
+                {
+                    list.Add(new BuffInfo { key = "promote_announced", remaining = ann.countdown });
+                    break;
+                }
+            }
+
             return list;
         }
     }

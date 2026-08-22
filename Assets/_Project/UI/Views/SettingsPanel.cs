@@ -1,3 +1,4 @@
+using System.Collections;
 using System.Collections.Generic;
 using TheLaw.Core;
 using TMPro;
@@ -8,7 +9,7 @@ namespace TheLaw.UI
 {
     /// <summary>
     /// 设置面板：音量（BGM/SFX Slider + 数值）、全屏（Toggle）、分辨率（TMP_Dropdown 常用项）。
-    /// 改动实时生效并落盘（SettingsSystem 已实现 ISnapshot）；仅 Btn_Close 关闭。
+    /// 改动实时生效并写入独立 settings.json；仅 Btn_Close 关闭。
     /// 模态：IsPausing=true；允许点背景关闭（CloseOnBgClick=true——PanleBase 自动加背景点击 + Grp_ 阻挡）。
     /// </summary>
     public class SettingsPanel : PanelBase
@@ -39,6 +40,7 @@ namespace TheLaw.UI
         private UIManager _uiManager; // overlay(设置盖在主菜单上) 关闭用；空 = 直接 Hide 兜底
 
         private readonly List<Vector2Int> _resolutions = new List<Vector2Int>(); // 下拉选项（索引映射）
+        private Coroutine _layoutRefreshRoutine;
         private bool _wired;
 
         public void Init(UIManager uiManager)
@@ -133,8 +135,25 @@ namespace TheLaw.UI
         protected override void OnShow()
         {
             InitFromSettings();
+            if (_layoutRefreshRoutine != null) StopCoroutine(_layoutRefreshRoutine);
+            _layoutRefreshRoutine = StartCoroutine(RefreshLayoutNextFrame());
             // ⚠️ 不在打开时 ApplyScreen：打开就 SetResolution 会让窗口跳变（"刚显示 vs 操作后不一致"根因）。
             // 显示设置只在用户改动/恢复默认时落地。
+        }
+
+        /// <summary>等待本帧激活与选项更新完成后，只重建面板实际的布局根。</summary>
+        IEnumerator RefreshLayoutNextFrame()
+        {
+            yield return null;
+
+            var group = transform.Find("Img_Bg/Grp_") as RectTransform;
+            if (group != null)
+            {
+                Canvas.ForceUpdateCanvases();
+                LayoutRebuilder.ForceRebuildLayoutImmediate(group);
+            }
+
+            _layoutRefreshRoutine = null;
         }
 
         /// <summary>用当前 SettingsSystem 值刷新 UI（SetValueWithoutNotify 防事件回环）。</summary>
@@ -179,16 +198,17 @@ namespace TheLaw.UI
         {
             var available = SettingsSystem.Instance.GetResolutions();
             var list = new List<Vector2Int>();
+            // 只用 16:9 可用分辨率，优先常用项
             foreach (var c in CommonResolutions)
             {
                 if (available.Contains(c)) list.Add(c);
             }
-            // 常用项全不可用 → 回退：全部横向切前 6 个；再兜底硬编码常用项（覆盖 Screen.resolutions 为空/异常）
+            // 常用项全不可用 → 回退：从可用里只取 16:9 横向项；再兜底硬编码常用项
             if (list.Count == 0)
             {
                 foreach (var r in available)
                 {
-                    if (r.x >= r.y) list.Add(r);
+                    if (r.x >= r.y && Is16To9(r.x, r.y)) list.Add(r);
                     if (list.Count >= 6) break;
                 }
             }
@@ -196,8 +216,9 @@ namespace TheLaw.UI
             {
                 foreach (var c in CommonResolutions) list.Add(c);
             }
-            // 当前分辨率如果不在列表 → 置顶，保证能选中
+            // 当前分辨率如果不是 16:9，用最近的 16:9 代替，保证下拉里有且仅 16:9
             var cur = new Vector2Int(SettingsSystem.Instance.ResolutionWidth, SettingsSystem.Instance.ResolutionHeight);
+            if (!Is16To9(cur.x, cur.y)) cur = ToNearest16To9(cur.x, cur.y);
             if (!list.Contains(cur)) list.Insert(0, cur);
 
             _resolutions.Clear();
@@ -208,13 +229,40 @@ namespace TheLaw.UI
             _dpdResolution.AddOptions(options);
         }
 
+        static bool Is16To9(int w, int h)
+        {
+            return w > 0 && h > 0 && Mathf.Abs((float)w / h - 16f / 9f) < 0.01f;
+        }
+
+        static Vector2Int ToNearest16To9(int width, int height)
+        {
+            const float TargetAspect = 16f / 9f;
+            if (width > 0 && height > 0 && Mathf.Abs((float)width / height - TargetAspect) < 0.01f)
+            {
+                return new Vector2Int(width, height);
+            }
+
+            if (height > 0)
+            {
+                int w = Mathf.Max(1, Mathf.RoundToInt(height * TargetAspect));
+                return new Vector2Int(w, height);
+            }
+
+            if (width > 0)
+            {
+                int h = Mathf.Max(1, Mathf.RoundToInt(width / TargetAspect));
+                return new Vector2Int(width, h);
+            }
+
+            return new Vector2Int(1920, 1080);
+        }
+
         void SelectCurrentResolution()
         {
-            var w = SettingsSystem.Instance.ResolutionWidth;
-            var h = SettingsSystem.Instance.ResolutionHeight;
+            var r = ToNearest16To9(SettingsSystem.Instance.ResolutionWidth, SettingsSystem.Instance.ResolutionHeight);
             for (int i = 0; i < _resolutions.Count; i++)
             {
-                if (_resolutions[i].x == w && _resolutions[i].y == h)
+                if (_resolutions[i].x == r.x && _resolutions[i].y == r.y)
                 {
                     _dpdResolution.SetValueWithoutNotify(i);
                     return;

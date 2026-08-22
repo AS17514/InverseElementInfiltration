@@ -4,11 +4,7 @@
       "poolName": "ability_pool",
       "entries": [
         {
-          "eventId": "ability_relic_range",
-          "weight": 1
-        },
-        {
-          "eventId": "ability_relic_move",
+          "eventId": "ability_pick",
           "weight": 1
         }
       ]
@@ -33,6 +29,13 @@
     }
   ],
   "events": [
+    {
+      "eventId": "ability_pick",
+      "title": "邂逅奇遇",
+      "description": "旅途中你遇到了一段奇遇，选择一份助力。（能力三选一——按当前玩法词条抽取）",
+      "isAbilityPick": true,
+      "options": []
+    },
     {
       "eventId": "ability_relic_range",
       "title": "神秘遗物",

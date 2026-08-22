@@ -14,6 +14,21 @@
     "desc": "当前有一个待执行的额外行动（获得后需立刻执行——2026-08-20 策划确认；占位文案，执行方式待商讨）",
     "format": "plain"
   },
+  "action_economy": {
+    "name": "行动经济",
+    "desc": "本回合该棋子可免费执行一次行动；执行后将不能再普通执行（每回合一次——2026-08-22 能力：士气高昂）",
+    "format": "plain"
+  },
+  "action_economy_acted": {
+    "name": "行动经济·已行动",
+    "desc": "该棋子本回合已执行过行动，不能再普通执行（下一回合开始时恢复）",
+    "format": "plain"
+  },
+  "promote_announced": {
+    "name": "升变预告",
+    "desc": "该敌方棋子将在倒计时结束后升变（临时文案——2026-08-23，待正式文案/策划确认）",
+    "format": "count"
+  },
   "ability_2119510590": {
     "name": "击杀回能",
     "desc": "击杀敌人后获得一次免费行动（Ability_ExtraAction_OnKill_1）",

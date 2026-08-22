@@ -56,13 +56,25 @@ namespace TheLaw.UI
             return null;
         }
 
+        /// <summary>纯展示绑定；Overlay 生命周期与确认回调仍由 Panel 管理。</summary>
+        public void Bind(ConfirmViewData data)
+        {
+            if (_infoText != null) _infoText.text = data?.Message ?? string.Empty;
+        }
+
         /// <summary>弹出确认（覆盖显示 + 世界冻结）；确认后执行 onConfirm 并关闭。</summary>
-        public void ShowConfirm(string message, Action onConfirm)
+        public void ShowConfirm(ConfirmViewData data, Action onConfirm)
         {
             _onConfirm = onConfirm;
-            if (_infoText != null) _infoText.text = message;
+            Bind(data);
             if (_uiManager != null) _uiManager.PushOverlay(Key);
             else gameObject.SetActive(true); // 兜底（未注入——正常不会）
+        }
+
+        /// <summary>兼容字符串调用；统一转换为 ConfirmViewData。</summary>
+        public void ShowConfirm(string message, Action onConfirm)
+        {
+            ShowConfirm(new ConfirmViewData(message), onConfirm);
         }
 
         protected override bool CloseOnBgClick => true; // 点背景 = 取消（2026-08-14）

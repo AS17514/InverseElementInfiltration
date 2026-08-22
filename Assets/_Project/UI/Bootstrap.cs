@@ -119,6 +119,7 @@ namespace TheLaw.UI
         {
             // 单例类（首次访问自动创建）：EventCenter / SaveManager / RandomManager / SettingsSystem / AudioManager / GameState
             _gameState = GameState.Instance;
+            SettingsSystem.Instance.LoadSettings(); // 独立设置加载（settings.json，不随存档）
             _ = AudioManager.Instance; // 实例化音频管理器（监听音量设置——不实例化则音量永远不生效）
             var applierGo = new GameObject("ScreenSettingsApplier");
             applierGo.AddComponent<ScreenSettingsApplier>(); // 显示设置（全屏/分辨率）全局应用器
@@ -235,7 +236,6 @@ namespace TheLaw.UI
             var saveManager = SaveManager.Instance;
             saveManager.RegisterSnapshot(_gameState);
             saveManager.RegisterSnapshot(RandomManager.Instance);
-            saveManager.RegisterSnapshot(SettingsSystem.Instance);
             saveManager.RegisterSnapshot(_tutorialSystem);
             saveManager.RegisterSnapshot(_progressSystem);
         }
@@ -289,6 +289,7 @@ namespace TheLaw.UI
         private void OnEventOpened(object data)
         {
             _pendingEventId = data as string;
+            AudioManager.Instance.PlayBGM(TheLaw.Core.AudioRefs.BgmEvent);
             OpenEventPanel();
         }
 
@@ -413,6 +414,7 @@ namespace TheLaw.UI
             // 结算面板不在 UIManager 栈（BattlePanel/EventPanel 直接 Show）——ShowPanel 不影响它；
             // 失败路径：MainMenu 显示在结算面板下层，玩家确认后结算关闭露出 MainMenu
             _uiManager.ShowPanel("MainMenu");
+            AudioManager.Instance.PlayBGM(TheLaw.Core.AudioRefs.BgmMenu);
             _finalizing = false; // 复位——下一局收尾可用
             Debug.Log("[Bootstrap] 返回主菜单（收尾链完成）");
         }
@@ -432,6 +434,7 @@ namespace TheLaw.UI
         private void OnRunEnded(object data)
         {
             bool victory = data is bool b && b;
+            AudioManager.Instance.PlayBGM(TheLaw.Core.AudioRefs.BgmResult);
             Debug.Log($"[Bootstrap] 整局结束 victory={victory}");
             // 2026-08-12：挂起收尾——结算面板确认前保持战斗场景（玩家看结算时下层仍是战斗界面）
             // 确认后（BattleResultPanel.OnConfirmed）才 BackToMainMenu：销毁战斗 → Reset → 主界面

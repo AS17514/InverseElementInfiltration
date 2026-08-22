@@ -37,61 +37,54 @@ namespace TheLaw.EditorTools
         }
 
         /// <summary>
-        /// 一次性工具：把模板资产（Tpl_*.asset）批量填入 Bootstrap 预制体的 _templateConfigs（免手动拖 20 个）。
-        /// 直接修改预制体资产（Prefabs/Bootstrap.prefab）——团队共享生效（场景实例是预制体实例，改资产才落库）。
-        /// 不引用 UI 程序集——按组件类型名匹配 Bootstrap；PrefabUtility 修改预制体内容。
-        /// ⚠️ 不自动保存场景（防把未保存的误操作一起存进去）——场景实例若需同步请手动处理。
-        /// 未来新增模板后重跑一次即可。
+        /// 一次性工具（2026-08-16 建）：把模板资产（Tpl_*.asset）批量填入 Bootstrap 预制体的 _templateConfigs（免手动拖 20 个）。
+        /// 保留独立菜单——委托通用收集实现（未来新增模板后重跑一次即可）。
         /// </summary>
         [MenuItem("工具/收集模板资产到 Bootstrap")]
         public static void CollectTemplatesToBootstrap()
         {
-            var templateAssets = new List<TemplateDef>();
-            foreach (var guid in AssetDatabase.FindAssets("t:TemplateDef", new[] { ConfigAssetsDir }))
+            CollectToBootstrap(new[] { "_templateConfigs" }, new[] { typeof(TemplateDef) });
+        }
+
+        /// <summary>
+        /// 收集全部配置资产到 Bootstrap 预制体（2026-08-23 泛化——原模板收集工具的通用版）：
+        /// 棋子/能力/层/地图/AI/事件池/事件/遗物/模板 九类资产全量扫描并批量填入对应列表字段——免手工拖拽。
+        /// 直接修改预制体资产（Prefabs/Bootstrap.prefab）——团队共享生效（场景实例是预制体实例，改资产才落库；
+        /// 已核实 Main.unity 的 Bootstrap 实例无配置列表 override——改资产即生效于场景）。
+        /// ⚠️ 不自动保存场景（防把未保存的误操作一起存进去）。
+        /// 使用顺序：改 JSON → 跑'导入关卡配置（JSON）'增量更新资产 → 本工具收集注册 → 运行验证。
+        /// </summary>
+        [MenuItem("工具/收集全部配置到 Bootstrap")]
+        public static void CollectAllConfigsToBootstrap()
+        {
+            CollectToBootstrap(
+                new[] { "_pieceConfigs", "_abilityConfigs", "_floorConfigs", "_mapConfigs", "_aiParamConfigs", "_eventPoolConfigs", "_eventConfigs", "_relicConfigs", "_templateConfigs" },
+                new[] { typeof(PieceDef), typeof(SpecialAbilityDef), typeof(FloorConfig), typeof(MapConfig), typeof(AIParams), typeof(EventPool), typeof(EventDefinition), typeof(RelicDef), typeof(TemplateDef) });
+            // 描述表 TextAsset（2026-08-23：_buffDescriptions 曾空引用（fileID: 0）导致 buff 名称查表失效回退机器码——
+            // 一并收集修复；slot-descriptions/slot-values 已拖的幂等刷新（按文件名精确匹配，不改逻辑）
+            CollectTextRefsToBootstrap(
+                new[] { "_slotDescriptions", "_buffDescriptions", "_slotValues" },
+                new[] { "slot-descriptions.json", "buffs-descriptions.json", "slot-values.json" });
+        }
+
+        /// <summary>
+        /// 描述表 TextAsset 收集（2026-08-23）：Bootstrap 单引用字段（_slotDescriptions/_buffDescriptions/_slotValues）——
+        /// 按文件名全库精确匹配 TextAsset 填入（幂等：已拖的保持不变，空引用被修复）。
+        /// 依赖项目约定：Assets/Data/Pieces/slot-descriptions.json、buffs-descriptions.json；Assets/Data/Templates/slot-values.json。
+        /// </summary>
+        private static void CollectTextRefsToBootstrap(string[] fieldNames, string[] jsonFileNames)
+        {
+            if (fieldNames.Length != jsonFileNames.Length)
             {
-                var path = AssetDatabase.GUIDToAssetPath(guid);
-                var asset = AssetDatabase.LoadAssetAtPath<TemplateDef>(path);
-                if (asset != null)
-                {
-                    templateAssets.Add(asset);
-                }
-            }
-            Debug.Log($"[配置导入器] 找到模板资产 {templateAssets.Count} 个");
-            if (templateAssets.Count == 0)
-            {
-                Debug.LogWarning("[配置导入器] 未找到模板资产——先运行'导入关卡配置（JSON）'生成 Tpl_*.asset");
+                Debug.LogError("[配置导入器] 描述表字段与文件名数量不一致——内部错误");
                 return;
             }
 
-            // 找 Bootstrap 预制体资产（Prefabs/Bootstrap.prefab——按名字搜，不硬编码路径）
-            string prefabPath = null;
-            foreach (var guid in AssetDatabase.FindAssets("Bootstrap t:Prefab"))
-            {
-                var p = AssetDatabase.GUIDToAssetPath(guid);
-                if (p.EndsWith("Bootstrap.prefab"))
-                {
-                    prefabPath = p;
-                    break;
-                }
-            }
-            if (string.IsNullOrEmpty(prefabPath))
-            {
-                Debug.LogError("[配置导入器] 未找到 Bootstrap.prefab——检查 Prefabs 目录");
-                return;
-            }
-            Debug.Log($"[配置导入器] 找到预制体：{prefabPath}");
+            string prefabPath = FindBootstrapPrefabPath();
+            if (string.IsNullOrEmpty(prefabPath)) return;
 
-            // 修改预制体资产内容（不碰场景实例——实例 override 与资产分离）
             var contents = PrefabUtility.LoadPrefabContents(prefabPath);
-            MonoBehaviour bootstrap = null;
-            foreach (var mb in contents.GetComponentsInChildren<MonoBehaviour>(true))
-            {
-                if (mb.GetType().Name == "Bootstrap")
-                {
-                    bootstrap = mb;
-                    break;
-                }
-            }
+            MonoBehaviour bootstrap = FindBootstrapComponent(contents);
             if (bootstrap == null)
             {
                 PrefabUtility.UnloadPrefabContents(contents);
@@ -100,23 +93,131 @@ namespace TheLaw.EditorTools
             }
 
             var so = new SerializedObject(bootstrap);
-            var prop = so.FindProperty("_templateConfigs");
-            if (prop == null)
+            for (int i = 0; i < fieldNames.Length; i++)
             {
-                PrefabUtility.UnloadPrefabContents(contents);
-                Debug.LogError("[配置导入器] Bootstrap 组件上未找到 _templateConfigs 字段——检查脚本是否已编译最新版");
-                return;
-            }
-            prop.ClearArray();
-            prop.arraySize = templateAssets.Count;
-            for (int i = 0; i < templateAssets.Count; i++)
-            {
-                prop.GetArrayElementAtIndex(i).objectReferenceValue = templateAssets[i];
+                var prop = so.FindProperty(fieldNames[i]);
+                if (prop == null)
+                {
+                    Debug.LogError($"[配置导入器] Bootstrap 组件上未找到 {fieldNames[i]} 字段——检查脚本是否已编译最新版");
+                    continue;
+                }
+                var asset = FindTextAssetByName(jsonFileNames[i]);
+                if (asset == null)
+                {
+                    Debug.LogWarning($"[配置导入器] 未找到描述表 {jsonFileNames[i]}（Assets/Data 下）——{fieldNames[i]} 保持原值");
+                    continue;
+                }
+                prop.objectReferenceValue = asset;
+                Debug.Log($"[配置导入器] {fieldNames[i]} ← {asset.name}");
             }
             so.ApplyModifiedProperties();
             PrefabUtility.SaveAsPrefabAsset(contents, prefabPath);
             PrefabUtility.UnloadPrefabContents(contents);
-            Debug.Log($"[配置导入器] 已填充 {templateAssets.Count} 个模板资产到 {prefabPath}（预制体已保存——场景实例如需同步请手动重置/重新实例化）");
+            Debug.Log($"[配置导入器] 描述表 TextAsset 收集完成（{prefabPath}）");
+        }
+
+        /// <summary>
+        /// 通用收集实现：按字段-类型映射，把 Assets 库中对应类型的资产批量填入 Bootstrap 预制体列表字段。
+        /// 扫描全库（t:类型——TheLaw 自定义类型无同名冲突；SpecialAbilityDef 覆盖 Settings/Abilities + Settings/Configs 两处）。
+        /// AIParams 目前无资产（0 条属正常——Bootstrap.GetDefaultAIParams 兜底默认），不告警。
+        /// </summary>
+        private static void CollectToBootstrap(string[] fieldNames, System.Type[] fieldTypes)
+        {
+            if (fieldNames.Length != fieldTypes.Length)
+            {
+                Debug.LogError("[配置导入器] 收集字段与类型数量不一致——内部错误");
+                return;
+            }
+
+            // 找 Bootstrap 预制体资产（Prefabs/Bootstrap.prefab——按名字搜，不硬编码路径）
+            string prefabPath = FindBootstrapPrefabPath();
+            if (string.IsNullOrEmpty(prefabPath)) return;
+            Debug.Log($"[配置导入器] 找到预制体：{prefabPath}");
+
+            // 修改预制体资产内容（不碰场景实例——实例 override 与资产分离；实例无配置 override 时改资产即生效）
+            var contents = PrefabUtility.LoadPrefabContents(prefabPath);
+            MonoBehaviour bootstrap = FindBootstrapComponent(contents);
+            if (bootstrap == null)
+            {
+                PrefabUtility.UnloadPrefabContents(contents);
+                Debug.LogError("[配置导入器] Bootstrap.prefab 内未找到 Bootstrap 组件");
+                return;
+            }
+
+            var so = new SerializedObject(bootstrap);
+            int total = 0;
+            for (int i = 0; i < fieldNames.Length; i++)
+            {
+                var prop = so.FindProperty(fieldNames[i]);
+                if (prop == null)
+                {
+                    Debug.LogError($"[配置导入器] Bootstrap 组件上未找到 {fieldNames[i]} 字段——检查脚本是否已编译最新版");
+                    continue;
+                }
+                var assets = new List<Object>();
+                foreach (var guid in AssetDatabase.FindAssets($"t:{fieldTypes[i].Name}"))
+                {
+                    var asset = AssetDatabase.LoadAssetAtPath<Object>(AssetDatabase.GUIDToAssetPath(guid));
+                    if (asset != null)
+                    {
+                        assets.Add(asset);
+                    }
+                }
+                prop.ClearArray();
+                prop.arraySize = assets.Count;
+                for (int j = 0; j < assets.Count; j++)
+                {
+                    prop.GetArrayElementAtIndex(j).objectReferenceValue = assets[j];
+                }
+                Debug.Log($"[配置导入器] {fieldNames[i]} ← {fieldTypes[i].Name} × {assets.Count}");
+                total += assets.Count;
+            }
+            so.ApplyModifiedProperties();
+            PrefabUtility.SaveAsPrefabAsset(contents, prefabPath);
+            PrefabUtility.UnloadPrefabContents(contents);
+            Debug.Log($"[配置导入器] 已填充 {fieldNames.Length} 个字段共 {total} 条到 {prefabPath}（预制体已保存）");
+        }
+
+        /// <summary>找 Bootstrap 预制体资产路径（按名字搜，不硬编码路径；找不到返回 null）。</summary>
+        private static string FindBootstrapPrefabPath()
+        {
+            foreach (var guid in AssetDatabase.FindAssets("Bootstrap t:Prefab"))
+            {
+                var p = AssetDatabase.GUIDToAssetPath(guid);
+                if (p.EndsWith("Bootstrap.prefab"))
+                {
+                    return p;
+                }
+            }
+            Debug.LogError("[配置导入器] 未找到 Bootstrap.prefab——检查 Prefabs 目录");
+            return null;
+        }
+
+        /// <summary>在预制体内容中按组件类型名找 Bootstrap 组件（不引用 UI 程序集——Editor 不依赖 UI）。</summary>
+        private static MonoBehaviour FindBootstrapComponent(GameObject contents)
+        {
+            foreach (var mb in contents.GetComponentsInChildren<MonoBehaviour>(true))
+            {
+                if (mb.GetType().Name == "Bootstrap")
+                {
+                    return mb;
+                }
+            }
+            return null;
+        }
+
+        /// <summary>按文件名全库精确匹配 TextAsset（描述表——Assets/Data 下；找不到返回 null）。</summary>
+        private static TextAsset FindTextAssetByName(string fileName)
+        {
+            foreach (var guid in AssetDatabase.FindAssets("t:TextAsset"))
+            {
+                var path = AssetDatabase.GUIDToAssetPath(guid);
+                if (System.IO.Path.GetFileName(path) == fileName)
+                {
+                    return AssetDatabase.LoadAssetAtPath<TextAsset>(path);
+                }
+            }
+            return null;
         }
 
         // ========== 遗物 ==========
@@ -152,6 +253,23 @@ namespace TheLaw.EditorTools
                 relic.displayName = r.displayName;
                 relic.description = r.description;
                 relic.abilities = abilities;
+                // 2026-08-22：能力模型——词条（tags）+ 基础效果组合（effects）
+                relic.tags = r.tags ?? new List<string>();
+                relic.effects = new List<RelicEffectSpec>();
+                if (r.effects != null)
+                {
+                    foreach (var e in r.effects)
+                    {
+                        if (System.Enum.TryParse(e.effectType, out RelicEffectType et))
+                        {
+                            relic.effects.Add(new RelicEffectSpec { type = et, value = e.value });
+                        }
+                        else
+                        {
+                            UnityEngine.Debug.LogWarning($"[ConfigImporter] 未知遗物效果类型：{e.effectType}（遗物 {r.relicName}）");
+                        }
+                    }
+                }
                 if (relic.Id == 0)
                 {
                     SetId(relic, StableHash(relic.name));
@@ -183,6 +301,7 @@ namespace TheLaw.EditorTools
                     var def = LoadOrCreate<EventDefinition>(assetPath, $"Event_{e.eventId}"); // 增量：已存在更新不删建
                     def.title = e.title;
                     def.description = e.description;
+                    def.isAbilityPick = e.isAbilityPick; // 2026-08-22：能力三选一事件（动态候选——不显示固定 options）
                     def.deckSizeLimit = e.deckSizeLimit;
                     def.totalValueLimit = e.totalValueLimit;
                     def.allowDuplicate = e.allowDuplicate;            // 构筑新规则开关（2026-08-15：可复数）
@@ -686,11 +805,12 @@ namespace TheLaw.EditorTools
         private class WaveJson { public int startTurn; public List<string> pieceDefIds; public string pool; public int count; public List<PointJson> positions; public bool isLastWave; public int endCountdown; public List<WavePromotionJson> promotions; public bool autoPromote; public int waveScoreTarget; }
         private class WavePromotionJson { public int pieceIndexInWave; public string toDefId; }
         private class RelicsJson { public List<RelicJson> relics; }
-        private class RelicJson { public string relicName; public string displayName; public string description; public List<AbilityJson> abilities; }
+        private class RelicJson { public string relicName; public string displayName; public string description; public List<string> tags; public List<RelicEffectJson> effects; public List<AbilityJson> abilities; }
+        private class RelicEffectJson { public string effectType; public int value = 1; }
         private class EventsJson { public List<PoolJson> pools; public List<EventJson> events; }
         private class PoolJson { public string poolName; public List<EntryJson> entries; }
         private class EntryJson { public string eventId; public float weight; }
-        private class EventJson { public string eventId; public string title; public string description; public int deckSizeLimit; public int totalValueLimit; public bool allowDuplicate; public bool promoteLimitByInitial; public List<OptionJson> options; }
+        private class EventJson { public string eventId; public string title; public string description; public bool isAbilityPick; public int deckSizeLimit; public int totalValueLimit; public bool allowDuplicate; public bool promoteLimitByInitial; public List<OptionJson> options; }
         private class OptionJson { public string optionId; public string label; public List<EffectJson> effects; }
         private class EffectJson { public string effectType; public int targetDefId; public int amount; public int abilityId; public string relicName; }
         private class AbilityJson

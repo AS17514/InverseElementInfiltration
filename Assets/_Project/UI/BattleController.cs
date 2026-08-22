@@ -181,6 +181,8 @@ namespace TheLaw.UI
         // Main/UI 下的 3D TMP 计分字段（标题 *_K 由场景维护，数值节点由控制器刷新）。
         TMP_Text _totalScoreText, _waveScoreText, _baseScoreText, _multiplierText, _turnScoreText;
         bool _scoreRefsWarningLogged;
+        int _lastHandCount = -1;
+        int _lastPlayerScore = -1;
         SpriteRenderer[] _infoProgramBlocks = new SpriteRenderer[4]; // 行为逻辑块（SpriteRenderer）
         List<Template> _infoProgram; // 当前信息面板显示的程序（浮窗内容源）
 
@@ -198,7 +200,7 @@ namespace TheLaw.UI
             EventCenter.Instance.RemoveEventListener(GameEvent.PromoteAnnounced, OnPromoteAnnounced);
             EventCenter.Instance.RemoveEventListener(GameEvent.StateChanged, OnStateChanged);
             EventCenter.Instance.RemoveEventListener(GameEvent.BuffsChanged, OnBuffsChanged);
-            EventCenter.Instance.RemoveEventListener(GameEvent.ExtraActionGranted, OnBuffsChanged);
+            EventCenter.Instance.RemoveEventListener(GameEvent.ExtraActionGranted, OnExtraActionGranted);
             EventCenter.Instance.RemoveEventListener(GameEvent.RelicObtained, OnRelicObtained);
             if (_handPosTween != null) _handPosTween.Kill();
             if (_handSizeTween != null) _handSizeTween.Kill();
@@ -245,7 +247,7 @@ namespace TheLaw.UI
             EventCenter.Instance.AddEventListener(GameEvent.PromoteAnnounced, OnPromoteAnnounced);
             EventCenter.Instance.AddEventListener(GameEvent.StateChanged, OnStateChanged);
             EventCenter.Instance.AddEventListener(GameEvent.BuffsChanged, OnBuffsChanged); // buff 变化 → 刷新选中棋子信息面板
-            EventCenter.Instance.AddEventListener(GameEvent.ExtraActionGranted, OnBuffsChanged); // 免费行动授予同刷新
+            EventCenter.Instance.AddEventListener(GameEvent.ExtraActionGranted, OnExtraActionGranted); // 免费行动授予 → 刷新并播放提示音
             EventCenter.Instance.AddEventListener(GameEvent.RelicObtained, OnRelicObtained); // 道中获得遗物/能力 → 刷新全局能力栏
 
             // UI 架构重构 §五：面板局内缓存（Bootstrap 管理生命周期）——每场绑定不创建
@@ -285,6 +287,7 @@ namespace TheLaw.UI
             }
             if (_relicDisplay != null) _relicDisplay.gameObject.SetActive(false); // 默认隐藏
             RefreshAll();
+            _lastHandCount = _state.Hand != null ? _state.Hand.Count : 0;
             UpdateHandPositionByPhase(); // 初始阶段即应用手牌区状态（准备阶段高度 250）
             ClearPieceInfo(); // 初始：信息面板隐藏（无选中/无临时状态）
             // 补齐开局已有棋子视觉（首波部署早于控制器创建——PieceDeployed 事件已丢）
@@ -536,7 +539,7 @@ namespace TheLaw.UI
             ClearSelection();
         }
 
-        /// <summary>选中后只显示首个逻辑块的范围（移动=绿块；攻击=红框）——多个范围杂糅不易读。</summary>
+        /// <summary>选中后显示首个有候选逻辑块的范围（移动=绿块；攻击=红框）。</summary>
         void PreviewRange(int pieceId)
         {
             var piece = _state.GetPiece(pieceId);
@@ -547,7 +550,24 @@ namespace TheLaw.UI
                 ClearHighlights();
                 return;
             }
-            switch (program[0])
+
+            // 镜像 TryExecuteSelected：跳过不产生行动的效果/Skip 槽及无候选动作槽。
+            int index = 0;
+            while (index < program.Count)
+            {
+                var slot = program[index];
+                if (slot is SkipTemplate || slot is EffectTemplate) { index++; continue; }
+                if (slot is MoveTemplate move && _intentResolver.GetMoveOptions(_state, piece, move).Count == 0) { index++; continue; }
+                if (slot is AttackTemplate atk && _boardRules.GetAttackableCells(_state, piece, atk).Count == 0) { index++; continue; }
+                break;
+            }
+            if (index >= program.Count)
+            {
+                ClearHighlights();
+                return;
+            }
+
+            switch (program[index])
             {
                 case MoveTemplate move:
                     ShowHighlights(_intentResolver.GetMoveOptions(_state, piece, move), null);
@@ -556,7 +576,7 @@ namespace TheLaw.UI
                     ShowHighlights(null, _boardRules.GetAttackableCells(_state, piece, atk));
                     break;
                 default:
-                    ClearHighlights(); // Skip 等：无范围
+                    ClearHighlights();
                     break;
             }
         }
@@ -574,7 +594,7 @@ namespace TheLaw.UI
             while (execIndex < program.Count)
             {
                 var s = program[execIndex];
-                if (s is SkipTemplate) { execIndex++; continue; }
+                if (s is SkipTemplate || s is EffectTemplate) { execIndex++; continue; }
                 if (s is MoveTemplate mm && _intentResolver.GetMoveOptions(_state, piece, mm).Count == 0) { execIndex++; continue; }
                 if (s is AttackTemplate aa && _boardRules.GetAttackableCells(_state, piece, aa).Count == 0) { execIndex++; continue; }
                 break;
@@ -618,6 +638,11 @@ namespace TheLaw.UI
                     return;
                 }
                 var slot = _execProgram[_execIndex];
+                if (slot is EffectTemplate)
+                {
+                    _execIndex++;
+                    continue;
+                }
                 switch (slot)
                 {
                     case MoveTemplate move:
@@ -851,6 +876,7 @@ namespace TheLaw.UI
                 var outline = FindPromotionView(info.PieceId);
                 if (outline != null) outline.PlayPromotionFlash();
             }
+            AudioManager.Instance.PlaySFX(AudioRefs.SfxPromote);
             if (info.PieceId == _selectedPieceId)
             {
                 var piece = _state.GetPiece(info.PieceId);
@@ -914,6 +940,12 @@ namespace TheLaw.UI
             }
         }
 
+        void OnExtraActionGranted(object data)
+        {
+            OnBuffsChanged(data);
+            AudioManager.Instance.PlaySFX(AudioRefs.SfxFreeAction);
+        }
+
         void OnRelicObtained(object data)
         {
             RefreshEventAbilities();
@@ -933,14 +965,31 @@ namespace TheLaw.UI
             yield return null;
         }
 
+        /// <summary>按后端随伤害事件透传的本次攻击类型选择对应音效；未知类型回退近战音。</summary>
+        static string GetAttackSfx(AttackMode attackMode)
+        {
+            return attackMode switch
+            {
+                AttackMode.Melee => AudioRefs.SfxAttackMelee,
+                AttackMode.MeleeAOE => AudioRefs.SfxAttackMeleeAoe,
+                AttackMode.DirectFire => AudioRefs.SfxAttackDirect,
+                AttackMode.Arcing => AudioRefs.SfxAttackArcing,
+                AttackMode.Spell => AudioRefs.SfxAttackSpell,
+                _ => AudioRefs.SfxAttackMelee,
+            };
+        }
+
         IEnumerator PlayDamage(DamageInfo info)
         {
+            var target = _state.GetPiece(info.TargetId);
+            // DamageDealt 在护盾结算后发出；若目标仍有护盾且本次有伤害，则此次伤害包含护盾抵挡。
+            bool shieldBlocked = target != null && info.Damage > 0 && target.shieldCount > 0;
             // 攻击者挥动闪白（动作反馈——2026-08-12 恢复：dacb39b 改闪目标时攻击者动作被整体删除；
             // 含空挥 TargetId=-1（AttackerId 所有攻击路径均有效））
             // ⚠️ 组内去重（#6 前端部分）：AOE 多目标同组并行——同一攻击者只闪一次（HashSet.Add 首次 true）
             if (_batchFlashAttackers == null || _batchFlashAttackers.Add(info.AttackerId))
             {
-                AudioManager.Instance.PlaySFX(AudioRefs.SfxAttack); // 攻击（挥击）音效——同组只播一次
+                AudioManager.Instance.PlaySFX(GetAttackSfx(info.AttackMode)); // 攻击（挥击）音效——按本次攻击类型分发，同组只播一次
                 var attacker = _pieceViews.Get(info.AttackerId);
                 if (attacker != null)
                 {
@@ -958,7 +1007,7 @@ namespace TheLaw.UI
             var go = _pieceViews.Get(info.TargetId);
             if (go != null)
             {
-                AudioManager.Instance.PlaySFX(AudioRefs.SfxHit); // 受击音效（逐目标）
+                AudioManager.Instance.PlaySFX(shieldBlocked ? AudioRefs.SfxShield : AudioRefs.SfxHit); // 护盾抵挡与受击音区分（逐目标）
                 var sr = go.transform.Find("Portrait")?.GetComponent<SpriteRenderer>();
                 if (sr != null)
                 {
@@ -1034,7 +1083,7 @@ namespace TheLaw.UI
         {
             if (_infoProgram == null || slotIndex < 0 || slotIndex >= _infoProgram.Count) return;
             // 2026-08-13 重构：通用 TooltipManager（单实例——加载/定位/防出屏收敛；世界坐标 = 行为块左上角）
-            TooltipManager.Instance.Show(SlotDetailDesc(_infoProgram[slotIndex]), leftTopWorld);
+            TooltipManager.Instance.Show(new TooltipViewData(SlotDetailDesc(_infoProgram[slotIndex])), leftTopWorld);
         }
 
         public void HideBehaviorTooltip()
@@ -1175,7 +1224,7 @@ namespace TheLaw.UI
             // 我方回合也可部署单位——只有敌方回合收起手牌
             bool expanded = _state.Phase == BattlePhase.Placement || _state.Phase == BattlePhase.PlayerTurn;
             float targetH = expanded ? 210f : 170f;
-            float targetY = expanded ? 50f : -60f;
+            float targetY = expanded ? -40f : -90f;
             // 显式通知布局控制器收起/展开状态（上浮修正依赖）
             var layout = rt.GetComponent<HandLayoutController>();
             if (layout != null) layout.SetCollapsed(!expanded);
@@ -1198,6 +1247,13 @@ namespace TheLaw.UI
         {
             if (def == null) return 0;
             return _state != null ? _state.GetEffectiveValue(def.Id) : def.value;
+        }
+
+        List<Template> GetDisplayProgram(PieceDef def)
+        {
+            if (def == null) return null;
+            if (_state != null && _state.TryGetCurrentProgram(def.Id, out var edited)) return edited;
+            return def.programSet != null && def.programSet.Count > 0 ? def.programSet[0].slots : null;
         }
 
         /// <summary>手牌是否还有初始棋子（摆放前置判断；2026-08-20 牌结构：仅棋子牌——麻将牌非棋子不计）。</summary>
@@ -1232,6 +1288,12 @@ namespace TheLaw.UI
         void OnHandChanged(object data)
         {
             if (data == null) return; // AddToEnemyWavePool 也发 HandChanged(null)——敌方侧变化不重建玩家手牌
+            int handCount = _state.Hand != null ? _state.Hand.Count : 0;
+            if (_lastHandCount >= 0 && handCount > _lastHandCount)
+            {
+                AudioManager.Instance.PlaySFX(AudioRefs.SfxDraw);
+            }
+            _lastHandCount = handCount;
             RebuildHand();
             RefreshPhaseButton(); // 手牌变化 → 摆放前置状态可能变化（按钮可用性）
             RefreshDrawPile();
@@ -1276,6 +1338,12 @@ namespace TheLaw.UI
         void RefreshScore()
         {
             if (_state == null) return;
+            if (_lastPlayerScore >= 0 && _state.PlayerScore > _lastPlayerScore
+                && (_state.CurrentFloorConfig?.scoreDeductEnabled ?? false))
+            {
+                AudioManager.Instance.PlaySFX(AudioRefs.SfxScore);
+            }
+            _lastPlayerScore = _state.PlayerScore;
             EnsureScoreRefs();
             int waveScore = _state.WaveScores != null && _state.WaveScores.Count > 0
                 ? _state.WaveScores[_state.WaveScores.Count - 1]
@@ -1808,6 +1876,11 @@ namespace TheLaw.UI
             {
                 var handCard = hand[i].card;
                 var def = hand[i].def;
+                var data = PiecePresentationMapper.ToHandCard(
+                    def,
+                    GetEffectiveType(def),
+                    GetEffectiveValue(def),
+                    GetDisplayProgram(def));
                 GameObject card = null;
                 // 复用必须按实例 id 匹配：同 defId、同属性的重复牌也不能互换身份。
                 for (int j = 0; j < oldCards.Count; j++)
@@ -1821,9 +1894,10 @@ namespace TheLaw.UI
                 }
                 if (card == null)
                 {
-                    card = Instantiate(template, _panel.HandRoot);
+                    var view = UIComponentFactory.CreateHandCard(template, _panel.HandRoot, data);
+                    card = view.gameObject;
+                    card.name = $"Card_{i}_{def.displayName}";
                     card.SetActive(true);
-                    FillCard(card, def, i);
                     AddCardDrag(card, handCard, i);
                     var newCanvasGroup = card.GetComponent<CanvasGroup>();
                     if (newCanvasGroup != null) newCanvasGroup.alpha = 1f;
@@ -1839,6 +1913,9 @@ namespace TheLaw.UI
                     var cg = card.GetComponent<CanvasGroup>();
                     if (cg != null) cg.alpha = 1f;
                     card.transform.localScale = Vector3.one * 0.35f;
+                    var view = card.GetComponent<HandCardView>();
+                    if (view == null) view = card.AddComponent<HandCardView>();
+                    view.Bind(data);
                 }
             }
             // 销毁未复用的旧卡（已移除的）
@@ -1864,94 +1941,6 @@ namespace TheLaw.UI
             DG.Tweening.DOTween.To(() => cg.alpha, a => cg.alpha = a, 1f, 0.2f)
                 .SetDelay(index * 0.04f)
                 .SetTarget(cg);
-        }
-
-        void FillCard(GameObject card, PieceDef def, int index)
-        {
-            var effectiveType = GetEffectiveType(def);
-            // 卡背景色按种类标识（低饱和度：初始=绿 / 部署=蓝 / 升变=红）
-            var bg = card.GetComponent<Image>();
-            if (bg != null) bg.color = CardTypeColors.For(effectiveType);
-            var nameText = FindCardNode(card.transform, "Txt_InfoName")?.GetComponent<TMP_Text>();
-            if (nameText != null) nameText.text = VerticalName(def.displayName); // 竖排（一字一行）
-            var valueText = FindCardNode(card.transform, "Img_InfoValue")?.GetComponentInChildren<TMP_Text>();
-            if (valueText != null) valueText.text = GetEffectiveValue(def).ToString();
-            var typeText = FindCardNode(card.transform, "Img_InfoType")?.GetComponentInChildren<TMP_Text>();
-            if (typeText != null) typeText.text = effectiveType == PieceType.Initial ? "始" : effectiveType == PieceType.Deployable ? "部" : "升";
-            // 程序描述 + 槽位显隐（未配置的块/解释隐藏；每个槽填各自的单槽描述）
-            // 程序 = 编辑差异优先（CurrentPrograms——编辑结果在此），回退 Def 默认模组（2026-08-11 数据链修复）
-            int slotCount = 0;
-            List<Template> slots = null;
-            if (_state != null && _state.TryGetCurrentProgram(def.Id, out var edited)) slots = edited;
-            else if (def.programSet != null && def.programSet.Count > 0 && def.programSet[0].slots != null) slots = def.programSet[0].slots;
-            if (slots != null) slotCount = Mathf.Min(slots.Count, 4);
-            for (int s = 0; s < 4; s++)
-            {
-                bool show = s < slotCount;
-                var block = FindCardNode(card.transform, $"Img_InfoProgram{s + 1}");
-                if (block != null)
-                {
-                    block.gameObject.SetActive(show);
-                    // 槽位图标文字（移/攻/跳）
-                    var blockText = block.GetComponentInChildren<TMP_Text>();
-                    if (blockText != null && show) blockText.text = SlotTypeCharStatic(slots[s]);
-                }
-                var desc = FindCardNode(card.transform, $"Txt_InfoProgram{s + 1}Desc");
-                if (desc != null)
-                {
-                    desc.gameObject.SetActive(show);
-                    if (show)
-                    {
-                        var tmp = desc.GetComponent<TMP_Text>();
-                        if (tmp != null) tmp.text = SlotDetailDesc(slots[s]); // 单槽自然语言描述
-                    }
-                }
-            }
-        }
-
-        /// <summary>槽位图标字符（移/攻/效/跳）。</summary>
-        static string SlotTypeCharStatic(Template t)
-        {
-            switch (t)
-            {
-                case MoveTemplate: return "移";
-                case AttackTemplate: return "攻";
-                case EffectTemplate: return "效";
-                case SkipTemplate: return "跳";
-                default: return "跳";
-            }
-        }
-
-        /// <summary>竖排名称：每个字符一行（卡片名称竖向显示）。</summary>
-        /// <summary>卡片背景色（种类标识，低饱和度：初始=浅绿 / 部署=浅蓝 / 升变=浅红）。</summary>
-        static Color CardTypeColor(PieceType type)
-        {
-            switch (type)
-            {
-                case PieceType.Initial: return new Color(0.58f, 0.78f, 0.58f, 1f);   // 浅绿
-                case PieceType.Deployable: return new Color(0.58f, 0.70f, 0.85f, 1f); // 浅蓝
-                default: return new Color(0.85f, 0.62f, 0.62f, 1f);                   // 浅红（升变）
-            }
-        }
-
-        static string VerticalName(string name)
-        {
-            if (string.IsNullOrEmpty(name)) return name;
-            return string.Join("\n", name.ToCharArray());
-        }
-
-        /// <summary>卡片节点容错查找：精确匹配失败则递归前缀匹配（节点名可能有 "(1)" 复制后缀）。</summary>
-        static Transform FindCardNode(Transform root, string name)
-        {
-            var exact = root.Find(name);
-            if (exact != null) return exact;
-            foreach (Transform child in root)
-            {
-                if (child.name.StartsWith(name)) return child;
-                var deeper = FindCardNode(child, name);
-                if (deeper != null) return deeper;
-            }
-            return null;
         }
 
         void AddCardDrag(GameObject card, Card handCard, int index)

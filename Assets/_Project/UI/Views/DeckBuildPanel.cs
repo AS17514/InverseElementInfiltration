@@ -101,10 +101,7 @@ namespace TheLaw.UI
             // 每次打开：出战清空（从零构筑——事件发生前手牌为全量，构筑 = 选新的出战）
             _deck.Clear();
             LoadLimits(); // 显示时 _state 必已 Init（Awake 时序问题：CreateAsync 回调后才 Init）
-            RebuildPool();
-            RebuildDeck();
-            RefreshLimits();
-            RefreshPoolAvailability(); // 初始刷新可选中性（空牌组时全可选——限制生效后按限制禁选）
+            StartCoroutine(RebuildCardsWhenReady());
             ClearPieceInfo(); // 初始化无选中棋子——Grp_PieceInfo 隐藏（悬停卡片才显示）
         }
 
@@ -199,9 +196,13 @@ namespace TheLaw.UI
             for (int i = 0; i < _sortedDefs.Count; i++)
             {
                 var def = _sortedDefs[i];
-                var go = Instantiate(_cardTemplate, _poolContent);
+                var data = PiecePresentationMapper.ToPieceCard(
+                    def,
+                    GetEffectiveType(def.Id),
+                    GetEffectiveValue(def.Id),
+                    GetDisplayProgram(def));
+                var go = UIComponentFactory.CreatePieceCard(_cardTemplate, _poolContent, data, _progTemplate).gameObject;
                 go.name = $"PoolCard_{def.Id}_{def.displayName}";
-                FillCardData(go, def);
                 // 悬停显示信息（CardHover——PointerEnter/PointerExit）
                 var hover = go.GetComponent<CardHover>();
                 if (hover == null) hover = go.AddComponent<CardHover>();
@@ -218,16 +219,29 @@ namespace TheLaw.UI
             // 牌池互斥/复数由 _deck 计数驱动，不依赖 ToggleGroup
         }
 
-        System.Collections.IEnumerator RebuildPoolWhenReady()
+        /// <summary>等待卡面与程序图标模板均完成加载后，再按统一流程重建两侧卡片。</summary>
+        System.Collections.IEnumerator RebuildCardsWhenReady()
         {
             int guard = 0;
-            while (_cardTemplate == null && guard++ < 300) yield return null; // 防死等（大审查 H2：加载失败不再无限空等）
-            if (_cardTemplate == null)
+            while ((_cardTemplate == null || _progTemplate == null) && guard++ < 300)
             {
-                Debug.LogWarning("[DeckBuild] 卡面模板加载超时——跳过本次构建");
+                yield return null; // 防死等（大审查 H2：加载失败不再无限空等）
+            }
+            if (_cardTemplate == null || _progTemplate == null)
+            {
+                Debug.LogWarning("[DeckBuild] 卡面或程序图标模板加载超时——跳过本次构建");
                 yield break;
             }
+
             RebuildPool();
+            RebuildDeck();
+            RefreshLimits();
+            RefreshPoolAvailability();
+        }
+
+        System.Collections.IEnumerator RebuildPoolWhenReady()
+        {
+            yield return RebuildCardsWhenReady();
         }
 
         /// <summary>牌池卡点击：左键加 / 右键减。信息显示由悬停（CardHover）负责——点击不显示。</summary>
@@ -345,6 +359,13 @@ namespace TheLaw.UI
             return def != null ? def.pieceType : PieceType.Initial;
         }
 
+        List<Template> GetDisplayProgram(PieceDef def)
+        {
+            if (def == null) return null;
+            if (_state != null && _state.TryGetCurrentProgram(def.Id, out var edited)) return edited;
+            return def.programSet != null && def.programSet.Count > 0 ? def.programSet[0].slots : null;
+        }
+
         void SetCardBlocked(GameObject card, bool blocked)
         {
             if (card == null) return;
@@ -369,9 +390,13 @@ namespace TheLaw.UI
             {
                 var def = ConfigTable.Find<PieceDef>(deckId);
                 if (def == null || _cardTemplate == null) continue;
-                var go = Instantiate(_cardTemplate, _deckContent);
+                var data = PiecePresentationMapper.ToPieceCard(
+                    def,
+                    GetEffectiveType(def.Id),
+                    GetEffectiveValue(def.Id),
+                    GetDisplayProgram(def));
+                var go = UIComponentFactory.CreatePieceCard(_cardTemplate, _deckContent, data, _progTemplate).gameObject;
                 go.name = $"DeckCard_{def.Id}_{def.displayName}";
-                FillCardData(go, def);
                 // 悬停显示信息（CardHover——PointerEnter/PointerExit）
                 var hover = go.GetComponent<CardHover>();
                 if (hover == null) hover = go.AddComponent<CardHover>();
@@ -488,46 +513,6 @@ namespace TheLaw.UI
             if (_deckSizeLimit <= 0 || _deck.Count == _deckSizeLimit) return false;
             Debug.LogWarning($"[DeckBuild] 出战牌组必须恰好 {_deckSizeLimit} 张，当前 {_deck.Count} 张——无法确认");
             return true;
-        }
-
-        // ====== 卡片数据填充（Piece_Card：Bg/Portrait/BaseInfo(类型·足迹·价值)/ProgramInfo）======
-
-        /// <summary>填充牌池/出战卡数据。程序 = 编辑差异优先（CurrentPrograms），回退 Def 默认模组。</summary>
-        void FillCardData(GameObject card, PieceDef def)
-        {
-            var bg = card.GetComponent<Image>();
-            if (bg != null) bg.color = CardTypeColors.For(GetEffectiveType(def.Id));
-            var valueText = FindDeep(card.transform, "Img_PieceValue")?.GetComponentInChildren<TMP_Text>();
-            if (valueText != null) valueText.text = GetEffectiveValue(def.Id).ToString();
-            var typeText = FindDeep(card.transform, "Img_PieceType")?.GetComponentInChildren<TMP_Text>();
-            if (typeText != null)
-            {
-                typeText.text = GetEffectiveType(def.Id) == PieceType.Initial ? "始" : GetEffectiveType(def.Id) == PieceType.Deployable ? "部" : "升";
-            }
-            // 程序槽图标（Grp_PieceProgramInfo 内 Piece_ProgramInfo——编辑差异优先，2026-08-11 数据链修复）
-            var progRoot = FindDeep(card.transform, "Grp_PieceProgramInfo");
-            if (progRoot != null && _progTemplate != null)
-            {
-                List<Template> slots = null;
-                if (_state != null && _state.TryGetCurrentProgram(def.Id, out var edited)) slots = edited;
-                else if (def.programSet != null && def.programSet.Count > 0) slots = def.programSet[0].slots;
-                int count = slots != null ? Mathf.Min(slots.Count, 4) : 0;
-                // 复用已有图标，超出补建（卡片重建时已清空子物体——此处幂等）
-                int existing = progRoot.childCount;
-                for (int k = existing; k < count; k++) Instantiate(_progTemplate, progRoot);
-                int i = 0;
-                foreach (Transform p in progRoot)
-                {
-                    bool show = i < count;
-                    if (p.gameObject.activeSelf != show) p.gameObject.SetActive(show);
-                    if (show && slots != null)
-                    {
-                        var t = p.GetComponentInChildren<TMP_Text>();
-                        if (t != null) t.text = SlotTypeChar(slots[i]);
-                    }
-                    i++;
-                }
-            }
         }
 
         static Transform FindDeep(Transform root, string name)
@@ -652,7 +637,7 @@ namespace TheLaw.UI
             {
                 Debug.LogError("[DeckBuild] Tag_DeckLimit 加载失败——无法显示构筑限制");
             }
-            // 重建统一由 OnShow（模板未就绪时 RebuildPoolWhenReady 等待）驱动——此处不重复触发
+            // 重建统一由 OnShow 的 RebuildCardsWhenReady 驱动；模板完成后在同一流程中生成牌池与出战卡。
         }
 
         /// <summary>确认按钮置灰时仍接收点击，用于提示牌数必须达到精确限制。</summary>

@@ -28,9 +28,7 @@ namespace TheLaw.UI
         // ====== 节点引用 ======
         private Transform _pieceContent;   // 左列棋子列表 Content
         private Transform _programContent; // 中列程序库 Content
-        private Transform _pieceInfo;      // 右侧信息区（Grp_PieceInfo）
-        private Transform _overlapDisplay; // 右侧叠加显示（Grp_OverlapDisplay）
-        private Transform _nonOverlap;     // 右侧文字显示（Grp_NonOverlapDisplay）
+        private Transform _pieceInfo;      // 右侧统一详情卡（Piece_Handcard）
         private Image[] _slotImages;       // Img_InfoProgram1~4
         private TMP_Text[] _slotTexts;     // 槽位内文字（移/攻/跳）
         private TMP_Text[] _slotDescs;     // Txt_InfoProgram1~4Desc
@@ -52,6 +50,7 @@ namespace TheLaw.UI
         private GameObject _programCardTemplate; // Program_Card 缓存，避免每次候选刷新重复加载 Addressable
         private bool _loadingProgramCardTemplate;
         private GameObject _progTemplate; // Piece_ProgramInfo prefab（卡面缩略图模板——Addressables）
+        private Button _nextBtn;             // Btn_Next（仅选中本次指定棋子时可完成）
         private Button _undoBtn;             // Btn_Undo（单击撤一步 / 长按全部撤回）
         private UndoButtonHandler _undoHandler;
 
@@ -96,16 +95,16 @@ namespace TheLaw.UI
             // 路径跟随 2026-08-11 面板重构：Grp/Grp_R/Grp_Low/Btn_Next（旧 Grp_L/Grp_Top 已不存在）
             // ⚠️ 2026-08-15：prefab 加 Grp_Btns 层（Grp_Low/Grp_Btns/Btn_Next）——硬路径 Find 失效按钮未绑定，
             // 改为硬路径优先 + FindDeep 兜底（与 Btn_Undo 同模式）
-            var next = transform.Find("Grp/Grp_R/Grp_Low/Btn_Next")?.GetComponent<Button>();
-            if (next == null)
+            _nextBtn = transform.Find("Grp/Grp_R/Grp_Low/Btn_Next")?.GetComponent<Button>();
+            if (_nextBtn == null)
             {
                 var nextGo = FindDeep(transform, "Btn_Next");
-                if (nextGo != null) next = nextGo.GetComponent<Button>();
+                if (nextGo != null) _nextBtn = nextGo.GetComponent<Button>();
             }
-            if (next != null)
+            if (_nextBtn != null)
             {
-                next.onClick.RemoveAllListeners();
-                next.onClick.AddListener(OnNext);
+                _nextBtn.onClick.RemoveAllListeners();
+                _nextBtn.onClick.AddListener(OnNext);
             }
             // Btn_Undo（2026-08-13：单击撤一步 / 长按全部撤回 / 悬停提示）——按名查找（路径随面板布局变化，FindDeep 兜底）
             _undoBtn = transform.Find("Grp/Grp_R/Grp_Low/Btn_Undo")?.GetComponent<Button>();
@@ -124,7 +123,11 @@ namespace TheLaw.UI
                 _undoHandler.OnLongPress += OnUndoLongPressed;
                 _undoHandler.OnHoverEnter += ShowUndoTooltip;
                 _undoHandler.OnHoverExit += HideUndoTooltip;
+                var disabledTooltip = _undoBtn.gameObject.GetComponent<DisabledUndoTooltip>();
+                if (disabledTooltip == null) disabledTooltip = _undoBtn.gameObject.AddComponent<DisabledUndoTooltip>();
+                disabledTooltip.Init(_undoBtn);
             }
+            RefreshEditorButtons();
         }
 
                 // ====== 拖拽幽灵登记/清理（EditorProgramDrag 调用；防孤儿残留）======
@@ -196,7 +199,7 @@ namespace TheLaw.UI
             var confirm = FindObjectOfType<ConfirmPanel>(true);
             if (confirm != null)
             {
-                confirm.ShowConfirm("确认全部撤回？", RestoreAllAndReset);
+                confirm.ShowConfirm(new ConfirmViewData("确认全部撤回？"), RestoreAllAndReset);
             }
             else
             {
@@ -215,6 +218,13 @@ namespace TheLaw.UI
             _slotLocked.Clear();
             if (_pieceInfo != null) _pieceInfo.gameObject.SetActive(false); // 隐藏信息区
             // 卡面缩略图由 RestoreAll 的 ProgramEdited 事件驱动刷新（逐棋子）
+            RefreshEditorButtons();
+        }
+
+        /// <summary>完成与撤回按钮统一跟随当前选中棋子的后端可编辑资格。</summary>
+        void RefreshEditorButtons()
+        {
+            if (_nextBtn != null) _nextBtn.interactable = CanEditSelected();
             RefreshUndoButton();
         }
 
@@ -223,6 +233,30 @@ namespace TheLaw.UI
         {
             if (_undoBtn == null) return;
             _undoBtn.interactable = CanEditSelected() && _editor.CanUndo(_selectedDefId);
+        }
+
+        /// <summary>撤回按钮不可用时显示当前选择不足的提示。</summary>
+        public class DisabledUndoTooltip : MonoBehaviour, IPointerEnterHandler, IPointerExitHandler
+        {
+            private const string Message = "存在编辑历史或选定待编辑棋子以激活撤回按钮";
+            private Button _button;
+
+            public void Init(Button button)
+            {
+                _button = button;
+            }
+
+            public void OnPointerEnter(PointerEventData eventData)
+            {
+                if (_button == null || _button.interactable) return;
+                var canvas = GetComponentInParent<Canvas>();
+                TooltipManager.Instance?.Show(Message, transform.position, canvas != null ? canvas.worldCamera : null);
+            }
+
+            public void OnPointerExit(PointerEventData eventData)
+            {
+                TooltipManager.Instance?.Hide();
+            }
         }
 
         /// <summary>悬停提示浮窗：Addressables 加载通用 TipPanel 预制体（2026-08-13——与行为描述浮窗共用；Txt_Desc 写提示文本）。</summary>
@@ -234,7 +268,7 @@ namespace TheLaw.UI
             if (canvas != null)
             {
                 Vector2 screen = RectTransformUtility.WorldToScreenPoint(canvas.worldCamera, _undoBtn.transform.position);
-                TooltipManager.Instance.ShowAtScreen("单击撤回一次\n长按全部撤回", screen);
+                TooltipManager.Instance.ShowAtScreen(new TooltipViewData("单击撤回一次\n长按全部撤回"), screen);
             }
         }
         void HideUndoTooltip()
@@ -291,47 +325,43 @@ namespace TheLaw.UI
                 if (scroll != null) scroll.normalizedPosition = Vector2.zero;
             }
             RefreshPieceList();
-            RefreshUndoButton(); // 新会话：无可撤销历史 → 置灰
+            RefreshEditorButtons(); // 新会话：按钮状态与当前可编辑棋子保持一致
         }
 
         void ResolveNodes()
         {
-            // 路径跟随 2026-08-11 面板重构：棋子列表在 Grp/Grp_R/Grp_Pieces/...，程序库在 Grp/Grp_Programs/...（无 Grp_L 层）
+            // 列表和程序库仍按面板自身节点绑定；右侧详情统一复用内嵌 Piece_Handcard。
             _pieceContent = transform.Find("Grp/Grp_R/Grp_Pieces/Grp_PieceDisplay/Viewport/Content");
             _programContent = transform.Find("Grp/Grp_Programs/Grp_ProgramDisplay/Viewport/Content");
-            _pieceInfo = transform.Find("Grp/Grp_PieceInfo");
-            if (_pieceInfo == null) return;
-            _overlapDisplay = _pieceInfo.Find("Grp_OverlapDisplay");
-            _nonOverlap = _pieceInfo.Find("Grp_NonOverlapDisplay");
+            _pieceInfo = FindDeep(transform, "Piece_Handcard");
 
             _slotImages = new Image[4];
             _slotTexts = new TMP_Text[4];
             _slotDescs = new TMP_Text[4];
+            if (_pieceInfo == null)
+            {
+                Debug.LogError("[PieceEdit] 未找到右侧统一详情卡 Piece_Handcard");
+                return;
+            }
+
             for (int i = 0; i < 4; i++)
             {
-                var img = _overlapDisplay?.Find($"Grp_InfoProgram/Img_InfoProgram{i + 1}");
+                var img = FindDeep(_pieceInfo, $"Img_InfoProgram{i + 1}");
                 _slotImages[i] = img != null ? img.GetComponent<Image>() : null;
-                _slotTexts[i] = img != null ? img.GetComponentInChildren<TMP_Text>() : null;
-                var desc = _nonOverlap?.Find($"Grp_ProgramDesc/Txt_InfoProgram{i + 1}Desc");
+                _slotTexts[i] = img != null ? img.GetComponentInChildren<TMP_Text>(true) : null;
+                var desc = FindDeep(_pieceInfo, $"Txt_InfoProgram{i + 1}Desc");
                 _slotDescs[i] = desc != null ? desc.GetComponent<TMP_Text>() : null;
             }
-            var value = _overlapDisplay?.Find("Grp_InfoBase/Img_InfoValue");
+
+            var value = FindDeep(_pieceInfo, "Img_InfoValue");
             _infoValueImg = value != null ? value.GetComponent<Image>() : null;
-            _infoValueText = value != null ? value.GetComponentInChildren<TMP_Text>() : null;
-            var type = _overlapDisplay?.Find("Grp_InfoBase/Img_InfoType");
+            _infoValueText = value != null ? value.GetComponentInChildren<TMP_Text>(true) : null;
+            var type = FindDeep(_pieceInfo, "Img_InfoType");
             _infoTypeImg = type != null ? type.GetComponent<Image>() : null;
-            _infoTypeText = type != null ? type.GetComponentInChildren<TMP_Text>() : null;
-            var name = _nonOverlap?.Find("Grp_PortraitNameDisplay/Txt_InfoName");
+            _infoTypeText = type != null ? type.GetComponentInChildren<TMP_Text>(true) : null;
+            var name = FindDeep(_pieceInfo, "Txt_InfoName");
             _infoName = name != null ? name.GetComponent<TMP_Text>() : null;
-            if (_infoName == null)
-            {
-                // 兜底：深层按名查找（prefab 复制可能带 (1) 后缀）
-                foreach (var t in GetComponentsInChildren<TMP_Text>(true))
-                {
-                    if (t.name == "Txt_InfoName") { _infoName = t; break; }
-                }
-            }
-            var portrait = _nonOverlap?.Find("Grp_PortraitNameDisplay/Img_InfoPortrait");
+            var portrait = FindDeep(_pieceInfo, "Img_InfoPortrait");
             _infoPortrait = portrait != null ? portrait.GetComponent<Image>() : null;
         }
 
@@ -442,9 +472,14 @@ namespace TheLaw.UI
             });
             foreach (var def in defs)
             {
-                var go = Instantiate(cardHandle.Result, _pieceContent);
+                var data = PiecePresentationMapper.ToPieceCard(
+                    def,
+                    GetEffectiveType(def),
+                    GetEffectiveValue(def),
+                    GetCurrentProgram(def));
+                var go = UIComponentFactory.CreatePieceCard(cardHandle.Result, _pieceContent, data, _progTemplate).gameObject;
                 go.name = $"PieceCard_{def.name}";
-                FillPieceCard(go, def, progHandle.Result, group);
+                BindPieceCardSelection(go, def, group);
             }
             // 三选一已确认：进入面板后自动选中唯一可编辑棋子；其他卡仍可切换查看信息。
             if (_editableDefId >= 0)
@@ -465,45 +500,16 @@ namespace TheLaw.UI
             // 滚动位置归零（跨局打开不残留旧滚动）
             var scroll = _pieceContent.GetComponentInParent<ScrollRect>();
             if (scroll != null) scroll.normalizedPosition = Vector2.zero;
-            RestoreContentOrigin(_pieceContent);
         }
 
-        /// <summary>
-        /// 保留 prefab 的 Content 原点。ScrollRect 在 Content 宽度由 prefab 布局系统计算前，
-        /// 会把零宽 Content 临时居中到视口（当前表现为 x=160）；只恢复 prefab 原有原点，
-        /// 不改 GridLayout、子节点坐标、间距、锚点或尺寸。
-        /// </summary>
-        static void RestoreContentOrigin(Transform content)
+        void BindPieceCardSelection(GameObject go, PieceDef def, ToggleGroup group)
         {
-            var rt = content as RectTransform;
-            if (rt == null) return;
-            rt.anchoredPosition = new Vector2(0f, rt.anchoredPosition.y);
-        }
-
-        void FillPieceCard(GameObject go, PieceDef def, GameObject progTemplate, ToggleGroup group)
-        {
-            FillPieceCardBase(go, def);
-            // 程序图标区：每槽放一个 Piece_ProgramInfo（Text=移/攻/跳——缩略图显示，非吸附位点）
-            var progRoot = FindDeep(go.transform, "Grp_PieceProgramInfo");
-            if (progRoot != null && progTemplate != null)
-            {
-                var slots = def.programSet != null && def.programSet.Count > 0 ? def.programSet[0].slots : null;
-                int count = slots != null ? Mathf.Min(slots.Count, 4) : 0;
-                for (int i = 0; i < count; i++)
-                {
-                    var p = Instantiate(progTemplate, progRoot);
-                    var t = p.GetComponentInChildren<TMP_Text>();
-                    if (t != null) t.text = SlotTypeChar(slots[i]);
-                }
-            }
-            // Toggle 单选：选中 → SelectPiece
+            // Toggle 单选：选中 → SelectPiece。
             var toggle = go.GetComponent<Toggle>();
-            if (toggle != null)
-            {
-                toggle.group = group;
-                var defId = def.Id;
-                toggle.onValueChanged.AddListener(on => { if (on) SelectPiece(defId); });
-            }
+            if (toggle == null) return;
+            toggle.group = group;
+            var defId = def.Id;
+            toggle.onValueChanged.AddListener(on => { if (on) SelectPiece(defId); });
         }
 
         /// <summary>吸附判定外扩量（区域吸附——EditorProgramDrag 用）。</summary>
@@ -516,6 +522,7 @@ namespace TheLaw.UI
         public List<InfoSlotTarget> CollectInfoSlotTargets(Camera uiCam)
         {
             var list = new List<InfoSlotTarget>();
+            if (_slotImages == null || _slotDescs == null) return list;
             for (int i = 0; i < 4; i++)
             {
                 if (_slotImages[i] == null && _slotDescs[i] == null) continue;
@@ -559,7 +566,7 @@ namespace TheLaw.UI
         /// <summary>槽位高亮组件（按槽索引——吸附判定命中 Img 或 Desc 都作用于对应 Img 的高亮）。</summary>
         public SlotSnapHighlight GetSlotHighlight(int slotIndex)
         {
-            if (slotIndex < 0 || slotIndex >= 4 || _slotImages[slotIndex] == null) return null;
+            if (_slotImages == null || slotIndex < 0 || slotIndex >= 4 || _slotImages[slotIndex] == null) return null;
             var hl = _slotImages[slotIndex].GetComponent<SlotSnapHighlight>();
             if (hl == null) hl = _slotImages[slotIndex].gameObject.AddComponent<SlotSnapHighlight>();
             return hl;
@@ -612,22 +619,19 @@ namespace TheLaw.UI
             }
         }
 
-        /// <summary>按有效类型/价值刷新棋子卡面基础信息。</summary>
-        void FillPieceCardBase(GameObject card, PieceDef def)
+        /// <summary>刷新指定棋子卡的完整 DTO（有效类型、价值、当前程序）。</summary>
+        void RefreshPieceCardBase(int defId)
         {
-            var effectiveType = GetEffectiveType(def);
-            var bg = card.GetComponent<Image>();
-            if (bg != null) bg.color = CardTypeColors.For(effectiveType);
-
-            var valueText = FindDeep(card.transform, "Img_PieceValue")?.GetComponentInChildren<TMP_Text>();
-            if (valueText != null) valueText.text = GetEffectiveValue(def).ToString();
-
-            var typeText = FindDeep(card.transform, "Img_PieceType")?.GetComponentInChildren<TMP_Text>();
-            if (typeText != null) typeText.text = PieceTypeChar(effectiveType);
+            RefreshPieceCard(defId);
         }
 
-        /// <summary>刷新指定棋子卡面的有效类型、价值和颜色。</summary>
-        void RefreshPieceCardBase(int defId)
+        /// <summary>刷新指定棋子卡的完整 DTO（有效类型、价值、当前程序）。</summary>
+        void RefreshPieceCardProgram(int defId)
+        {
+            RefreshPieceCard(defId);
+        }
+
+        void RefreshPieceCard(int defId)
         {
             if (_pieceContent == null) return;
             var def = ConfigTable.Find<PieceDef>(defId);
@@ -635,45 +639,13 @@ namespace TheLaw.UI
             foreach (Transform card in _pieceContent)
             {
                 if (card.name != $"PieceCard_{def.name}") continue;
-                FillPieceCardBase(card.gameObject, def);
-                return;
-            }
-        }
-
-        /// <summary>刷新棋子卡面程序图标（Grp_PieceProgramInfo 内 Piece_ProgramInfo）——编辑后按当前程序数动态增删缩略图。</summary>
-        void RefreshPieceCardProgram(int defId)
-        {
-            if (_pieceContent == null) return;
-            foreach (Transform card in _pieceContent)
-            {
-                if (card.name != $"PieceCard_{ConfigTable.Find<PieceDef>(defId)?.name}") continue;
-                var progRoot = FindDeep(card, "Grp_PieceProgramInfo");
-                if (progRoot == null) return;
-                _state.TryGetCurrentProgram(defId, out var edited);
-                var slots = edited ?? (ConfigTable.Find<PieceDef>(defId)?.programSet?[0].slots);
-                int count = slots != null ? Mathf.Min(slots.Count, 4) : 0;
-                // 增：当前程序多于已有缩略图 → 补建（模板未就绪则只更新已有部分）
-                int existing = progRoot.childCount;
-                if (_progTemplate != null)
-                {
-                    for (int k = existing; k < count; k++)
-                    {
-                        Instantiate(_progTemplate, progRoot);
-                    }
-                }
-                // 删：多于程序数的多余缩略图隐藏（不 Destroy——防与模板异步加载竞态）
-                int i = 0;
-                foreach (Transform p in progRoot)
-                {
-                    bool show = i < count;
-                    if (p.gameObject.activeSelf != show) p.gameObject.SetActive(show);
-                    if (show)
-                    {
-                        var t = p.GetComponentInChildren<TMP_Text>();
-                        if (t != null && slots != null) t.text = SlotTypeChar(slots[i]);
-                    }
-                    i++;
-                }
+                var view = card.GetComponent<PieceCardView>();
+                if (view == null) view = card.gameObject.AddComponent<PieceCardView>();
+                view.Bind(PiecePresentationMapper.ToPieceCard(
+                    def,
+                    GetEffectiveType(def),
+                    GetEffectiveValue(def),
+                    GetCurrentProgram(def)), _progTemplate);
                 return;
             }
         }
@@ -728,33 +700,17 @@ namespace TheLaw.UI
             }
             foreach (var slot in _programLibrary)
             {
-                var go = Instantiate(_programCardTemplate, _programContent);
+                var go = UIComponentFactory.CreateProgramCard(
+                    _programCardTemplate,
+                    _programContent,
+                    PiecePresentationMapper.ToProgramCard(slot)).gameObject;
                 go.name = $"Prog_{SlotDescTable.FeatureOf(slot)}";
-                FillProgramCard(go, slot);
                 // 拖拽源：程序库块（Library 模式——复制放置，原卡不消耗）
                 var drag = go.AddComponent<EditorProgramDrag>();
                 drag.Init(this, slot, EditorProgramDrag.DragSource.Library, -1);
                 drag.SetDraggable(CanEditSelected());
             }
 
-            // 只重建每张卡自己的 Grp_L。Content/GridLayout 不重建、不改 prefab 排版数据。
-            RebuildProgramGroupLayouts();
-            yield return null; // 等实例化后的 RectTransform 尺寸稳定，再补一次局部重建。
-            RebuildProgramGroupLayouts();
-        }
-
-        void RebuildProgramGroupLayouts()
-        {
-            if (_programContent == null) return;
-            Canvas.ForceUpdateCanvases();
-            foreach (Transform card in _programContent)
-            {
-                var group = FindDeep(card, "Grp_L") as RectTransform;
-                if (group != null && group.GetComponent<VerticalLayoutGroup>() != null)
-                {
-                    LayoutRebuilder.ForceRebuildLayoutImmediate(group);
-                }
-            }
         }
 
         private void RefreshProgramDragPermission()
@@ -767,24 +723,12 @@ namespace TheLaw.UI
             }
         }
 
-        /// <summary>填充程序库卡（Program_Card 预制体）：类型图标字 + 程序块价值 + 描述。</summary>
-        void FillProgramCard(GameObject go, Template slot)
-        {
-            var desc = FindDeep(go.transform, "Txt_ProgramDesc")?.GetComponent<TMP_Text>();
-            if (desc != null) desc.text = SlotDetailDescStatic(slot);
-            var typeTxt = FindDeep(go.transform, "Img_ProgramType")?.GetComponentInChildren<TMP_Text>();
-            if (typeTxt != null) typeTxt.text = SlotTypeChar(slot);
-            var value = FindDeep(go.transform, "Txt_ProgramCount")?.GetComponent<TMP_Text>();
-            if (value != null) value.text = PieceValue.GetValue(slot).ToString();
-        }
-
         /// <summary>程序编辑落账（ProgramEdited 事件）→ 刷新有效卡面与详情。</summary>
         void OnProgramEdited(object data)
         {
             if (data is int editedDefId)
             {
                 RefreshPieceCardBase(editedDefId);
-                RefreshPieceCardProgram(editedDefId);
                 if (_selectedDefId == editedDefId)
                 {
                     var def = ConfigTable.Find<PieceDef>(editedDefId);
@@ -811,7 +755,7 @@ namespace TheLaw.UI
             BuildProgramLibrary();          // 后端候选池按当前 defId 查询
             RefreshProgramList();           // 切换棋子后立即刷新候选区
             RefreshProgramDragPermission();
-            RefreshUndoButton(); // 新选中：检查该棋子是否有可撤销历史
+            RefreshEditorButtons(); // 新选中：完成与撤回均跟随当前可编辑资格
         }
 
         List<Template> GetCurrentProgram(PieceDef def)
@@ -834,10 +778,21 @@ namespace TheLaw.UI
 
         void FillPieceInfo(PieceDef def)
         {
+            if (_pieceInfo == null || _slotImages == null || _slotDescs == null)
+            {
+                Debug.LogError("[PieceEdit] 右侧统一详情卡未正确初始化，无法刷新棋子信息");
+                return;
+            }
+
             var effectiveType = GetEffectiveType(def);
-            if (_infoName != null) _infoName.text = VerticalName(def.displayName);
-            if (_infoValueText != null) _infoValueText.text = GetEffectiveValue(def).ToString();
-            if (_infoTypeText != null) _infoTypeText.text = PieceTypeChar(effectiveType);
+            var handCardView = _pieceInfo.GetComponent<HandCardView>();
+            if (handCardView == null) handCardView = _pieceInfo.gameObject.AddComponent<HandCardView>();
+            handCardView.Bind(PiecePresentationMapper.ToHandCard(
+                def,
+                effectiveType,
+                GetEffectiveValue(def),
+                _slotTemplates));
+
             for (int i = 0; i < 4; i++)
             {
                 // 槽位节点常显（未拥有的空槽也可作为吸附位点——2026-08-11 需求：空位也可拖入插入）
@@ -880,17 +835,7 @@ namespace TheLaw.UI
                     if (_slotImages[i] != null) _slotImages[i].color = new Color(1f, 1f, 1f, 0.15f);
                 }
             }
-            // 右侧信息区底色按种类标识（半透明——不盖子级内容）
-            if (_pieceInfo != null)
-            {
-                var infoImg = _pieceInfo.GetComponent<Image>();
-                if (infoImg != null)
-                {
-                    var c = CardTypeColors.For(effectiveType);
-                    infoImg.color = new Color(c.r, c.g, c.b, 0.45f);
-                }
-                _pieceInfo.gameObject.SetActive(true);
-            }
+            _pieceInfo.gameObject.SetActive(true);
         }
 
         // ====== 程序编排（锁定块在前绝对固定 + 替换/插入语义——整组提交） ======

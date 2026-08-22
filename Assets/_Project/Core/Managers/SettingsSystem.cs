@@ -1,5 +1,6 @@
 using System;
 using System.Collections.Generic;
+using System.IO;
 using Newtonsoft.Json;
 using UnityEngine;
 
@@ -7,8 +8,9 @@ namespace TheLaw.Core
 {
     /// <summary>
     /// 设置系统：只存值 + 发事件（引擎级设置由监听者直接应用，Core 不知道游戏内容）。
+    /// 持久化独立于存档：写入 persistentDataPath/settings.json，改动立即保存。
     /// </summary>
-    public class SettingsSystem : BaseManager<SettingsSystem>, ISnapshot
+    public class SettingsSystem : BaseManager<SettingsSystem>
     {
         private int _bgmVolumePercent = 80;
         private int _sfxVolumePercent = 100;
@@ -16,7 +18,7 @@ namespace TheLaw.Core
         private int _resolutionWidth = 1920;
         private int _resolutionHeight = 1080;
 
-        public string Key => "SettingsSystem";
+        private string SettingsPath => Path.Combine(Application.persistentDataPath, "settings.json");
 
         /// <summary>音量/全屏/分辨率变化事件（AudioManager、屏幕管理器监听并应用）。</summary>
         public event Action SettingsChanged;
@@ -31,18 +33,21 @@ namespace TheLaw.Core
         {
             _bgmVolumePercent = Mathf.Clamp(percent, 0, 100);
             SettingsChanged?.Invoke();
+            SaveSettings();
         }
 
         public void SetSFXVolumePercent(int percent)
         {
             _sfxVolumePercent = Mathf.Clamp(percent, 0, 100);
             SettingsChanged?.Invoke();
+            SaveSettings();
         }
 
         public void SetFullscreen(bool fullscreen)
         {
             _fullscreen = fullscreen;
             SettingsChanged?.Invoke();
+            SaveSettings();
         }
 
         public void SetResolution(int width, int height)
@@ -50,6 +55,7 @@ namespace TheLaw.Core
             _resolutionWidth = width;
             _resolutionHeight = height;
             SettingsChanged?.Invoke();
+            SaveSettings();
         }
 
         /// <summary>可用分辨率列表（运行时过滤宽高 &gt; 0）。</summary>
@@ -67,7 +73,35 @@ namespace TheLaw.Core
             return list;
         }
 
-        // ---- ISnapshot ----
+        // ---- 设置序列化（独立 settings.json）----
+
+        public void LoadSettings()
+        {
+            try
+            {
+                if (!File.Exists(SettingsPath)) return;
+                FromJson(File.ReadAllText(SettingsPath));
+            }
+            catch (Exception e)
+            {
+                Debug.LogError($"[SettingsSystem] 读取设置失败：{e.Message}");
+            }
+        }
+
+        public void SaveSettings()
+        {
+            try
+            {
+                string tmp = SettingsPath + ".tmp";
+                File.WriteAllText(tmp, ToJson());
+                if (File.Exists(SettingsPath)) File.Delete(SettingsPath);
+                File.Move(tmp, SettingsPath);
+            }
+            catch (Exception e)
+            {
+                Debug.LogError($"[SettingsSystem] 保存设置失败：{e.Message}");
+            }
+        }
 
         public string ToJson()
         {
@@ -84,6 +118,7 @@ namespace TheLaw.Core
         public void FromJson(string json)
         {
             var state = JsonConvert.DeserializeObject<SettingsState>(json);
+            if (state == null) return;
             _bgmVolumePercent = state.Bgm;
             _sfxVolumePercent = state.Sfx;
             _fullscreen = state.Fullscreen;

@@ -61,6 +61,7 @@ namespace TheLaw.Gameplay
         public void EditProgram(int defId, List<Template> program)
         {
             var before = GetCurrentProgram(defId);
+            // 消耗制维护在唯一落账点 Resolver.ApplyProgramEdit（2026-08-23 决策 4——Undo/还原/内置回位自动同步）
             if (EditConfig.IsHideMode)
             {
                 foreach (var m in before)
@@ -171,20 +172,33 @@ namespace TheLaw.Gameplay
         {
             var result = new List<Template>();
             // ① 外部候选（编辑事件 6 候选优先；无事件/过渡 = 模板库全部）
+            var external = new List<Template>();
             if (_state.EditModuleCandidates != null && _state.EditModuleCandidates.Count > 0)
             {
                 foreach (var template in _state.EditModuleCandidates)
                 {
-                    result.Add(template);
+                    external.Add(template);
                 }
             }
             else
             {
                 foreach (var template in TemplateLibrary.All())
                 {
-                    result.Add(template);
+                    external.Add(template);
                 }
             }
+            // 【消耗制候选 2026-08-23 决策 4（策划定案：本质=池子构成规则）】：候选池 = 模板库 − 本层占用增量——
+            // 本层已放入（净增量>0）的外部模块不再返回；撤销/移除后净增量回 0 → 自动恢复显示；
+            // 进层（EnterFloor）清空消耗集 → 跨层池子复原（上层用过的模块可再抽再用、可跨层叠加）。
+            if (external.Count > 0 && _state.ConsumedModules != null && _state.ConsumedModules.Count > 0)
+            {
+                external.RemoveAll(candidate =>
+                {
+                    var key = Resolver.ExternalModuleKey(candidate);
+                    return key != null && _state.ConsumedModules.TryGetValue(key, out var consumed) && consumed > 0;
+                });
+            }
+            result.AddRange(external);
             // hide 模式：过滤本棋子已隐藏模块（被替换/移除的外部模块——候选区不可见）
             if (EditConfig.IsHideMode && _state.HiddenModules.TryGetValue(defId, out var hidden))
             {
@@ -209,17 +223,10 @@ namespace TheLaw.Gameplay
             return result;
         }
 
-        /// <summary>内置编号判定（2026-08-19：棋子内置模块用 Move≤9 / Attack≤11 / Effect≤3（护盾/刺客能力/炮手能力——口述价）；
-        /// 外部模块编号 ≥10/≥12/≥4（效果外部模块待用户描述后定编号））。</summary>
+        /// <summary>内置编号判定（2026-08-23 委托 Resolver.IsBuiltinModule——规则单一来源；判定内容不变）。</summary>
         private static bool IsBuiltinSlot(Template slot)
         {
-            switch (slot)
-            {
-                case MoveTemplate m: return m.id > 0 && m.id <= 9;
-                case AttackTemplate a: return a.id > 0 && a.id <= 11;
-                case EffectTemplate e: return e.id > 0 && e.id <= 3;
-                default: return false;
-            }
+            return Resolver.IsBuiltinModule(slot);
         }
 
         /// <summary>程序是否含同类型同编号槽（id 相同 = 同结构）。</summary>

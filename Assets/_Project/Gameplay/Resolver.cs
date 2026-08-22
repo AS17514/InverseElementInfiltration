@@ -138,6 +138,7 @@ namespace TheLaw.Gameplay
                 Damage = elementHit && !died ? 0 : damage, // 相生无伤（Damage=0——前端"柔"表现）；相克改用实际（已死——Damage 仍显示原数值）
                 TargetDied = died,
                 FriendlyFire = action.template.friendlyFire,
+                AttackMode = action.template.mode, // 2026-08-23 攻击音分发（前端契约）
             });
         }
 
@@ -177,6 +178,7 @@ namespace TheLaw.Gameplay
                         Damage = damage,
                         TargetDied = died,
                         FriendlyFire = action.template.friendlyFire,
+                        AttackMode = action.template.mode, // 2026-08-23 攻击音分发（前端契约——AOE 命中）
                     });
                 }
             }
@@ -191,6 +193,7 @@ namespace TheLaw.Gameplay
                     Damage = damage,
                     TargetDied = false,
                     FriendlyFire = action.template.friendlyFire,
+                    AttackMode = action.template.mode, // 2026-08-23 攻击音分发（前端契约——AOE 空放）
                 });
             }
         }
@@ -364,6 +367,12 @@ namespace TheLaw.Gameplay
             {
                 HandRemovePieceAt(consumedCardIndex); // 升变牌打出：移除实际消耗的同一张牌（统一牌区入口）
             }
+            // ⚠️ 2026-08-22 能力 PromoteCopyDeployable：升变"部署"棋子 → 该棋子一张复制加入手牌（通用版——非属性玩法）
+            if (_state.HasRelicEffect(RelicEffectType.PromoteCopyDeployable)
+                && _state.GetEffectiveType(oldDefId) == PieceType.Deployable)
+            {
+                HandAddCard(Card.Piece(oldDefId));
+            }
             EventCenter.Instance.EventTrigger(GameEvent.PiecePromoted, new PromoteInfo { PieceId = piece.Id, NewDefId = action.newDefId, CardInstanceId = action.cardInstanceId });
         }
 
@@ -439,6 +448,21 @@ namespace TheLaw.Gameplay
 
             // OnKill 触发点（层差异 + 遗物 + 特殊能力——动作进待执行队列）
             OnKillTriggers(victim, killer);
+
+            // 升变预告清理（2026-08-23）：死亡 = 预告随棋子结束生命周期（残留预告逢倒计时也会被移除，
+            // 但此处立即清 + 发 BuffsChanged——"死亡即结束"语义 + buff 区即时不残留）
+            if (_state.PromoteAnnouncements.RemoveAll(a => a.pieceId == victim.Id) > 0)
+            {
+                EventCenter.Instance.EventTrigger(GameEvent.BuffsChanged, victim.Id);
+            }
+
+            // 免费执行资格 + 行动经济已行动标记清理（2026-08-23）：资格/buff 属于棋子实例——死亡即随棋子失效
+            // （原残留：资格集合不清 → 战斗结束 ResetForBattle 也不清（_nextPieceId 重置后 Id 可能复用）→ 资格串到新棋子）
+            bool removedAny = _state.FreeExecutes.Remove(victim.Id) || _state.ActionEconomyActed.Remove(victim.Id);
+            if (removedAny)
+            {
+                EventCenter.Instance.EventTrigger(GameEvent.BuffsChanged, victim.Id);
+            }
 
             EventCenter.Instance.EventTrigger(GameEvent.PieceDied, new DeathInfo { PieceId = victim.Id, Side = victim.side, KillerId = killer != null ? killer.Id : -1 });
         }
@@ -802,11 +826,83 @@ namespace TheLaw.Gameplay
 
         // ========== 事件/编辑/加牌效果（经 Resolver 落账——唯一写入口）==========
 
-        /// <summary>编辑程序落账（实时编辑/事件 EditProgram——改种类级表）。</summary>
+        /// <summary>编辑程序落账（实时编辑/事件 EditProgram——改种类级表）。
+        /// ⚠️ 2026-08-23 决策 3 撤销：同 id 唯一校验移除（策划定案允许跨层叠加——程序内同 id 可多份；
+        /// "同层不重复"由消耗制候选保证）。消耗维护在唯一写入口（Undo/还原/内置回位全部自动同步——撤销后候选恢复）。
+        /// </summary>
         public void ApplyProgramEdit(int defId, List<Template> program)
         {
+            _state.CurrentPrograms.TryGetValue(defId, out var before); // 相对"已落账程序"的增量（未编辑过=null）
+            UpdateConsumedModules(before, program);
             _state.CurrentPrograms[defId] = program;
             EventCenter.Instance.EventTrigger(GameEvent.ProgramEdited, defId);
+        }
+
+        /// <summary>本层消耗（净增量）维护（2026-08-23 决策 4 定案"池子构成规则"）：候选池 = 模板库 − 本层占用增量。
+        /// 对涉及的外部模块 key：delta = after 计数 − before 计数——正（放入）计入消耗（候选消失）；
+        /// 负（撤销/移除）抵消（=0 移除键——候选恢复）；进层（TowerFlow.EnterFloor 清空 ConsumedModules）→ 跨层复原。</summary>
+        private void UpdateConsumedModules(List<Template> before, List<Template> after)
+        {
+            if (_state.ConsumedModules == null || after == null) return;
+            var keys = new List<string>();
+            CollectExternalKeys(before, keys);
+            CollectExternalKeys(after, keys);
+            foreach (var key in keys)
+            {
+                int delta = CountExternalOf(after, key) - CountExternalOf(before, key);
+                if (delta == 0) continue;
+                if (_state.ConsumedModules.TryGetValue(key, out var cur))
+                {
+                    cur += delta;
+                    if (cur <= 0) _state.ConsumedModules.Remove(key);
+                    else _state.ConsumedModules[key] = cur;
+                }
+                else if (delta > 0)
+                {
+                    _state.ConsumedModules[key] = delta;
+                }
+            }
+        }
+
+        private static void CollectExternalKeys(List<Template> list, List<string> keys)
+        {
+            if (list == null) return;
+            foreach (var t in list)
+            {
+                var key = ExternalModuleKey(t);
+                if (key != null && !keys.Contains(key)) keys.Add(key);
+            }
+        }
+
+        private static int CountExternalOf(List<Template> list, string key)
+        {
+            int count = 0;
+            if (list == null) return count;
+            foreach (var t in list)
+            {
+                if (ExternalModuleKey(t) == key) count++;
+            }
+            return count;
+        }
+
+        /// <summary>外部模块 key（候选池消耗规则单一来源——EditorSession 过滤共用）：类型名:id；
+        /// 内置模块（默认程序槽）或 id=0 返回 null（不参与消耗）。</summary>
+        public static string ExternalModuleKey(Template t)
+        {
+            if (t == null || t.id <= 0 || IsBuiltinModule(t)) return null;
+            return $"{t.GetType().Name}:{t.id}";
+        }
+
+        /// <summary>内置模块判定（规则单一来源——编号体系：内置 Move≤9 / Attack≤11 / Effect≤3；其余为外部）。</summary>
+        public static bool IsBuiltinModule(Template t)
+        {
+            switch (t)
+            {
+                case MoveTemplate move: return move.id > 0 && move.id <= 9;
+                case AttackTemplate attack: return attack.id > 0 && attack.id <= 11;
+                case EffectTemplate effect: return effect.id > 0 && effect.id <= 3;
+                default: return false;
+            }
         }
 
         /// <summary>玩家手牌加牌（事件 AddPiece 效果；2026-08-20 统一入口——棋子牌入牌）。</summary>
@@ -933,10 +1029,11 @@ namespace TheLaw.Gameplay
             EventCenter.Instance.EventTrigger(GameEvent.HandChanged, _state.Hand);
         }
 
-        /// <summary>抽 1 张（2026-08-20：从抽牌堆随机抽一张 → 手牌；统一牌区入口 DrawFromPile；抽牌堆空 = 无操作）。</summary>
-        public void DrawCard()
+        /// <summary>抽 1 张（2026-08-20：从抽牌堆随机抽一张 → 手牌；统一牌区入口 DrawFromPile；抽牌堆空 = 返回 null）。
+        /// ⚠️ 2026-08-23 E5：返回抽到的牌（调用方按需检查触发——如 BattleFlow 的"抽到编辑牌"检测）。</summary>
+        public Card? DrawCard()
         {
-            DrawFromPile();
+            return DrawFromPile();
         }
 
         /// <summary>敌方波次池增强（加牌落点：敌方无手牌——增强未来波次阵容）。</summary>
@@ -946,7 +1043,7 @@ namespace TheLaw.Gameplay
             EventCenter.Instance.EventTrigger(GameEvent.HandChanged, null);
         }
 
-        /// <summary>获得遗物（事件 GrantRelic 效果——整局持续、可叠加）。</summary>
+        /// <summary>获得遗物（事件 GrantRelic 效果——整局持续、可叠加）。2026-08-22：应用能力基础效果（APBonus 即时生效）。</summary>
         public void AddRelic(string relicName)
         {
             var relic = ConfigTable.FindByName<RelicDef>(relicName);
@@ -956,7 +1053,125 @@ namespace TheLaw.Gameplay
                 return;
             }
             _state.Relics.Add(relic);
+            // 能力基础效果（2026-08-22）：APBonus 获得时即时生效（PlayerAPMax += N）
+            foreach (var e in relic.effects)
+            {
+                if (e != null && e.type == RelicEffectType.APBonus)
+                {
+                    _state.PlayerAPMax += e.value;
+                }
+            }
             EventCenter.Instance.EventTrigger(GameEvent.RelicObtained, relic);
+        }
+
+        // ========== 能力事件（2026-08-22——策划案：按玩法词条过滤能力池→随机3→每项可刷新一次→三选一）==========
+
+        /// <summary>当前玩法词条（2026-08-22）：第 1 层无玩法 = "basic"（初始玩法）；后续玩法（麻将/属性）按对应词条。</summary>
+        private List<string> CurrentAbilityTags()
+        {
+            var tags = new List<string>();
+            if (_state.ActiveStyles == null || _state.ActiveStyles.Count == 0)
+            {
+                tags.Add("basic");
+            }
+            else
+            {
+                foreach (var s in _state.ActiveStyles)
+                {
+                    tags.Add(s); // "mahjong"/"element"——与遗物 tags 对应
+                }
+            }
+            return tags;
+        }
+
+        /// <summary>能力池 = 全部遗物中词条匹配当前玩法 且 未被持有 的（候选排除已持有——不重复拿同一能力）。</summary>
+        private List<RelicDef> AbilityPool()
+        {
+            var tags = CurrentAbilityTags();
+            var pool = new List<RelicDef>();
+            foreach (var relic in ConfigTable.All<RelicDef>())
+            {
+                if (relic == null) continue;
+                bool tagMatch = false;
+                foreach (var t in relic.tags)
+                {
+                    if (tags.Contains(t)) { tagMatch = true; break; }
+                }
+                if (!tagMatch) continue;
+                if (_state.Relics.Contains(relic)) continue; // 排除已持有
+                pool.Add(relic);
+            }
+            return pool;
+        }
+
+        /// <summary>抽取能力候选（事件打开时调用——能力事件 isAbilityPick）：池中随机 3 不重复进展示集；发 AbilityCandidatesDrawn。</summary>
+        public void DrawAbilityCandidates()
+        {
+            var pool = AbilityPool();
+            var picked = new List<RelicDef>();
+            var copy = new List<RelicDef>(pool);
+            while (picked.Count < 3 && copy.Count > 0)
+            {
+                int idx = RandomManager.Instance.Range(0, copy.Count);
+                picked.Add(copy[idx]);
+                copy.RemoveAt(idx);
+            }
+            _state.AbilityCandidates = picked;
+            _state.AbilityRefreshLeft = new List<int>();
+            for (int i = 0; i < picked.Count; i++)
+            {
+                _state.AbilityRefreshLeft.Add(1); // 每项 1 次刷新
+            }
+            EventCenter.Instance.EventTrigger(GameEvent.AbilityCandidatesDrawn, _state.AbilityCandidates);
+        }
+
+        /// <summary>
+        /// 刷新候选（2026-08-22 池循环算法）：优先从「池 − 展示集」抽（已展示过的一律不抽）；
+        /// 候选空 → 回填（池全部 − 当前被刷旧项——至少不回当前项）；新项进展示集；每项刷新消费 1 次。
+        /// </summary>
+        public void RefreshAbilityCandidate(int choiceIndex)
+        {
+            if (choiceIndex < 0 || choiceIndex >= _state.AbilityCandidates.Count) return;
+            if (_state.AbilityRefreshLeft == null || choiceIndex >= _state.AbilityRefreshLeft.Count || _state.AbilityRefreshLeft[choiceIndex] <= 0)
+            {
+                return; // 刷新次数用尽
+            }
+            var old = _state.AbilityCandidates[choiceIndex];
+            var pool = AbilityPool();
+            // 候选 = 池 − 展示集（已展示过的一律不抽）
+            var candidates = new List<RelicDef>();
+            foreach (var r in pool)
+            {
+                if (!_state.AbilityCandidates.Contains(r)) candidates.Add(r);
+            }
+            if (candidates.Count == 0)
+            {
+                // 回填：池全部 − 当前被刷旧项（至少不回当前项）
+                candidates = new List<RelicDef>();
+                foreach (var r in pool)
+                {
+                    if (r != old) candidates.Add(r);
+                }
+            }
+            if (candidates.Count == 0)
+            {
+                return; // 池真空（极端——无可刷）
+            }
+            var replacement = candidates[RandomManager.Instance.Range(0, candidates.Count)];
+            _state.AbilityCandidates[choiceIndex] = replacement;
+            _state.AbilityRefreshLeft[choiceIndex]--;
+            EventCenter.Instance.EventTrigger(GameEvent.AbilityCandidatesDrawn, _state.AbilityCandidates);
+        }
+
+        /// <summary>选择能力候选（三选一落账）：GrantRelic（含 APBonus 应用）→ 清候选 → 事件完成（推进流程）。</summary>
+        public void SelectAbility(int choiceIndex)
+        {
+            if (choiceIndex < 0 || choiceIndex >= _state.AbilityCandidates.Count) return;
+            var relic = _state.AbilityCandidates[choiceIndex];
+            AddRelic(relic.name); // 统一遗物落账（含 APBonus）
+            _state.AbilityCandidates.Clear();
+            _state.AbilityRefreshLeft.Clear();
+            EventCenter.Instance.EventTrigger(GameEvent.EventCompleted, _state.CurrentEventId); // 事件完成（推进）
         }
 
         /// <summary>给予临时特殊能力（事件 GrantAbility——随战斗结束销毁）。护盾能力同步增加剩余次数。</summary>
@@ -1021,6 +1236,7 @@ namespace TheLaw.Gameplay
         public int Damage;
         public bool TargetDied;
         public bool FriendlyFire;
+        public AttackMode AttackMode;   // 2026-08-23：本次攻击类型透传（前端攻击音分发契约——李毕待办；单体/AOE 命中/空放三处已填）
     }
 
     public class DeployInfo

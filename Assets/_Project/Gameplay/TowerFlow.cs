@@ -74,6 +74,7 @@ namespace TheLaw.Gameplay
             _state.CurrentFloorConfig = _map.floors[floorIndex]; // 2026-08-20：当前关卡配置引用（Resolver 读 scoreDeductEnabled 等）
             _state.CurrentNodeIndex = 0;
             _state.NodeStates.Clear();
+            _state.ConsumedModules.Clear(); // 2026-08-23 消耗制：进层复原（候选池=模板库−本层占用增量；跨层上层用过的模块可再抽）
             var floor = _map.floors[floorIndex];
             foreach (var _ in floor.eventSequence)
             {

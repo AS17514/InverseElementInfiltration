@@ -97,4 +97,28 @@ namespace TheLaw.Data
         {
         }
     }
+
+    /// <summary>能力事件·选择候选（2026-08-22：三选一——选 index 落账 GrantRelic 并完成事件）。</summary>
+    [Serializable]
+    public class SelectAbilityRequest : Request
+    {
+        public int choiceIndex; // 0-2（AbilityCandidates）
+
+        public SelectAbilityRequest(int choiceIndex)
+        {
+            this.choiceIndex = choiceIndex;
+        }
+    }
+
+    /// <summary>能力事件·刷新候选（2026-08-22：每项可刷新一次——从池重抽替换，排除已展示；池空回填但至少不回当前项）。</summary>
+    [Serializable]
+    public class RefreshAbilityRequest : Request
+    {
+        public int choiceIndex; // 0-2
+
+        public RefreshAbilityRequest(int choiceIndex)
+        {
+            this.choiceIndex = choiceIndex;
+        }
+    }
 }

@@ -442,9 +442,14 @@ namespace TheLaw.UI
             });
             foreach (var def in defs)
             {
-                var go = Instantiate(cardHandle.Result, _pieceContent);
+                var data = PiecePresentationMapper.ToPieceCard(
+                    def,
+                    GetEffectiveType(def),
+                    GetEffectiveValue(def),
+                    GetCurrentProgram(def));
+                var go = UIComponentFactory.CreatePieceCard(cardHandle.Result, _pieceContent, data, _progTemplate).gameObject;
                 go.name = $"PieceCard_{def.name}";
-                FillPieceCard(go, def, progHandle.Result, group);
+                BindPieceCardSelection(go, def, group);
             }
             // 三选一已确认：进入面板后自动选中唯一可编辑棋子；其他卡仍可切换查看信息。
             if (_editableDefId >= 0)
@@ -480,30 +485,14 @@ namespace TheLaw.UI
             rt.anchoredPosition = new Vector2(0f, rt.anchoredPosition.y);
         }
 
-        void FillPieceCard(GameObject go, PieceDef def, GameObject progTemplate, ToggleGroup group)
+        void BindPieceCardSelection(GameObject go, PieceDef def, ToggleGroup group)
         {
-            FillPieceCardBase(go, def);
-            // 程序图标区：每槽放一个 Piece_ProgramInfo（Text=移/攻/跳——缩略图显示，非吸附位点）
-            var progRoot = FindDeep(go.transform, "Grp_PieceProgramInfo");
-            if (progRoot != null && progTemplate != null)
-            {
-                var slots = def.programSet != null && def.programSet.Count > 0 ? def.programSet[0].slots : null;
-                int count = slots != null ? Mathf.Min(slots.Count, 4) : 0;
-                for (int i = 0; i < count; i++)
-                {
-                    var p = Instantiate(progTemplate, progRoot);
-                    var t = p.GetComponentInChildren<TMP_Text>();
-                    if (t != null) t.text = SlotTypeChar(slots[i]);
-                }
-            }
-            // Toggle 单选：选中 → SelectPiece
+            // Toggle 单选：选中 → SelectPiece。
             var toggle = go.GetComponent<Toggle>();
-            if (toggle != null)
-            {
-                toggle.group = group;
-                var defId = def.Id;
-                toggle.onValueChanged.AddListener(on => { if (on) SelectPiece(defId); });
-            }
+            if (toggle == null) return;
+            toggle.group = group;
+            var defId = def.Id;
+            toggle.onValueChanged.AddListener(on => { if (on) SelectPiece(defId); });
         }
 
         /// <summary>吸附判定外扩量（区域吸附——EditorProgramDrag 用）。</summary>
@@ -612,22 +601,19 @@ namespace TheLaw.UI
             }
         }
 
-        /// <summary>按有效类型/价值刷新棋子卡面基础信息。</summary>
-        void FillPieceCardBase(GameObject card, PieceDef def)
+        /// <summary>刷新指定棋子卡的完整 DTO（有效类型、价值、当前程序）。</summary>
+        void RefreshPieceCardBase(int defId)
         {
-            var effectiveType = GetEffectiveType(def);
-            var bg = card.GetComponent<Image>();
-            if (bg != null) bg.color = CardTypeColors.For(effectiveType);
-
-            var valueText = FindDeep(card.transform, "Img_PieceValue")?.GetComponentInChildren<TMP_Text>();
-            if (valueText != null) valueText.text = GetEffectiveValue(def).ToString();
-
-            var typeText = FindDeep(card.transform, "Img_PieceType")?.GetComponentInChildren<TMP_Text>();
-            if (typeText != null) typeText.text = PieceTypeChar(effectiveType);
+            RefreshPieceCard(defId);
         }
 
-        /// <summary>刷新指定棋子卡面的有效类型、价值和颜色。</summary>
-        void RefreshPieceCardBase(int defId)
+        /// <summary>刷新指定棋子卡的完整 DTO（有效类型、价值、当前程序）。</summary>
+        void RefreshPieceCardProgram(int defId)
+        {
+            RefreshPieceCard(defId);
+        }
+
+        void RefreshPieceCard(int defId)
         {
             if (_pieceContent == null) return;
             var def = ConfigTable.Find<PieceDef>(defId);
@@ -635,45 +621,13 @@ namespace TheLaw.UI
             foreach (Transform card in _pieceContent)
             {
                 if (card.name != $"PieceCard_{def.name}") continue;
-                FillPieceCardBase(card.gameObject, def);
-                return;
-            }
-        }
-
-        /// <summary>刷新棋子卡面程序图标（Grp_PieceProgramInfo 内 Piece_ProgramInfo）——编辑后按当前程序数动态增删缩略图。</summary>
-        void RefreshPieceCardProgram(int defId)
-        {
-            if (_pieceContent == null) return;
-            foreach (Transform card in _pieceContent)
-            {
-                if (card.name != $"PieceCard_{ConfigTable.Find<PieceDef>(defId)?.name}") continue;
-                var progRoot = FindDeep(card, "Grp_PieceProgramInfo");
-                if (progRoot == null) return;
-                _state.TryGetCurrentProgram(defId, out var edited);
-                var slots = edited ?? (ConfigTable.Find<PieceDef>(defId)?.programSet?[0].slots);
-                int count = slots != null ? Mathf.Min(slots.Count, 4) : 0;
-                // 增：当前程序多于已有缩略图 → 补建（模板未就绪则只更新已有部分）
-                int existing = progRoot.childCount;
-                if (_progTemplate != null)
-                {
-                    for (int k = existing; k < count; k++)
-                    {
-                        Instantiate(_progTemplate, progRoot);
-                    }
-                }
-                // 删：多于程序数的多余缩略图隐藏（不 Destroy——防与模板异步加载竞态）
-                int i = 0;
-                foreach (Transform p in progRoot)
-                {
-                    bool show = i < count;
-                    if (p.gameObject.activeSelf != show) p.gameObject.SetActive(show);
-                    if (show)
-                    {
-                        var t = p.GetComponentInChildren<TMP_Text>();
-                        if (t != null && slots != null) t.text = SlotTypeChar(slots[i]);
-                    }
-                    i++;
-                }
+                var view = card.GetComponent<PieceCardView>();
+                if (view == null) view = card.gameObject.AddComponent<PieceCardView>();
+                view.Bind(PiecePresentationMapper.ToPieceCard(
+                    def,
+                    GetEffectiveType(def),
+                    GetEffectiveValue(def),
+                    GetCurrentProgram(def)), _progTemplate);
                 return;
             }
         }
@@ -728,9 +682,11 @@ namespace TheLaw.UI
             }
             foreach (var slot in _programLibrary)
             {
-                var go = Instantiate(_programCardTemplate, _programContent);
+                var go = UIComponentFactory.CreateProgramCard(
+                    _programCardTemplate,
+                    _programContent,
+                    PiecePresentationMapper.ToProgramCard(slot)).gameObject;
                 go.name = $"Prog_{SlotDescTable.FeatureOf(slot)}";
-                FillProgramCard(go, slot);
                 // 拖拽源：程序库块（Library 模式——复制放置，原卡不消耗）
                 var drag = go.AddComponent<EditorProgramDrag>();
                 drag.Init(this, slot, EditorProgramDrag.DragSource.Library, -1);
@@ -767,24 +723,12 @@ namespace TheLaw.UI
             }
         }
 
-        /// <summary>填充程序库卡（Program_Card 预制体）：类型图标字 + 程序块价值 + 描述。</summary>
-        void FillProgramCard(GameObject go, Template slot)
-        {
-            var desc = FindDeep(go.transform, "Txt_ProgramDesc")?.GetComponent<TMP_Text>();
-            if (desc != null) desc.text = SlotDetailDescStatic(slot);
-            var typeTxt = FindDeep(go.transform, "Img_ProgramType")?.GetComponentInChildren<TMP_Text>();
-            if (typeTxt != null) typeTxt.text = SlotTypeChar(slot);
-            var value = FindDeep(go.transform, "Txt_ProgramCount")?.GetComponent<TMP_Text>();
-            if (value != null) value.text = PieceValue.GetValue(slot).ToString();
-        }
-
         /// <summary>程序编辑落账（ProgramEdited 事件）→ 刷新有效卡面与详情。</summary>
         void OnProgramEdited(object data)
         {
             if (data is int editedDefId)
             {
                 RefreshPieceCardBase(editedDefId);
-                RefreshPieceCardProgram(editedDefId);
                 if (_selectedDefId == editedDefId)
                 {
                     var def = ConfigTable.Find<PieceDef>(editedDefId);

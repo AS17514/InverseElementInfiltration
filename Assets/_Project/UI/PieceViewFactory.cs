@@ -56,6 +56,15 @@ namespace TheLaw.UI
             _preloading = false;
         }
 
+        /// <summary>按 PieceDef 资产名读取 Bootstrap 已预载的立绘，不发起新的 Addressables 请求。</summary>
+        public static bool TryGetPreloadedPortrait(string portraitKey, out Sprite sprite)
+        {
+            sprite = null;
+            return !string.IsNullOrEmpty(portraitKey)
+                && _portraits.TryGetValue(portraitKey, out sprite)
+                && sprite != null;
+        }
+
         public static void EnsureSprites()
         {
             if (_shadowSprite != null) return;

@@ -954,7 +954,8 @@ namespace TheLaw.UI
             // ⚠️ 组内去重（#6 前端部分）：AOE 多目标同组并行——同一攻击者只闪一次（HashSet.Add 首次 true）
             if (_batchFlashAttackers == null || _batchFlashAttackers.Add(info.AttackerId))
             {
-                AudioManager.Instance.PlaySFX(GetAttackSfx(info.AttackMode)); // 攻击（挥击）音效——按本次攻击类型分发，同组只播一次
+                // 后端尚未在 DamageInfo 透传 AttackMode，暂以近战音保底；字段到位后改为 GetAttackSfx(info.AttackMode)。
+                AudioManager.Instance.PlaySFX(AudioRefs.SfxAttackMelee); // 攻击（挥击）音效——同组只播一次
                 var attacker = _pieceViews.Get(info.AttackerId);
                 if (attacker != null)
                 {

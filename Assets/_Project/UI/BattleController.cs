@@ -933,6 +933,20 @@ namespace TheLaw.UI
             yield return null;
         }
 
+        /// <summary>按后端随伤害事件透传的本次攻击类型选择对应音效；未知类型回退近战音。</summary>
+        static string GetAttackSfx(AttackMode attackMode)
+        {
+            return attackMode switch
+            {
+                AttackMode.Melee => AudioRefs.SfxAttackMelee,
+                AttackMode.MeleeAOE => AudioRefs.SfxAttackMeleeAoe,
+                AttackMode.DirectFire => AudioRefs.SfxAttackDirect,
+                AttackMode.Arcing => AudioRefs.SfxAttackArcing,
+                AttackMode.Spell => AudioRefs.SfxAttackSpell,
+                _ => AudioRefs.SfxAttackMelee,
+            };
+        }
+
         IEnumerator PlayDamage(DamageInfo info)
         {
             // 攻击者挥动闪白（动作反馈——2026-08-12 恢复：dacb39b 改闪目标时攻击者动作被整体删除；
@@ -940,7 +954,8 @@ namespace TheLaw.UI
             // ⚠️ 组内去重（#6 前端部分）：AOE 多目标同组并行——同一攻击者只闪一次（HashSet.Add 首次 true）
             if (_batchFlashAttackers == null || _batchFlashAttackers.Add(info.AttackerId))
             {
-                AudioManager.Instance.PlaySFX(AudioRefs.SfxAttack); // 攻击（挥击）音效——同组只播一次
+                // 后端尚未在 DamageInfo 透传 AttackMode，暂以近战音保底；字段到位后改为 GetAttackSfx(info.AttackMode)。
+                AudioManager.Instance.PlaySFX(AudioRefs.SfxAttackMelee); // 攻击（挥击）音效——同组只播一次
                 var attacker = _pieceViews.Get(info.AttackerId);
                 if (attacker != null)
                 {
@@ -1198,6 +1213,13 @@ namespace TheLaw.UI
         {
             if (def == null) return 0;
             return _state != null ? _state.GetEffectiveValue(def.Id) : def.value;
+        }
+
+        List<Template> GetDisplayProgram(PieceDef def)
+        {
+            if (def == null) return null;
+            if (_state != null && _state.TryGetCurrentProgram(def.Id, out var edited)) return edited;
+            return def.programSet != null && def.programSet.Count > 0 ? def.programSet[0].slots : null;
         }
 
         /// <summary>手牌是否还有初始棋子（摆放前置判断；2026-08-20 牌结构：仅棋子牌——麻将牌非棋子不计）。</summary>
@@ -1808,6 +1830,11 @@ namespace TheLaw.UI
             {
                 var handCard = hand[i].card;
                 var def = hand[i].def;
+                var data = PiecePresentationMapper.ToHandCard(
+                    def,
+                    GetEffectiveType(def),
+                    GetEffectiveValue(def),
+                    GetDisplayProgram(def));
                 GameObject card = null;
                 // 复用必须按实例 id 匹配：同 defId、同属性的重复牌也不能互换身份。
                 for (int j = 0; j < oldCards.Count; j++)
@@ -1821,9 +1848,10 @@ namespace TheLaw.UI
                 }
                 if (card == null)
                 {
-                    card = Instantiate(template, _panel.HandRoot);
+                    var view = UIComponentFactory.CreateHandCard(template, _panel.HandRoot, data);
+                    card = view.gameObject;
+                    card.name = $"Card_{i}_{def.displayName}";
                     card.SetActive(true);
-                    FillCard(card, def, i);
                     AddCardDrag(card, handCard, i);
                     var newCanvasGroup = card.GetComponent<CanvasGroup>();
                     if (newCanvasGroup != null) newCanvasGroup.alpha = 1f;
@@ -1839,6 +1867,9 @@ namespace TheLaw.UI
                     var cg = card.GetComponent<CanvasGroup>();
                     if (cg != null) cg.alpha = 1f;
                     card.transform.localScale = Vector3.one * 0.35f;
+                    var view = card.GetComponent<HandCardView>();
+                    if (view == null) view = card.AddComponent<HandCardView>();
+                    view.Bind(data);
                 }
             }
             // 销毁未复用的旧卡（已移除的）
@@ -1864,94 +1895,6 @@ namespace TheLaw.UI
             DG.Tweening.DOTween.To(() => cg.alpha, a => cg.alpha = a, 1f, 0.2f)
                 .SetDelay(index * 0.04f)
                 .SetTarget(cg);
-        }
-
-        void FillCard(GameObject card, PieceDef def, int index)
-        {
-            var effectiveType = GetEffectiveType(def);
-            // 卡背景色按种类标识（低饱和度：初始=绿 / 部署=蓝 / 升变=红）
-            var bg = card.GetComponent<Image>();
-            if (bg != null) bg.color = CardTypeColors.For(effectiveType);
-            var nameText = FindCardNode(card.transform, "Txt_InfoName")?.GetComponent<TMP_Text>();
-            if (nameText != null) nameText.text = VerticalName(def.displayName); // 竖排（一字一行）
-            var valueText = FindCardNode(card.transform, "Img_InfoValue")?.GetComponentInChildren<TMP_Text>();
-            if (valueText != null) valueText.text = GetEffectiveValue(def).ToString();
-            var typeText = FindCardNode(card.transform, "Img_InfoType")?.GetComponentInChildren<TMP_Text>();
-            if (typeText != null) typeText.text = effectiveType == PieceType.Initial ? "始" : effectiveType == PieceType.Deployable ? "部" : "升";
-            // 程序描述 + 槽位显隐（未配置的块/解释隐藏；每个槽填各自的单槽描述）
-            // 程序 = 编辑差异优先（CurrentPrograms——编辑结果在此），回退 Def 默认模组（2026-08-11 数据链修复）
-            int slotCount = 0;
-            List<Template> slots = null;
-            if (_state != null && _state.TryGetCurrentProgram(def.Id, out var edited)) slots = edited;
-            else if (def.programSet != null && def.programSet.Count > 0 && def.programSet[0].slots != null) slots = def.programSet[0].slots;
-            if (slots != null) slotCount = Mathf.Min(slots.Count, 4);
-            for (int s = 0; s < 4; s++)
-            {
-                bool show = s < slotCount;
-                var block = FindCardNode(card.transform, $"Img_InfoProgram{s + 1}");
-                if (block != null)
-                {
-                    block.gameObject.SetActive(show);
-                    // 槽位图标文字（移/攻/跳）
-                    var blockText = block.GetComponentInChildren<TMP_Text>();
-                    if (blockText != null && show) blockText.text = SlotTypeCharStatic(slots[s]);
-                }
-                var desc = FindCardNode(card.transform, $"Txt_InfoProgram{s + 1}Desc");
-                if (desc != null)
-                {
-                    desc.gameObject.SetActive(show);
-                    if (show)
-                    {
-                        var tmp = desc.GetComponent<TMP_Text>();
-                        if (tmp != null) tmp.text = SlotDetailDesc(slots[s]); // 单槽自然语言描述
-                    }
-                }
-            }
-        }
-
-        /// <summary>槽位图标字符（移/攻/效/跳）。</summary>
-        static string SlotTypeCharStatic(Template t)
-        {
-            switch (t)
-            {
-                case MoveTemplate: return "移";
-                case AttackTemplate: return "攻";
-                case EffectTemplate: return "效";
-                case SkipTemplate: return "跳";
-                default: return "跳";
-            }
-        }
-
-        /// <summary>竖排名称：每个字符一行（卡片名称竖向显示）。</summary>
-        /// <summary>卡片背景色（种类标识，低饱和度：初始=浅绿 / 部署=浅蓝 / 升变=浅红）。</summary>
-        static Color CardTypeColor(PieceType type)
-        {
-            switch (type)
-            {
-                case PieceType.Initial: return new Color(0.58f, 0.78f, 0.58f, 1f);   // 浅绿
-                case PieceType.Deployable: return new Color(0.58f, 0.70f, 0.85f, 1f); // 浅蓝
-                default: return new Color(0.85f, 0.62f, 0.62f, 1f);                   // 浅红（升变）
-            }
-        }
-
-        static string VerticalName(string name)
-        {
-            if (string.IsNullOrEmpty(name)) return name;
-            return string.Join("\n", name.ToCharArray());
-        }
-
-        /// <summary>卡片节点容错查找：精确匹配失败则递归前缀匹配（节点名可能有 "(1)" 复制后缀）。</summary>
-        static Transform FindCardNode(Transform root, string name)
-        {
-            var exact = root.Find(name);
-            if (exact != null) return exact;
-            foreach (Transform child in root)
-            {
-                if (child.name.StartsWith(name)) return child;
-                var deeper = FindCardNode(child, name);
-                if (deeper != null) return deeper;
-            }
-            return null;
         }
 
         void AddCardDrag(GameObject card, Card handCard, int index)

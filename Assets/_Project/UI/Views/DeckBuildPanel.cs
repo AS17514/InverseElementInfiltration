@@ -199,9 +199,13 @@ namespace TheLaw.UI
             for (int i = 0; i < _sortedDefs.Count; i++)
             {
                 var def = _sortedDefs[i];
-                var go = Instantiate(_cardTemplate, _poolContent);
+                var data = PiecePresentationMapper.ToPieceCard(
+                    def,
+                    GetEffectiveType(def.Id),
+                    GetEffectiveValue(def.Id),
+                    GetDisplayProgram(def));
+                var go = UIComponentFactory.CreatePieceCard(_cardTemplate, _poolContent, data, _progTemplate).gameObject;
                 go.name = $"PoolCard_{def.Id}_{def.displayName}";
-                FillCardData(go, def);
                 // 悬停显示信息（CardHover——PointerEnter/PointerExit）
                 var hover = go.GetComponent<CardHover>();
                 if (hover == null) hover = go.AddComponent<CardHover>();
@@ -345,6 +349,13 @@ namespace TheLaw.UI
             return def != null ? def.pieceType : PieceType.Initial;
         }
 
+        List<Template> GetDisplayProgram(PieceDef def)
+        {
+            if (def == null) return null;
+            if (_state != null && _state.TryGetCurrentProgram(def.Id, out var edited)) return edited;
+            return def.programSet != null && def.programSet.Count > 0 ? def.programSet[0].slots : null;
+        }
+
         void SetCardBlocked(GameObject card, bool blocked)
         {
             if (card == null) return;
@@ -369,9 +380,13 @@ namespace TheLaw.UI
             {
                 var def = ConfigTable.Find<PieceDef>(deckId);
                 if (def == null || _cardTemplate == null) continue;
-                var go = Instantiate(_cardTemplate, _deckContent);
+                var data = PiecePresentationMapper.ToPieceCard(
+                    def,
+                    GetEffectiveType(def.Id),
+                    GetEffectiveValue(def.Id),
+                    GetDisplayProgram(def));
+                var go = UIComponentFactory.CreatePieceCard(_cardTemplate, _deckContent, data, _progTemplate).gameObject;
                 go.name = $"DeckCard_{def.Id}_{def.displayName}";
-                FillCardData(go, def);
                 // 悬停显示信息（CardHover——PointerEnter/PointerExit）
                 var hover = go.GetComponent<CardHover>();
                 if (hover == null) hover = go.AddComponent<CardHover>();
@@ -488,46 +503,6 @@ namespace TheLaw.UI
             if (_deckSizeLimit <= 0 || _deck.Count == _deckSizeLimit) return false;
             Debug.LogWarning($"[DeckBuild] 出战牌组必须恰好 {_deckSizeLimit} 张，当前 {_deck.Count} 张——无法确认");
             return true;
-        }
-
-        // ====== 卡片数据填充（Piece_Card：Bg/Portrait/BaseInfo(类型·足迹·价值)/ProgramInfo）======
-
-        /// <summary>填充牌池/出战卡数据。程序 = 编辑差异优先（CurrentPrograms），回退 Def 默认模组。</summary>
-        void FillCardData(GameObject card, PieceDef def)
-        {
-            var bg = card.GetComponent<Image>();
-            if (bg != null) bg.color = CardTypeColors.For(GetEffectiveType(def.Id));
-            var valueText = FindDeep(card.transform, "Img_PieceValue")?.GetComponentInChildren<TMP_Text>();
-            if (valueText != null) valueText.text = GetEffectiveValue(def.Id).ToString();
-            var typeText = FindDeep(card.transform, "Img_PieceType")?.GetComponentInChildren<TMP_Text>();
-            if (typeText != null)
-            {
-                typeText.text = GetEffectiveType(def.Id) == PieceType.Initial ? "始" : GetEffectiveType(def.Id) == PieceType.Deployable ? "部" : "升";
-            }
-            // 程序槽图标（Grp_PieceProgramInfo 内 Piece_ProgramInfo——编辑差异优先，2026-08-11 数据链修复）
-            var progRoot = FindDeep(card.transform, "Grp_PieceProgramInfo");
-            if (progRoot != null && _progTemplate != null)
-            {
-                List<Template> slots = null;
-                if (_state != null && _state.TryGetCurrentProgram(def.Id, out var edited)) slots = edited;
-                else if (def.programSet != null && def.programSet.Count > 0) slots = def.programSet[0].slots;
-                int count = slots != null ? Mathf.Min(slots.Count, 4) : 0;
-                // 复用已有图标，超出补建（卡片重建时已清空子物体——此处幂等）
-                int existing = progRoot.childCount;
-                for (int k = existing; k < count; k++) Instantiate(_progTemplate, progRoot);
-                int i = 0;
-                foreach (Transform p in progRoot)
-                {
-                    bool show = i < count;
-                    if (p.gameObject.activeSelf != show) p.gameObject.SetActive(show);
-                    if (show && slots != null)
-                    {
-                        var t = p.GetComponentInChildren<TMP_Text>();
-                        if (t != null) t.text = SlotTypeChar(slots[i]);
-                    }
-                    i++;
-                }
-            }
         }
 
         static Transform FindDeep(Transform root, string name)

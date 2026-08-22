@@ -1,3 +1,4 @@
+using System.Collections;
 using System.Collections.Generic;
 using TheLaw.Core;
 using TMPro;
@@ -39,6 +40,7 @@ namespace TheLaw.UI
         private UIManager _uiManager; // overlay(设置盖在主菜单上) 关闭用；空 = 直接 Hide 兜底
 
         private readonly List<Vector2Int> _resolutions = new List<Vector2Int>(); // 下拉选项（索引映射）
+        private Coroutine _layoutRefreshRoutine;
         private bool _wired;
 
         public void Init(UIManager uiManager)
@@ -133,8 +135,25 @@ namespace TheLaw.UI
         protected override void OnShow()
         {
             InitFromSettings();
+            if (_layoutRefreshRoutine != null) StopCoroutine(_layoutRefreshRoutine);
+            _layoutRefreshRoutine = StartCoroutine(RefreshLayoutNextFrame());
             // ⚠️ 不在打开时 ApplyScreen：打开就 SetResolution 会让窗口跳变（"刚显示 vs 操作后不一致"根因）。
             // 显示设置只在用户改动/恢复默认时落地。
+        }
+
+        /// <summary>等待本帧激活与选项更新完成后，只重建面板实际的布局根。</summary>
+        IEnumerator RefreshLayoutNextFrame()
+        {
+            yield return null;
+
+            var group = transform.Find("Img_Bg/Grp_") as RectTransform;
+            if (group != null)
+            {
+                Canvas.ForceUpdateCanvases();
+                LayoutRebuilder.ForceRebuildLayoutImmediate(group);
+            }
+
+            _layoutRefreshRoutine = null;
         }
 
         /// <summary>用当前 SettingsSystem 值刷新 UI（SetValueWithoutNotify 防事件回环）。</summary>

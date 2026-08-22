@@ -8,9 +8,11 @@ namespace TheLaw.Core
     /// </summary>
     public static class AudioRefs
     {
-        // ===== BGM（2026-08-23：BGM 资源未交付——暂挂起；仅保留已启用的两首）=====
-        public const string BgmMenu = "BGM/menu";   // 主菜单
-        public const string BgmBattle = "BGM/battle"; // 战斗
+        // ===== BGM（2026-08-23：4 首已交付——bgm_menu/battle/event/result；地址 = BGM/文件名（工具「工具/音频进 Addressables」注册））=====
+        public const string BgmMenu = "BGM/menu";   // 主菜单（挂点已有：Bootstrap 进主菜单）
+        public const string BgmBattle = "BGM/battle"; // 战斗（挂点已有：Bootstrap 进战斗）
+        public const string BgmEvent = "BGM/event";  // 事件关（能力/编辑/构筑——挂点待前端：事件关打开时切换，战斗开始回切 battle）
+        public const string BgmResult = "BGM/result"; // 战斗结算（P3——挂点待前端：结算面板展示时播放；失败路径停战斗曲即可）
 
         // ===== SFX：操作反馈（P0）=====
         public const string SfxMove = "SFX/move";       // 棋子移动/落地（A1）

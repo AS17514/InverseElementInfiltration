@@ -32,6 +32,11 @@ MonoBehaviour:
     m_ReadOnly: 0
     m_SerializedLabels: []
     FlaggedDuringContentUpdateRestriction: 0
+  - m_GUID: 29358a4fca689c747a104a4916c3ae81
+    m_Address: BGM/event
+    m_ReadOnly: 0
+    m_SerializedLabels: []
+    FlaggedDuringContentUpdateRestriction: 0
   - m_GUID: 32e9074b3d521db4ca3c56c5405b114e
     m_Address: SFX/attack_spell
     m_ReadOnly: 0
@@ -52,6 +57,11 @@ MonoBehaviour:
     m_ReadOnly: 0
     m_SerializedLabels: []
     FlaggedDuringContentUpdateRestriction: 0
+  - m_GUID: 77449881c7ce71246af48f34a52301b2
+    m_Address: BGM/result
+    m_ReadOnly: 0
+    m_SerializedLabels: []
+    FlaggedDuringContentUpdateRestriction: 0
   - m_GUID: 80e50c9b0313207468ea958ef1bb0662
     m_Address: SFX/mahjong_tile
     m_ReadOnly: 0
@@ -59,6 +69,11 @@ MonoBehaviour:
     FlaggedDuringContentUpdateRestriction: 0
   - m_GUID: 89ea2693ffd058248b85e8139b69c01c
     m_Address: SFX/attack_arcing
+    m_ReadOnly: 0
+    m_SerializedLabels: []
+    FlaggedDuringContentUpdateRestriction: 0
+  - m_GUID: 8d60a0e17313a4f41967cd357cc72785
+    m_Address: BGM/battle
     m_ReadOnly: 0
     m_SerializedLabels: []
     FlaggedDuringContentUpdateRestriction: 0
@@ -84,6 +99,11 @@ MonoBehaviour:
     FlaggedDuringContentUpdateRestriction: 0
   - m_GUID: ab08d80b87bab7c4abc32ef4207c8885
     m_Address: SFX/death_ui
+    m_ReadOnly: 0
+    m_SerializedLabels: []
+    FlaggedDuringContentUpdateRestriction: 0
+  - m_GUID: f0be5ebe713fda44eb1bd5dd0e0f5d55
+    m_Address: BGM/menu
     m_ReadOnly: 0
     m_SerializedLabels: []
     FlaggedDuringContentUpdateRestriction: 0

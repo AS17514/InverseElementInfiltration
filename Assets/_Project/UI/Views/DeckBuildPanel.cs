@@ -101,10 +101,7 @@ namespace TheLaw.UI
             // 每次打开：出战清空（从零构筑——事件发生前手牌为全量，构筑 = 选新的出战）
             _deck.Clear();
             LoadLimits(); // 显示时 _state 必已 Init（Awake 时序问题：CreateAsync 回调后才 Init）
-            RebuildPool();
-            RebuildDeck();
-            RefreshLimits();
-            RefreshPoolAvailability(); // 初始刷新可选中性（空牌组时全可选——限制生效后按限制禁选）
+            StartCoroutine(RebuildCardsWhenReady());
             ClearPieceInfo(); // 初始化无选中棋子——Grp_PieceInfo 隐藏（悬停卡片才显示）
         }
 
@@ -222,16 +219,29 @@ namespace TheLaw.UI
             // 牌池互斥/复数由 _deck 计数驱动，不依赖 ToggleGroup
         }
 
-        System.Collections.IEnumerator RebuildPoolWhenReady()
+        /// <summary>等待卡面与程序图标模板均完成加载后，再按统一流程重建两侧卡片。</summary>
+        System.Collections.IEnumerator RebuildCardsWhenReady()
         {
             int guard = 0;
-            while (_cardTemplate == null && guard++ < 300) yield return null; // 防死等（大审查 H2：加载失败不再无限空等）
-            if (_cardTemplate == null)
+            while ((_cardTemplate == null || _progTemplate == null) && guard++ < 300)
             {
-                Debug.LogWarning("[DeckBuild] 卡面模板加载超时——跳过本次构建");
+                yield return null; // 防死等（大审查 H2：加载失败不再无限空等）
+            }
+            if (_cardTemplate == null || _progTemplate == null)
+            {
+                Debug.LogWarning("[DeckBuild] 卡面或程序图标模板加载超时——跳过本次构建");
                 yield break;
             }
+
             RebuildPool();
+            RebuildDeck();
+            RefreshLimits();
+            RefreshPoolAvailability();
+        }
+
+        System.Collections.IEnumerator RebuildPoolWhenReady()
+        {
+            yield return RebuildCardsWhenReady();
         }
 
         /// <summary>牌池卡点击：左键加 / 右键减。信息显示由悬停（CardHover）负责——点击不显示。</summary>
@@ -627,7 +637,7 @@ namespace TheLaw.UI
             {
                 Debug.LogError("[DeckBuild] Tag_DeckLimit 加载失败——无法显示构筑限制");
             }
-            // 重建统一由 OnShow（模板未就绪时 RebuildPoolWhenReady 等待）驱动——此处不重复触发
+            // 重建统一由 OnShow 的 RebuildCardsWhenReady 驱动；模板完成后在同一流程中生成牌池与出战卡。
         }
 
         /// <summary>确认按钮置灰时仍接收点击，用于提示牌数必须达到精确限制。</summary>

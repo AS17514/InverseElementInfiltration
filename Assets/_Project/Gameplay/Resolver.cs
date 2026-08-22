@@ -453,6 +453,14 @@ namespace TheLaw.Gameplay
                 EventCenter.Instance.EventTrigger(GameEvent.BuffsChanged, victim.Id);
             }
 
+            // 免费执行资格 + 行动经济已行动标记清理（2026-08-23）：资格/buff 属于棋子实例——死亡即随棋子失效
+            // （原残留：资格集合不清 → 战斗结束 ResetForBattle 也不清（_nextPieceId 重置后 Id 可能复用）→ 资格串到新棋子）
+            bool removedAny = _state.FreeExecutes.Remove(victim.Id) || _state.ActionEconomyActed.Remove(victim.Id);
+            if (removedAny)
+            {
+                EventCenter.Instance.EventTrigger(GameEvent.BuffsChanged, victim.Id);
+            }
+
             EventCenter.Instance.EventTrigger(GameEvent.PieceDied, new DeathInfo { PieceId = victim.Id, Side = victim.side, KillerId = killer != null ? killer.Id : -1 });
         }
 
@@ -815,11 +823,83 @@ namespace TheLaw.Gameplay
 
         // ========== 事件/编辑/加牌效果（经 Resolver 落账——唯一写入口）==========
 
-        /// <summary>编辑程序落账（实时编辑/事件 EditProgram——改种类级表）。</summary>
+        /// <summary>编辑程序落账（实时编辑/事件 EditProgram——改种类级表）。
+        /// ⚠️ 2026-08-23 决策 3 撤销：同 id 唯一校验移除（策划定案允许跨层叠加——程序内同 id 可多份；
+        /// "同层不重复"由消耗制候选保证）。消耗维护在唯一写入口（Undo/还原/内置回位全部自动同步——撤销后候选恢复）。
+        /// </summary>
         public void ApplyProgramEdit(int defId, List<Template> program)
         {
+            _state.CurrentPrograms.TryGetValue(defId, out var before); // 相对"已落账程序"的增量（未编辑过=null）
+            UpdateConsumedModules(before, program);
             _state.CurrentPrograms[defId] = program;
             EventCenter.Instance.EventTrigger(GameEvent.ProgramEdited, defId);
+        }
+
+        /// <summary>本层消耗（净增量）维护（2026-08-23 决策 4 定案"池子构成规则"）：候选池 = 模板库 − 本层占用增量。
+        /// 对涉及的外部模块 key：delta = after 计数 − before 计数——正（放入）计入消耗（候选消失）；
+        /// 负（撤销/移除）抵消（=0 移除键——候选恢复）；进层（TowerFlow.EnterFloor 清空 ConsumedModules）→ 跨层复原。</summary>
+        private void UpdateConsumedModules(List<Template> before, List<Template> after)
+        {
+            if (_state.ConsumedModules == null || after == null) return;
+            var keys = new List<string>();
+            CollectExternalKeys(before, keys);
+            CollectExternalKeys(after, keys);
+            foreach (var key in keys)
+            {
+                int delta = CountExternalOf(after, key) - CountExternalOf(before, key);
+                if (delta == 0) continue;
+                if (_state.ConsumedModules.TryGetValue(key, out var cur))
+                {
+                    cur += delta;
+                    if (cur <= 0) _state.ConsumedModules.Remove(key);
+                    else _state.ConsumedModules[key] = cur;
+                }
+                else if (delta > 0)
+                {
+                    _state.ConsumedModules[key] = delta;
+                }
+            }
+        }
+
+        private static void CollectExternalKeys(List<Template> list, List<string> keys)
+        {
+            if (list == null) return;
+            foreach (var t in list)
+            {
+                var key = ExternalModuleKey(t);
+                if (key != null && !keys.Contains(key)) keys.Add(key);
+            }
+        }
+
+        private static int CountExternalOf(List<Template> list, string key)
+        {
+            int count = 0;
+            if (list == null) return count;
+            foreach (var t in list)
+            {
+                if (ExternalModuleKey(t) == key) count++;
+            }
+            return count;
+        }
+
+        /// <summary>外部模块 key（候选池消耗规则单一来源——EditorSession 过滤共用）：类型名:id；
+        /// 内置模块（默认程序槽）或 id=0 返回 null（不参与消耗）。</summary>
+        public static string ExternalModuleKey(Template t)
+        {
+            if (t == null || t.id <= 0 || IsBuiltinModule(t)) return null;
+            return $"{t.GetType().Name}:{t.id}";
+        }
+
+        /// <summary>内置模块判定（规则单一来源——编号体系：内置 Move≤9 / Attack≤11 / Effect≤3；其余为外部）。</summary>
+        public static bool IsBuiltinModule(Template t)
+        {
+            switch (t)
+            {
+                case MoveTemplate move: return move.id > 0 && move.id <= 9;
+                case AttackTemplate attack: return attack.id > 0 && attack.id <= 11;
+                case EffectTemplate effect: return effect.id > 0 && effect.id <= 3;
+                default: return false;
+            }
         }
 
         /// <summary>玩家手牌加牌（事件 AddPiece 效果；2026-08-20 统一入口——棋子牌入牌）。</summary>

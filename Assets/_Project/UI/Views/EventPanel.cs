@@ -49,6 +49,32 @@ namespace TheLaw.UI
         // OnShow 无需刷新（幂等在数据层 _currentEventId：重复广播无新数据不重建）
         protected override void OnShow() { }
 
+        /// <summary>
+        /// 事件面板布局刷新：基类全量刷新后，再对 Grp_EventDesc（描述+选项容器）单独强制重排一遍——
+        /// 动态文案/选项重建后偶发错乱，二次刷新兜底（2026-08-23 人工确认）。
+        /// </summary>
+        protected override void RefreshLayout()
+        {
+            base.RefreshLayout();
+            var desc = _optionsRoot != null ? _optionsRoot.parent as RectTransform : null;
+            if (desc == null)
+            {
+                var d = transform.Find("Grp_EventContent/Grp_EventDesc");
+                if (d != null) desc = d as RectTransform;
+            }
+            if (desc == null) return;
+            Canvas.ForceUpdateCanvases();
+            LayoutRebuilder.ForceRebuildLayoutImmediate(desc);
+            foreach (var lg in desc.GetComponentsInChildren<LayoutGroup>(true))
+            {
+                LayoutRebuilder.ForceRebuildLayoutImmediate(lg.transform as RectTransform);
+            }
+            foreach (var csf in desc.GetComponentsInChildren<ContentSizeFitter>(true))
+            {
+                LayoutRebuilder.ForceRebuildLayoutImmediate(csf.transform as RectTransform);
+            }
+        }
+
         private void Awake()
         {
             _title = transform.Find("Grp_TopBar/Txt_EventName")?.GetComponent<TMP_Text>();

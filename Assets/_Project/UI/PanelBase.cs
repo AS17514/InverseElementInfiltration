@@ -26,13 +26,17 @@ namespace TheLaw.UI
             OnShow();
         }
 
-        /// <summary>全量刷新本面板布局：ForceUpdateCanvases + 重建全部 LayoutGroup（动态添加/重建子节点后调用）。</summary>
-        protected void RefreshLayout()
+        /// <summary>全量刷新本面板布局：ForceUpdateCanvases + 重建全部 LayoutGroup/ContentSizeFitter（动态添加/重建子节点后调用）。</summary>
+        protected virtual void RefreshLayout()
         {
             Canvas.ForceUpdateCanvases();
             foreach (var lg in GetComponentsInChildren<LayoutGroup>(true))
             {
                 LayoutRebuilder.ForceRebuildLayoutImmediate(lg.transform as RectTransform);
+            }
+            foreach (var csf in GetComponentsInChildren<ContentSizeFitter>(true))
+            {
+                LayoutRebuilder.ForceRebuildLayoutImmediate(csf.transform as RectTransform);
             }
         }
 

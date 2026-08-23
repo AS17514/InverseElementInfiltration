@@ -83,6 +83,18 @@ namespace TheLaw.Gameplay
         /// key=类型名:id（外部模块）；值=本层净放入次数。放入 +1（候选消失）；撤销/移除 -1（=0 移除键——候选恢复）；
         /// EnterFloor 进层清空（跨层复原——池子每层完整，上层用过的模块可再抽）。入档（中断续玩一致）。</summary>
         public Dictionary<string, int> ConsumedModules { get; internal set; } = new Dictionary<string, int>();
+        /// <summary>排查诊断（2026-08-23 第二梯队——唯一写入口 LogDiagnostic：内部判开关 + 环形上限；私有防外部误清/直改）。</summary>
+        private readonly List<string> _diagnosticLog = new List<string>();
+        private const int DiagnosticLogCap = 5000; // 环形上限：防长局/循环下存档无界膨胀
+        /// <summary>追加排查诊断（唯一写入口——开关判定与上限在内部；默认关零开销）。</summary>
+        public void LogDiagnostic(string message)
+        {
+            if (!TheLaw.Core.Diagnostics.VerboseEnabled) return;
+            if (_diagnosticLog.Count >= DiagnosticLogCap) _diagnosticLog.RemoveAt(0); // 删最旧保上限
+            _diagnosticLog.Add(message);
+        }
+        /// <summary>诊断只读视图（存档序列化用内部值；外部读取防边读边改）。</summary>
+        public System.Collections.Generic.IReadOnlyList<string> DiagnosticLogView => _diagnosticLog;
         public List<int> WaveScores { get; internal set; } = new List<int>();     // 每波得分（第 3 关"每波达标"）
         public List<PromoteAnnouncement> PromoteAnnouncements { get; internal set; } = new List<PromoteAnnouncement>();
         public int WaveEndCountdown { get; internal set; } = -1;                  // 末波强制判定倒计时（-1=未启用）
@@ -295,6 +307,7 @@ namespace TheLaw.Gameplay
             AbilityRefreshLeft.Clear();
             ActionEconomyActed.Clear();
             ConsumedModules.Clear(); // 2026-08-23：本层模块消耗随整局重置（层内由 EnterFloor 清——跨层复原）
+            _diagnosticLog.Clear(); // 2026-08-23：排查诊断随整局重置
             WaveScores.Clear();
             PromoteAnnouncements.Clear();
             WaveEndCountdown = -1;
@@ -397,6 +410,7 @@ namespace TheLaw.Gameplay
                 DrawnEventIds = new List<string>(DrawnEventIds),
                 FreeExecutes = new List<int>(FreeExecutes),
                 ConsumedModules = ConsumedModules, // 2026-08-23：本层模块消耗（净增量——入档，中断续玩一致）
+                DiagnosticLog = _diagnosticLog, // 2026-08-23：排查诊断（开时才非空）
                 ActiveStyles = new List<string>(ActiveStyles),
                 PresentationTimeouts = PresentationTimeouts, // 2026-08-21 诊断（存档可查——只写不读）
                 MahjongScore = new List<int>(MahjongScore),
@@ -489,6 +503,8 @@ namespace TheLaw.Gameplay
             DrawnEventIds = dto.DrawnEventIds ?? new List<string>();
             FreeExecutes = dto.FreeExecutes != null ? new HashSet<int>(dto.FreeExecutes) : new HashSet<int>();
             ConsumedModules = dto.ConsumedModules ?? new Dictionary<string, int>(); // 2026-08-23：消耗净增量（旧档缺省空——层内重开编辑即重建）
+            _diagnosticLog.Clear();
+            if (dto.DiagnosticLog != null) _diagnosticLog.AddRange(dto.DiagnosticLog); // 2026-08-23：排查诊断（旧档缺省空）
             ActiveStyles = dto.ActiveStyles != null ? new HashSet<string>(dto.ActiveStyles) : new HashSet<string>();
             PresentationTimeouts = dto.PresentationTimeouts ?? new List<TimeoutRecord>(); // 诊断保留（不参与逻辑）
             MahjongScore = dto.MahjongScore ?? new List<int>();
@@ -581,6 +597,7 @@ namespace TheLaw.Gameplay
         public List<string> DrawnEventIds;
         public List<int> FreeExecutes;
         public Dictionary<string, int> ConsumedModules; // 本层模块消耗净增量（2026-08-23 决策 4）
+        public List<string> DiagnosticLog; // 排查诊断（2026-08-23 第二梯队——开时才非空）
         public List<string> ActiveStyles;   // 玩法激活（2026-08-20）
         public List<TimeoutRecord> PresentationTimeouts; // 表现回执超时诊断（2026-08-21）
         public List<int> MahjongScore;       // 麻将牌山（2026-08-20）

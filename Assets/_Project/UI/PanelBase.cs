@@ -22,7 +22,18 @@ namespace TheLaw.UI
         {
             gameObject.SetActive(true);
             EnsureBgClick(); // 点击背景（Img_Bg 压暗层）关闭——非全屏面板通用协议
+            RefreshLayout(); // 2026-08-23：进入面板全量刷新布局（动态内容重建后防错乱——一劳永逸）
             OnShow();
+        }
+
+        /// <summary>全量刷新本面板布局：ForceUpdateCanvases + 重建全部 LayoutGroup（动态添加/重建子节点后调用）。</summary>
+        protected void RefreshLayout()
+        {
+            Canvas.ForceUpdateCanvases();
+            foreach (var lg in GetComponentsInChildren<LayoutGroup>(true))
+            {
+                LayoutRebuilder.ForceRebuildLayoutImmediate(lg.transform as RectTransform);
+            }
         }
 
         public void Hide()

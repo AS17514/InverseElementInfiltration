@@ -137,6 +137,7 @@ namespace TheLaw.UI
             if (_desc != null) _desc.text = Describe(_currentEvent);
             BuildOptions();
             gameObject.SetActive(true);
+            RefreshLayout(); // 2026-08-23：进入事件/恢复存档后全量刷新布局（动态选项重建防错乱）
         }
 
         /// <summary>描述：优先资产内 description 字段（JSON 导入）；空则回退标题/资产名（历史资产未重导入时兜底）。</summary>
@@ -218,6 +219,7 @@ namespace TheLaw.UI
             if (_exitBtn != null) _exitBtn.interactable = false; // 能力模式禁用退出（不能"直接完成"绕过能力选择）
             BuildAbilityOptions();
             gameObject.SetActive(true);
+            RefreshLayout(); // 2026-08-23：能力事件进入/刷新后全量刷新布局（候选区重建防错乱）
         }
 
         /// <summary>能力描述：事件描述 + 刷新提示 + 候选清单（含每项剩余刷新次数——数据来自 GameState，UI 只读）。</summary>
@@ -350,6 +352,7 @@ namespace TheLaw.UI
                 _optionsRoot,
                 new EventOptionViewData("继续", true),
                 Complete);
+            RefreshLayout(); // 2026-08-23：结果区重建后全量刷新布局
         }
 
         System.Collections.IEnumerator ShowContinueWhenReady()

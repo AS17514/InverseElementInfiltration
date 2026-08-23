@@ -43,12 +43,12 @@ namespace TheLaw.UI
         }
 
         public static EventOptionView CreateEventOption(GameObject template, Transform parent, EventOptionViewData data,
-            System.Action onClick)
+            System.Action onClick, System.Action onLongPress = null)
         {
             var go = Object.Instantiate(template, parent);
             var view = go.GetComponent<EventOptionView>();
             if (view == null) view = go.AddComponent<EventOptionView>();
-            view.Bind(data, onClick);
+            view.Bind(data, onClick, onLongPress);
             return view;
         }
     }

@@ -44,9 +44,11 @@ namespace TheLaw.UI
         private Transform _pieceInfo;
         private Transform _overlapDisplay;
         private Transform _nonOverlap;
-        private Image[] _slotImages;   // Img_InfoProgram1~4（程序槽图标）
-        private TMP_Text[] _slotTexts;
-        private TMP_Text[] _slotDescs; // Txt_InfoProgram1~4Desc
+        // 2026-08-23：字段初始化兜底——ResolveNodes 找不到 Grp_PieceInfo 时会提前 return，
+        // 若数组保持 null，ClearPieceInfo/ShowPieceInfo 的 _slotImages[i] 索引访问会 NRE（CardHover 悬停退出路径）
+        private Image[] _slotImages = new Image[4];   // Img_InfoProgram1~4（程序槽图标）
+        private TMP_Text[] _slotTexts = new TMP_Text[4];
+        private TMP_Text[] _slotDescs = new TMP_Text[4]; // Txt_InfoProgram1~4Desc
         private Image _infoValueImg; private TMP_Text _infoValueText;
         private Image _infoTypeImg; private TMP_Text _infoTypeText;
         private TMP_Text _infoName; private Image _infoPortrait;

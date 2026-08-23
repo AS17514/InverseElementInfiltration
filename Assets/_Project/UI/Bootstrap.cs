@@ -205,7 +205,7 @@ namespace TheLaw.UI
         /// <summary>刷新已加载面板的规则层引用（规则层每局重建后必须重新 Init——否则面板持旧实例）。</summary>
         private void RefreshSessionPanelRefs()
         {
-            if (_eventPanel != null) _eventPanel.Init(_eventNodeSystem);
+            if (_eventPanel != null) _eventPanel.Init(_eventNodeSystem, _gameState, _resolver);
             if (_editCandidatePanel != null) _editCandidatePanel.Init(_gameState);
             if (_pieceEditPanel != null) _pieceEditPanel.Init(_editorSession, _gameState);
             if (_deckBuildPanel != null) _deckBuildPanel.Init(_resolver, _gameState);
@@ -252,6 +252,8 @@ namespace TheLaw.UI
             EventCenter.Instance.AddEventListener(GameEvent.EventOpened, OnEventOpened);
             // 编辑事件：后端抽取三选一候选 → 显示候选面板（替代旧 StateChanged("edit")）
             EventCenter.Instance.AddEventListener(GameEvent.EditCandidatesDrawn, OnEditCandidatesDrawn);
+            // 能力事件（2026-08-23）：不发 EventOpened——Bootstrap 负责首发唤醒（面板懒加载后主动回填候选）
+            EventCenter.Instance.AddEventListener(GameEvent.AbilityCandidatesDrawn, OnAbilityCandidatesDrawn);
             // 战斗开始：TowerFlow 开战（Phase→Placement）→ 创建战斗控制器
             EventCenter.Instance.AddEventListener(GameEvent.PhaseChanged, OnPhaseChanged);
             // TODO: 进层/开战存档（SaveManager.SaveAll 触发时机——关键事件存档）
@@ -265,6 +267,7 @@ namespace TheLaw.UI
             EventCenter.Instance.RemoveEventListener(GameEvent.StateChanged, OnStateChanged);
             EventCenter.Instance.RemoveEventListener(GameEvent.EventOpened, OnEventOpened);
             EventCenter.Instance.RemoveEventListener(GameEvent.EditCandidatesDrawn, OnEditCandidatesDrawn);
+            EventCenter.Instance.RemoveEventListener(GameEvent.AbilityCandidatesDrawn, OnAbilityCandidatesDrawn);
             EventCenter.Instance.RemoveEventListener(GameEvent.PhaseChanged, OnPhaseChanged);
         }
 
@@ -301,6 +304,30 @@ namespace TheLaw.UI
                 return;
             }
             OpenEditCandidatePanel();
+        }
+
+        /// <summary>
+        /// 能力事件候选广播（2026-08-23）：能力事件不发 EventOpened——此处理首发唤醒：
+        /// 面板未创建 → 懒加载（LoadEventPanel 完成后 ShowAbilityEventFromState 主动回填）；
+        /// 面板已存在 → ShowPanel + 面板自身监听刷新并重建选项区。
+        /// </summary>
+        private void OnAbilityCandidatesDrawn(object data)
+        {
+            if (_gameState == null) return;
+            if (_gameState.AbilityCandidates == null || _gameState.AbilityCandidates.Count == 0)
+            {
+                Debug.LogWarning("[Bootstrap] 收到 AbilityCandidatesDrawn 但候选为空");
+                return;
+            }
+            var ev = string.IsNullOrEmpty(_gameState.CurrentEventId)
+                ? null
+                : ConfigTable.FindByName<EventDefinition>(_gameState.CurrentEventId);
+            if (ev == null || !ev.isAbilityPick)
+            {
+                Debug.LogWarning("[Bootstrap] 收到 AbilityCandidatesDrawn 但当前事件不是能力事件——忽略");
+                return;
+            }
+            OpenEventPanel();
         }
 
         /// <summary>
@@ -353,11 +380,16 @@ namespace TheLaw.UI
             {
                 _eventPanel = panel;
                 _uiManager.RegisterPanel(panel);
-                panel.Init(_eventNodeSystem);
+                panel.Init(_eventNodeSystem, _gameState, _resolver);
                 panel.OnSettingsClicked += () => _uiManager.PushOverlay("Settings"); // 事件关设置入口
-                panel.ShowEvent(_pendingEventId); // 主动推首次事件数据（面板注册晚于事件广播——否则显示预制文本/选项无响应）
+                // 主动推首次事件数据（面板注册晚于事件广播——否则显示预制文本/选项无响应）
+                // 能力事件优先：首发/读档时 AbilityCandidatesDrawn 已错过——从 GameState 回填（不能依赖历史广播）
+                if (!panel.ShowAbilityEventFromState())
+                {
+                    panel.ShowEvent(_pendingEventId); // 普通事件路径
+                }
                 _uiManager.ShowPanel("EventPanel");
-                Debug.Log($"[Bootstrap] 事件面板已显示（event={_pendingEventId}）");
+                Debug.Log($"[Bootstrap] 事件面板已显示（event={_pendingEventId ?? _gameState?.CurrentEventId}）");
             }, sessionBound: true);
         }
 

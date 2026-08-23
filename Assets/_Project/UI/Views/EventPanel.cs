@@ -12,6 +12,7 @@ namespace TheLaw.UI
     /// <summary>
     /// 事件关面板：监听 EventOpened → 查事件定义（标题/描述/选项）→ 点选项调 EventNodeSystem.OnOptionSelected → 发 EventCompleted（TowerFlow 推进）。
     /// 交互约定（契约）：available=false 选项灰显；效果落账后无交互效果 → 直接 EventCompleted；edit/deck 效果 → 打开对应界面（后续细化）。
+    /// 能力事件（2026-08-23）：isAbilityPick 事件不发 EventOpened——走 AbilityCandidatesDrawn → BuildAbilityOptions → SelectAbility / RefreshAbilityCandidate 专用分支；普通事件原流程不变。
     /// </summary>
     public class EventPanel : PanelBase
     {
@@ -25,14 +26,21 @@ namespace TheLaw.UI
         private string _currentEventId;
         private GameObject _optionTemplate; // Btn_EventOption prefab（Addressables 缓存）
 
+        private GameState _gameState;          // 能力模式：读取候选/刷新次数（UI 只读——状态修改必须走 Resolver）
+        private Resolver _resolver;            // 能力模式：SelectAbility / RefreshAbilityCandidate
+        private bool _isAbilityPick;           // 能力事件模式（EventDefinition.isAbilityPick == true）
+        private bool _abilitySelectionLocked;  // 能力选择防重复点击锁（选择后同步推进——下一事件重建时复位）
+
         private TMP_Text _title;
         private TMP_Text _desc;
         private Transform _optionsRoot;
         private Button _exitBtn;
 
-        public void Init(EventNodeSystem eventNode)
+        public void Init(EventNodeSystem eventNode, GameState gameState, Resolver resolver)
         {
             _eventNode = eventNode;
+            _gameState = gameState;
+            _resolver = resolver;
         }
 
         // UI 架构重构 §三.2：事件面板数据 = 事件广播驱动（ShowEvent），非 Show 驱动——
@@ -53,6 +61,8 @@ namespace TheLaw.UI
             }
             BindSettingsButton();
             EventCenter.Instance.AddEventListener(GameEvent.EventOpened, OnEventOpened);
+            // 能力事件（2026-08-23）：不发 EventOpened——候选广播驱动三选一（刷新后同广播重建选项区）
+            EventCenter.Instance.AddEventListener(GameEvent.AbilityCandidatesDrawn, OnAbilityCandidatesDrawn);
             // UI 架构重构 §六：跨局残留由"新实例"保证（局结束销毁面板）——不再需要 RunEnded 重置
             // 预加载选项按钮模板（Btn_EventOption）
             StartCoroutine(LoadOptionTemplate());
@@ -88,6 +98,7 @@ namespace TheLaw.UI
         void OnDestroy()
         {
             EventCenter.Instance.RemoveEventListener(GameEvent.EventOpened, OnEventOpened);
+            EventCenter.Instance.RemoveEventListener(GameEvent.AbilityCandidatesDrawn, OnAbilityCandidatesDrawn);
         }
 
         void OnEventOpened(object data)
@@ -98,7 +109,7 @@ namespace TheLaw.UI
             }
         }
 
-        /// <summary>展示事件（公开——Bootstrap 懒加载完成后主动推数据，防首次事件丢失）。</summary>
+        /// <summary>展示事件（公开——Bootstrap 懒加载完成后主动推数据，防首次事件丢失）。普通事件原流程不变；能力事件走专用分支。</summary>
         public void ShowEvent(string eventId)
         {
             if (string.IsNullOrEmpty(eventId)) return;
@@ -111,6 +122,15 @@ namespace TheLaw.UI
                 Complete(); // 找不到定义直接推进（防卡关）
                 return;
             }
+            _abilitySelectionLocked = false; // 新事件复位能力锁（普通/能力共用）
+            if (_currentEvent.isAbilityPick)
+            {
+                // 能力事件兜底（正常能力事件不发 EventOpened——由 AbilityCandidatesDrawn 驱动；此分支防误入）
+                EnterAbilityMode(_currentEventId, _currentEvent);
+                return;
+            }
+            _isAbilityPick = false;
+            if (_exitBtn != null) _exitBtn.interactable = true; // 普通事件恢复退出按钮（能力模式已禁用——不能直接完成绕过选择）
             if (_title != null) _title.text = string.IsNullOrEmpty(_currentEvent.title) ? "未知事件" : _currentEvent.title; // 中文兜底（防资产名泄漏）
             if (_desc != null) _desc.text = Describe(_currentEvent);
             BuildOptions();
@@ -156,6 +176,135 @@ namespace TheLaw.UI
                 yield break;
             }
             BuildOptions();
+        }
+
+        // ========== 能力事件三选一（2026-08-23：isAbilityPick 专用分支——普通事件原流程不变）==========
+
+        /// <summary>能力事件候选广播（面板已加载——刷新后也走这里重建整个选项区）。</summary>
+        void OnAbilityCandidatesDrawn(object data)
+        {
+            if (_gameState == null || _resolver == null) return; // 未 Init（首发由 Bootstrap 懒加载回填）
+            var evId = _gameState.CurrentEventId;
+            if (string.IsNullOrEmpty(evId)) return;
+            var ev = ConfigTable.FindByName<EventDefinition>(evId);
+            if (ev == null || !ev.isAbilityPick) return; // 非能力事件（防御——广播只应由能力事件发出）
+            EnterAbilityMode(evId, ev);
+        }
+
+        /// <summary>能力模式主动回填（公开——Bootstrap 懒加载/读档路径：不能依赖历史事件广播）。成功返回 true。</summary>
+        public bool ShowAbilityEventFromState()
+        {
+            if (_gameState == null || _resolver == null) return false;
+            var evId = _gameState.CurrentEventId;
+            if (string.IsNullOrEmpty(evId)) return false;
+            if (_gameState.AbilityCandidates == null || _gameState.AbilityCandidates.Count == 0) return false;
+            var ev = ConfigTable.FindByName<EventDefinition>(evId);
+            if (ev == null || !ev.isAbilityPick) return false;
+            EnterAbilityMode(evId, ev);
+            return true;
+        }
+
+        /// <summary>进入能力模式：标题/描述（含刷新提示 + 候选清单）→ 重建能力选项 → 显示。</summary>
+        void EnterAbilityMode(string eventId, EventDefinition ev)
+        {
+            _currentEventId = eventId;
+            _currentEvent = ev;
+            _isAbilityPick = true;
+            _abilitySelectionLocked = false;
+            if (_title != null) _title.text = string.IsNullOrEmpty(ev.title) ? "未知事件" : ev.title; // 中文兜底（防资产名泄漏）
+            if (_desc != null) _desc.text = DescribeAbility();
+            if (_exitBtn != null) _exitBtn.interactable = false; // 能力模式禁用退出（不能"直接完成"绕过能力选择）
+            BuildAbilityOptions();
+            gameObject.SetActive(true);
+        }
+
+        /// <summary>能力描述：事件描述 + 刷新提示 + 候选清单（含每项剩余刷新次数——数据来自 GameState，UI 只读）。</summary>
+        string DescribeAbility()
+        {
+            var sb = new System.Text.StringBuilder(Describe(_currentEvent));
+            sb.AppendLine();
+            sb.AppendLine();
+            sb.Append("长按选项按钮刷新事件（刷新次数）");
+            if (_gameState != null && _gameState.AbilityCandidates != null)
+            {
+                var refreshLeft = _gameState.AbilityRefreshLeft;
+                for (int i = 0; i < _gameState.AbilityCandidates.Count; i++)
+                {
+                    var relic = _gameState.AbilityCandidates[i];
+                    string name = relic != null ? relic.displayName : $"能力候选 {i + 1}";
+                    string desc = relic != null ? relic.description : string.Empty;
+                    int left = refreshLeft != null && i < refreshLeft.Count ? refreshLeft[i] : 0;
+                    sb.AppendLine();
+                    sb.Append($"能力候选 {i + 1}：{name}（长按刷新 · 剩余 {left} 次）");
+                    if (!string.IsNullOrEmpty(desc))
+                    {
+                        sb.AppendLine();
+                        sb.Append(desc);
+                    }
+                }
+            }
+            return sb.ToString();
+        }
+
+        /// <summary>
+        /// 能力选项区重建：每个候选 = 1 个选择选项（displayName + 描述）；刷新并入长按（长按选项按钮 = 刷新该项）。
+        /// 2026-08-23：刷新不再占用独立选项按钮——避免事件界面选项过多溢出。
+        /// </summary>
+        void BuildAbilityOptions()
+        {
+            if (_optionsRoot == null || _currentEvent == null || _gameState == null) return;
+            if (_optionTemplate == null)
+            {
+                StartCoroutine(BuildAbilityOptionsWhenReady());
+                return;
+            }
+            var candidates = _gameState.AbilityCandidates;
+            var refreshLeft = _gameState.AbilityRefreshLeft;
+            if (candidates == null || candidates.Count == 0) return; // 后端已清空（选择后）——不重建空区
+            foreach (Transform child in _optionsRoot) Destroy(child.gameObject);
+            for (int i = 0; i < candidates.Count; i++)
+            {
+                var index = i;
+                var relic = candidates[i];
+                string name = relic != null ? relic.displayName : $"能力候选 {index + 1}";
+                string desc = relic != null ? relic.description : string.Empty;
+                string label = string.IsNullOrEmpty(desc) ? name : name + "\n" + desc;
+                int left = refreshLeft != null && index < refreshLeft.Count ? refreshLeft[index] : 0;
+                UIComponentFactory.CreateEventOption(
+                    _optionTemplate,
+                    _optionsRoot,
+                    new EventOptionViewData(label, true),
+                    () => SelectAbility(index),
+                    left > 0 ? () => RefreshAbility(index) : null); // 剩余次数用尽：不挂长按（长按无效）
+            }
+        }
+
+        System.Collections.IEnumerator BuildAbilityOptionsWhenReady()
+        {
+            int guard = 0;
+            while (_optionTemplate == null && guard++ < 300) yield return null; // 防死等（同普通选项模板）
+            if (_optionTemplate == null)
+            {
+                Debug.LogWarning("[EventPanel] 能力选项模板加载超时——跳过本次构建");
+                yield break;
+            }
+            BuildAbilityOptions();
+        }
+
+        /// <summary>选择能力候选：先上锁并隐藏面板（EventCompleted 同步推进——防残留/重复点击）→ Resolver 落账推进。</summary>
+        void SelectAbility(int index)
+        {
+            if (!_isAbilityPick || _abilitySelectionLocked || _resolver == null) return;
+            _abilitySelectionLocked = true; // 防重复点击锁（同步推进后不释放——下一事件重建时复位）
+            gameObject.SetActive(false);    // 先隐藏：避免同步推进（EventCompleted→下一事件 EventOpened 再激活）造成残留或重复点击
+            _resolver.SelectAbility(index); // 后端落账 + 清候选 + EventCompleted 推进（不走普通 Complete）
+        }
+
+        /// <summary>刷新单项候选：直接调 Resolver（后端校验次数并替换 → 再发 AbilityCandidatesDrawn → 整区重建）。</summary>
+        void RefreshAbility(int index)
+        {
+            if (!_isAbilityPick || _abilitySelectionLocked || _resolver == null) return;
+            _resolver.RefreshAbilityCandidate(index);
         }
 
         void OnOptionClicked(int optionIndex)

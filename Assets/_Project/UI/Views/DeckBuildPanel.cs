@@ -40,10 +40,8 @@ namespace TheLaw.UI
         private TMP_Text _tagPromote;     // 升变数量不大于初始数量 tag
         private Button _nextBtn;
 
-        // ====== 信息区节点（同 PieceEditPanel——Grp_PieceInfo 直接挂 Grp 下）======
+        // ====== 信息区节点（2026-08-23：同 PieceEditPanel——右侧详情复用嵌套 Piece_Handcard）======
         private Transform _pieceInfo;
-        private Transform _overlapDisplay;
-        private Transform _nonOverlap;
         // 2026-08-23：字段初始化兜底——ResolveNodes 找不到 Grp_PieceInfo 时会提前 return，
         // 若数组保持 null，ClearPieceInfo/ShowPieceInfo 的 _slotImages[i] 索引访问会 NRE（CardHover 悬停退出路径）
         private Image[] _slotImages = new Image[4];   // Img_InfoProgram1~4（程序槽图标）
@@ -115,29 +113,34 @@ namespace TheLaw.UI
             _deckContent = transform.Find("Grp/Grp_BuildAndLimit/Grp_Build/Viewport/Content");       // 出战（当前手牌）
             _limitRoot = transform.Find("Grp/Grp_BuildAndLimit/Grp_DeckLimit");
 
-            _pieceInfo = transform.Find("Grp/Grp_PieceInfo");
-            if (_pieceInfo == null) return;
-            _overlapDisplay = _pieceInfo.Find("Grp_OverlapDisplay");
-            _nonOverlap = _pieceInfo.Find("Grp_NonOverlapDisplay");
+            // 2026-08-23：右侧信息区已重构为嵌套 Piece_Handcard（同 PieceEditPanel）——旧 Grp/Grp_PieceInfo 路径失效：
+            // 旧路径 Find 为 null → 信息区引用全 null → CardHover→ShowPieceInfo 无数据可刷（hover 不刷新）。
+            _pieceInfo = FindDeep(transform, "Piece_Handcard");
 
             _slotImages = new Image[4];
             _slotTexts = new TMP_Text[4];
             _slotDescs = new TMP_Text[4];
+            if (_pieceInfo == null)
+            {
+                Debug.LogError("[DeckBuild] 未找到右侧统一详情卡 Piece_Handcard");
+                return;
+            }
+
             for (int i = 0; i < 4; i++)
             {
-                var img = _overlapDisplay?.Find($"Grp_InfoProgram/Img_InfoProgram{i + 1}");
+                var img = FindDeep(_pieceInfo, $"Img_InfoProgram{i + 1}");
                 _slotImages[i] = img != null ? img.GetComponent<Image>() : null;
-                _slotTexts[i] = img != null ? img.GetComponentInChildren<TMP_Text>() : null;
-                var desc = _nonOverlap?.Find($"Grp_ProgramDesc/Txt_InfoProgram{i + 1}Desc");
+                _slotTexts[i] = img != null ? img.GetComponentInChildren<TMP_Text>(true) : null;
+                var desc = FindDeep(_pieceInfo, $"Txt_InfoProgram{i + 1}Desc");
                 _slotDescs[i] = desc != null ? desc.GetComponent<TMP_Text>() : null;
             }
-            var value = _overlapDisplay?.Find("Grp_InfoBase/Img_InfoValue");
+            var value = FindDeep(_pieceInfo, "Img_InfoValue");
             _infoValueImg = value != null ? value.GetComponent<Image>() : null;
-            _infoValueText = value != null ? value.GetComponentInChildren<TMP_Text>() : null;
-            var type = _overlapDisplay?.Find("Grp_InfoBase/Img_InfoType");
+            _infoValueText = value != null ? value.GetComponentInChildren<TMP_Text>(true) : null;
+            var type = FindDeep(_pieceInfo, "Img_InfoType");
             _infoTypeImg = type != null ? type.GetComponent<Image>() : null;
-            _infoTypeText = type != null ? type.GetComponentInChildren<TMP_Text>() : null;
-            var name = _nonOverlap?.Find("Grp_PortraitNameDisplay/Txt_InfoName");
+            _infoTypeText = type != null ? type.GetComponentInChildren<TMP_Text>(true) : null;
+            var name = FindDeep(_pieceInfo, "Txt_InfoName");
             _infoName = name != null ? name.GetComponent<TMP_Text>() : null;
             if (_infoName == null)
             {
@@ -146,7 +149,7 @@ namespace TheLaw.UI
                     if (t.name == "Txt_InfoName") { _infoName = t; break; }
                 }
             }
-            var portrait = _nonOverlap?.Find("Grp_PortraitNameDisplay/Img_InfoPortrait");
+            var portrait = FindDeep(_pieceInfo, "Img_InfoPortrait");
             _infoPortrait = portrait != null ? portrait.GetComponent<Image>() : null;
         }
 
@@ -536,6 +539,12 @@ namespace TheLaw.UI
             if (_infoTypeText != null)
             {
                 _infoTypeText.text = GetEffectiveType(def.Id) == PieceType.Initial ? "始" : GetEffectiveType(def.Id) == PieceType.Deployable ? "部" : "升";
+            }
+            // 立绘随悬停卡片刷新（2026-08-23：信息区复用 Piece_Handcard——PortraitKey 与卡面同源 = def.name）
+            if (_infoPortrait != null)
+            {
+                _infoPortrait.color = Color.white;
+                _infoPortrait.sprite = PieceViewFactory.TryGetPreloadedPortrait(def.name, out var portrait) ? portrait : null;
             }
             // 程序 = 编辑差异优先（CurrentPrograms——编辑结果在此），回退 Def 默认模组（2026-08-11 数据链修复）
             List<Template> slots = null;

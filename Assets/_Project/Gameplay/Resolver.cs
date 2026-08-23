@@ -360,8 +360,11 @@ namespace TheLaw.Gameplay
             piece.def = newDef;
             piece.ApplyDefProperties(); // 承伤+护盾按新身体重算（2026-08-12：护盾此前漏算——升变丢新身体护盾；统一初始化路径）
             // ⚠️ 2026-08-24 策划新语义（补充）：被升变的棋子（原牌）**立刻**进入弃牌区（升变瞬间记录，非死亡时两张）——
-            // 死亡时弃牌区只记升变牌（当前形态）——见 HandleDeath
-            _state.Discard.RecordPieceDeath(Card.Piece(oldDefId, oldElement));
+            // 死亡时弃牌区只记升变牌（当前形态）——见 HandleDeath；**仅玩家侧**（敌方无"牌"概念——敌方升变不写玩家弃牌区）
+            if (piece.side == Side.Player)
+            {
+                _state.Discard.RecordPieceDeath(Card.Piece(oldDefId, oldElement));
+            }
             // ⚠️ 2026-08-20「属性」玩法：升变 = 新身体 → 属性重随机（激活玩法时）；
             // 相克/相生判定（升变棋子 vs 被升变棋子属性）：
             //   相克 → 倍率 +1（当回合——结算后复位 1）；相生 → 被升变棋子的复制牌入手牌（属性 = 旧属性）

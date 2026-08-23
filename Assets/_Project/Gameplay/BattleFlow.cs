@@ -108,6 +108,9 @@ namespace TheLaw.Gameplay
             // 先分离非初始牌，再创建 Placement UI；避免构筑结果在准备阶段短暂显示为满手牌。
             // StartPlayerTurn 仍保留幂等防御调用，首回合只负责自动抽 4 张。
             _resolver.SetupDrawPile();
+            // ⚠️ 2026-08-24 战斗中续玩（临时方案）：开战快照 SL 槽——必须在**波次随机（HandleWaveAndPromotions）之前**保存
+            // （GameState + RNG 独立槽位；Continue 战斗档加载后 StartBattle 重开 → 与首次完全一致[含首波随机阵容]）
+            SaveManager.Instance.SaveBattleStart();
             ChangePhase(BattlePhase.Placement, force: true); // 强制：塔流程 Phase 可能已停在 Placement——必须发事件让 UI 创建战斗控制器
             // 开局部署首波（startTurn=1 的波——玩家摆位需要看到敌方位置参照）
             HandleWaveAndPromotions();
@@ -678,8 +681,7 @@ namespace TheLaw.Gameplay
 
         // ⚠️ 2026-08-22 插入执行（免费行动"获得即立即执行"——复用免费行动逻辑/同执行链；E5 同链待接）：
         // 击杀授予免费行动 → ExtraActionGranted → 入队 → 当前请求收尾/表现排空后强制该棋执行（free=额外行动）。
-        private readonly Queue<int> _pendingImmediateExecutes = new Queue<int>();
-        private readonly Queue<int> _pendingEnemyImmediateExecutes = new Queue<int>(); // 2026-08-24：敌方击杀触发额外行动（敌方回合内立即再执行一次——AI 自动）
+        private readonly Queue<int> _pendingEnemyImmediateExecutes = new Queue<int>(); // 2026-08-24：敌方击杀触发额外行动（敌方回合内立即再执行一次——AI 自动；玩家队列见 L59）
 
         private void OnExtraActionGranted(object data)
         {

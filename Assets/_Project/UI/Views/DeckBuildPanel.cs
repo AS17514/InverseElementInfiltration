@@ -51,6 +51,9 @@ namespace TheLaw.UI
         private Image _infoTypeImg; private TMP_Text _infoTypeText;
         private TMP_Text _infoName; private Image _infoPortrait;
 
+        /// <summary>空程序槽位透明度（2026-08-23：空槽常显仅降透明——与 HandCardView 一致，隐藏会丢吸附位/视觉跳动）。</summary>
+        private const float EmptyProgramSlotAlpha = 0.2f;
+
         // ====== 运行时状态 ======
         private List<PieceDef> _sortedDefs = new List<PieceDef>(); // 牌池数据（按 Id 排序——牌池卡顺序确定）
         private readonly List<int> _deck = new List<int>();        // 当前出战（defId 列表，顺序 = 入队顺序）
@@ -554,13 +557,29 @@ namespace TheLaw.UI
             for (int i = 0; i < 4; i++)
             {
                 bool has = i < slotCount;
-                if (_slotImages[i] != null) _slotImages[i].gameObject.SetActive(has);
-                if (_slotDescs[i] != null) _slotDescs[i].gameObject.SetActive(has);
+                // 2026-08-23：空槽不隐藏——常显位点，仅降透明度（与 HandCardView 一致）
+                if (_slotImages[i] != null)
+                {
+                    _slotImages[i].gameObject.SetActive(true);
+                    var iconColor = _slotImages[i].color;
+                    _slotImages[i].color = new Color(iconColor.r, iconColor.g, iconColor.b, has ? 1f : EmptyProgramSlotAlpha);
+                }
+                if (_slotDescs[i] != null)
+                {
+                    _slotDescs[i].gameObject.SetActive(true);
+                    var descColor = _slotDescs[i].color;
+                    _slotDescs[i].color = new Color(descColor.r, descColor.g, descColor.b, has ? 1f : EmptyProgramSlotAlpha);
+                }
                 if (has)
                 {
                     var t = slots[i];
                     if (_slotTexts[i] != null) _slotTexts[i].text = SlotTypeChar(t);
                     if (_slotDescs[i] != null) _slotDescs[i].text = SlotDetailDesc(t);
+                }
+                else
+                {
+                    if (_slotTexts[i] != null) _slotTexts[i].text = "";
+                    if (_slotDescs[i] != null) _slotDescs[i].text = "";
                 }
             }
             if (_pieceInfo != null)

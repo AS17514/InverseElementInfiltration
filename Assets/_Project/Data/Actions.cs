@@ -52,15 +52,16 @@ namespace TheLaw.Data
     public class DeployAction : ConcreteAction
     {
         public int pieceDefId;
-        public Side side;
         public Vector2Int cell;
         public int waveIndex = -1; // 所属波次（-1=非波次棋子；每波得分按此累计）
         public int cardInstanceId; // 2026-08-21：消耗的牌实例 id（0=隐式选择回退）
 
+        // ⚠️ 2026-08-23：side 不再子类声明——统一用基类 ConcreteAction.side（回放上下文字段；同名字段会遮蔽 CS0108 + 存档序列化可能丢回放上下文）
         public DeployAction(int pieceDefId, Side side, Vector2Int cell)
         {
             this.pieceDefId = pieceDefId;
             this.side = side;
+            this.defId = pieceDefId; // 回放上下文同步（部署发起=被部署的定义）
             this.cell = cell;
         }
     }

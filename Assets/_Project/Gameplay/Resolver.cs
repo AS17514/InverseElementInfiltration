@@ -1236,7 +1236,7 @@ namespace TheLaw.Gameplay
             else if (action is AttackAction atkAct) pieceId = atkAct.pieceId;
             else if (action is PromoteAction promoAct) pieceId = promoAct.pieceId;
             else if (action is SkipAction skipAct) pieceId = skipAct.pieceId;
-            else if (action is DeployAction deployAct) { action.side = deployAct.side; action.defId = deployAct.pieceDefId; }
+            // DeployAction/DeathAction：无 pieceId（side/defId 由各自构造/记录时填入——见 Actions.cs 2026-08-23 注释）
             if (pieceId > 0 && _state.PiecesById.TryGetValue(pieceId, out var actPiece))
             {
                 action.side = actPiece.side;

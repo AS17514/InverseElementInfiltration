@@ -161,9 +161,8 @@ namespace TheLaw.UI
             if (_exitBtn != null) _exitBtn.interactable = true; // 普通事件恢复退出按钮（能力模式已禁用——不能直接完成绕过选择）
             if (_title != null) _title.text = string.IsNullOrEmpty(_currentEvent.title) ? "未知事件" : _currentEvent.title; // 中文兜底（防资产名泄漏）
             if (_desc != null) _desc.text = Describe(_currentEvent);
-            BuildOptions();
+            BuildOptions(); // 选项就位后内部刷新布局（时序正确——模板未就绪时由 BuildOptionsWhenReady 补刷）
             gameObject.SetActive(true);
-            RefreshLayout(); // 2026-08-23：进入事件/恢复存档后全量刷新布局（动态选项重建防错乱）
         }
 
         /// <summary>描述：优先资产内 description 字段（JSON 导入）；空则回退标题/资产名（历史资产未重导入时兜底）。</summary>
@@ -182,7 +181,11 @@ namespace TheLaw.UI
                 StartCoroutine(BuildOptionsWhenReady());
                 return;
             }
-            foreach (Transform child in _optionsRoot) Destroy(child.gameObject);
+            // 2026-08-23 时序修复：同步清空旧选项（DestroyImmediate）——延迟 Destroy 会与新建选项同帧并存，布局计算错乱
+            while (_optionsRoot.childCount > 0)
+            {
+                DestroyImmediate(_optionsRoot.GetChild(0).gameObject);
+            }
             for (int i = 0; i < _currentEvent.options.Count; i++)
             {
                 var option = _currentEvent.options[i];
@@ -193,6 +196,7 @@ namespace TheLaw.UI
                     new EventOptionViewData(option.label, option.available),
                     option.available ? () => OnOptionClicked(index) : null);
             }
+            RefreshLayout(); // 2026-08-23 时序修复：选项就位后再刷新布局（Grp_EventOptions 已准备好）
         }
 
         System.Collections.IEnumerator BuildOptionsWhenReady()
@@ -243,9 +247,8 @@ namespace TheLaw.UI
             if (_title != null) _title.text = string.IsNullOrEmpty(ev.title) ? "未知事件" : ev.title; // 中文兜底（防资产名泄漏）
             if (_desc != null) _desc.text = DescribeAbility();
             if (_exitBtn != null) _exitBtn.interactable = false; // 能力模式禁用退出（不能"直接完成"绕过能力选择）
-            BuildAbilityOptions();
+            BuildAbilityOptions(); // 候选就位后内部刷新布局（时序正确）
             gameObject.SetActive(true);
-            RefreshLayout(); // 2026-08-23：能力事件进入/刷新后全量刷新布局（候选区重建防错乱）
         }
 
         /// <summary>能力描述：事件描述 + 刷新提示 + 候选清单（含每项剩余刷新次数——数据来自 GameState，UI 只读）。</summary>
@@ -291,7 +294,11 @@ namespace TheLaw.UI
             var candidates = _gameState.AbilityCandidates;
             var refreshLeft = _gameState.AbilityRefreshLeft;
             if (candidates == null || candidates.Count == 0) return; // 后端已清空（选择后）——不重建空区
-            foreach (Transform child in _optionsRoot) Destroy(child.gameObject);
+            // 2026-08-23 时序修复：同步清空旧候选（DestroyImmediate）——延迟 Destroy 会与新建候选同帧并存，布局计算错乱
+            while (_optionsRoot.childCount > 0)
+            {
+                DestroyImmediate(_optionsRoot.GetChild(0).gameObject);
+            }
             for (int i = 0; i < candidates.Count; i++)
             {
                 var index = i;
@@ -307,6 +314,7 @@ namespace TheLaw.UI
                     () => SelectAbility(index),
                     left > 0 ? () => RefreshAbility(index) : null); // 剩余次数用尽：不挂长按（长按无效）
             }
+            RefreshLayout(); // 2026-08-23 时序修复：候选就位后再刷新布局（Grp_EventOptions 已准备好）
         }
 
         System.Collections.IEnumerator BuildAbilityOptionsWhenReady()
@@ -372,13 +380,17 @@ namespace TheLaw.UI
                 StartCoroutine(ShowContinueWhenReady());
                 return;
             }
-            foreach (Transform child in _optionsRoot) Destroy(child.gameObject);
+            // 2026-08-23 时序修复：同步清空旧选项（DestroyImmediate）——延迟 Destroy 会与新建"继续"按钮同帧并存
+            while (_optionsRoot.childCount > 0)
+            {
+                DestroyImmediate(_optionsRoot.GetChild(0).gameObject);
+            }
             UIComponentFactory.CreateEventOption(
                 _optionTemplate,
                 _optionsRoot,
                 new EventOptionViewData("继续", true),
                 Complete);
-            RefreshLayout(); // 2026-08-23：结果区重建后全量刷新布局
+            RefreshLayout(); // 2026-08-23 时序修复：按钮就位后再刷新布局
         }
 
         System.Collections.IEnumerator ShowContinueWhenReady()

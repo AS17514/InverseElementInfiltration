@@ -896,6 +896,8 @@ namespace TheLaw.Gameplay
         {
             // 特殊能力（OnKill + ExtraAction）：【击杀者】获得免费执行资格（方案 B——不立即执行，
             // 玩家点击该棋子执行时免费；同一棋子只登记一次；有效期待策划拍板——当前保留到使用为止）
+            // ⚠️ 2026-08-24 敌我边界修正：玩家棋子 → 免费资格（玩家点击执行时免费）；**敌方棋子 → 直接额外行动执行**
+            // （不进入玩家资格机制——敌方回合内立即再执行一次，BattleFlow 敌方队列分流）
             if (killer != null)
             {
                 foreach (var ability in killer.GetAllAbilities())
@@ -903,7 +905,14 @@ namespace TheLaw.Gameplay
                     if (ability.type == SpecialAbilityType.Trigger && ability.triggerPoint == TriggerPoint.OnKill
                         && ability.triggerEffect == TriggerEffect.ExtraAction)
                     {
-                        GrantFreeExecute(killer.Id); // 统一入口（对称 ConsumeFreeExecute）
+                        if (killer.side == Side.Player)
+                        {
+                            GrantFreeExecute(killer.Id); // 统一入口（对称 ConsumeFreeExecute）
+                        }
+                        else
+                        {
+                            EventCenter.Instance.EventTrigger(GameEvent.ExtraActionGranted, killer.Id); // 敌方：立即额外行动（BattleFlow 分流）
+                        }
                     }
                 }
             }

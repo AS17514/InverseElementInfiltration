@@ -20,6 +20,8 @@ namespace TheLaw.UI
 
         // 设置按钮（Bootstrap 订阅 → PushOverlay("Settings")——面板只转发输入）
         public event Action OnSettingsClicked;
+        // 退出按钮（2026-08-23：Bootstrap 弹确认窗——确认保存并返回主菜单；不再直接推进）
+        public event Action OnExitClicked;
 
         private EventNodeSystem _eventNode;
         private EventDefinition _currentEvent;
@@ -373,8 +375,8 @@ namespace TheLaw.UI
 
         void Exit()
         {
-            // 退出事件关（紧急逃生）——直接推进
-            Complete();
+            // 退出事件关（2026-08-23）：转 Bootstrap 确认弹窗（确认=保存进度并返回主菜单；取消=无改动）——不再直接推进
+            OnExitClicked?.Invoke();
         }
     }
 }

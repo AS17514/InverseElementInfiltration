@@ -24,6 +24,7 @@ namespace TheLaw.UI
         private Button _confirmBtn;
         private Button _cancelBtn;
         private Action _onConfirm; // 确认回调（一次性——Close 后清）
+        private Action _onCancel;  // 取消回调（2026-08-23：退出确认取消时恢复调用方状态——一次性，Close 后清）
 
         public void Init(UIManager uiManager)
         {
@@ -62,19 +63,20 @@ namespace TheLaw.UI
             if (_infoText != null) _infoText.text = data?.Message ?? string.Empty;
         }
 
-        /// <summary>弹出确认（覆盖显示 + 世界冻结）；确认后执行 onConfirm 并关闭。</summary>
-        public void ShowConfirm(ConfirmViewData data, Action onConfirm)
+        /// <summary>弹出确认（覆盖显示 + 世界冻结）；确认后执行 onConfirm 并关闭；取消时执行 onCancel 并关闭（2026-08-23）。</summary>
+        public void ShowConfirm(ConfirmViewData data, Action onConfirm, Action onCancel = null)
         {
             _onConfirm = onConfirm;
+            _onCancel = onCancel;
             Bind(data);
             if (_uiManager != null) _uiManager.PushOverlay(Key);
             else gameObject.SetActive(true); // 兜底（未注入——正常不会）
         }
 
         /// <summary>兼容字符串调用；统一转换为 ConfirmViewData。</summary>
-        public void ShowConfirm(string message, Action onConfirm)
+        public void ShowConfirm(string message, Action onConfirm, Action onCancel = null)
         {
-            ShowConfirm(new ConfirmViewData(message), onConfirm);
+            ShowConfirm(new ConfirmViewData(message), onConfirm, onCancel);
         }
 
         protected override bool CloseOnBgClick => true; // 点背景 = 取消（2026-08-14）
@@ -86,7 +88,7 @@ namespace TheLaw.UI
         /// </summary>
         protected override void OnBgClicked()
         {
-            Close();
+            Cancel(); // 点背景 = 取消（含 onCancel 回调）
         }
 
         void OnConfirmClicked()
@@ -98,12 +100,20 @@ namespace TheLaw.UI
 
         void OnCancelClicked()
         {
+            Cancel();
+        }
+
+        void Cancel()
+        {
+            var cb = _onCancel;
             Close();
+            cb?.Invoke(); // 先关再回调（恢复调用方状态——如退出按钮重新可用）
         }
 
         void Close()
         {
             _onConfirm = null;
+            _onCancel = null;
             if (_uiManager != null) _uiManager.PopOverlay();
             else gameObject.SetActive(false);
         }

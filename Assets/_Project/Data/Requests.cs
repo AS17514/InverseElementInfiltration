@@ -121,4 +121,44 @@ namespace TheLaw.Data
             this.choiceIndex = choiceIndex;
         }
     }
+
+    // ========== 2026-08-24 新玩法（骰子/围棋/代币——设计定稿；仅玩家侧）==========
+
+    /// <summary>骰子·投掷请求（2026-08-24：执行类行动 1 AP——随机 1~6 → DiceValue + 基础分；骰子玩法激活时可用）。</summary>
+    [Serializable]
+    public class RollDiceRequest : Request
+    {
+        public RollDiceRequest() { }
+    }
+
+    /// <summary>骰子·点数直线移动请求（2026-08-24：消耗骰子点数（不耗 AP）启动——给全场我方棋子挂"点数直线移动"buff；下次点棋子执行时重定向）。</summary>
+    [Serializable]
+    public class DiceMoveRequest : Request
+    {
+        public DiceMoveRequest() { }
+    }
+
+    /// <summary>围棋·部署"棋子牌"请求（2026-08-24：不耗 AP、每回合限 1 次、任意空格；蓝红 side 切换；部署后触发围杀检查）。</summary>
+    [Serializable]
+    public class DeployGoRequest : Request
+    {
+        public Vector2Int cell;
+
+        public DeployGoRequest(Vector2Int cell)
+        {
+            this.cell = cell;
+        }
+    }
+
+    /// <summary>代币·购买请求（2026-08-24：选弃牌区一张牌 → 消耗该牌价值数代币 → 获得复制入手牌 + 基础分+消耗数；每回合不限次）。</summary>
+    [Serializable]
+    public class BuyTokenRequest : Request
+    {
+        public int discardIndex; // 弃牌区选择索引（0 = 第一个）
+
+        public BuyTokenRequest(int discardIndex)
+        {
+            this.discardIndex = discardIndex;
+        }
+    }
 }

@@ -14,7 +14,7 @@ MonoBehaviour:
   m_EditorClassIdentifier: 
   _id: 1129375010
   title: "\u795E\u79D8\u9057\u7269"
-  description: "\u4E00\u95F4\u5E9F\u5F03\u7684\u6B66\u5668\u94FA\u91CC\uFF0C\n\u4E00\u53CC\u75BE\u98CE\u4E4B\u9774\u9759\u9759\u6302\u5728\u5899\u4E0A\uFF0C\u4EFF\u4F5B\u5728\u7B49\u5F85\u4E3B\u4EBA\u3002"
+  description: "\u4E00\u95F4\u5E9F\u5F03\u7684\u6B66\u5668\u94FA\u91CC\uFF0C\n\u4E00\u53CC\u75BE\u98CE\u4E4B\u9774\u9759\u9759\u6302\u5728\u5899\u4E0A\uFF0C\u4EFF\u4F5B\u5728\u7B49\u5F85\u4E3B\u4EBA"
   options:
   - optionId: take_move
     label: "\u62FE\u53D6\u75BE\u98CE\u4E4B\u9774\uFF08\u79FB\u52A8\u6B65\u6570+1\uFF09"
@@ -26,6 +26,7 @@ MonoBehaviour:
       amount: 0
       abilityId: 0
       relicName: Relic_relic_move
+  isAbilityPick: 0
   deckSizeLimit: 0
   totalValueLimit: 0
   allowDuplicate: 0

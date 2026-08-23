@@ -13,6 +13,10 @@ namespace TheLaw.UI
     /// </summary>
     public static class PieceViewFactory
     {
+        // 2026-08-23：战斗场上棋子按阵营染色——我方浅蓝 B3D5FF / 敌方浅红 FFB4B4（取代原"原色直出"与占位 defId tint）
+        static readonly Color PlayerFactionTint = new Color(0.7019608f, 0.8352941f, 1f); // #B3D5FF 我方浅蓝
+        static readonly Color EnemyFactionTint = new Color(1f, 0.7058824f, 0.7058824f);   // #FFB4B4 敌方浅红
+
         // defId → 颜色（测试占位配色；有美术后仅作阵营/种类区分 tint）
         static readonly Color[] Palette =
         {
@@ -85,7 +89,8 @@ namespace TheLaw.UI
             portrait.transform.SetParent(root.transform, false);
             var sr = portrait.AddComponent<SpriteRenderer>();
             sr.sprite = PortraitFor(defId);
-            sr.color = Color.white; // 美术立绘原色直出，不做阵营/种类颜色叠加（tint 仅占位期用）
+            // 2026-08-23：按阵营染色（我方浅蓝 / 敌方浅红）——tint 参数为占位期遗留，此处以 side 为准
+            sr.color = side == Side.Player ? PlayerFactionTint : EnemyFactionTint;
             sr.sortingOrder = (int)(-cell.y * 100f) + 400;
             // 描边仅用于敌方升变预告；玩家棋子不创建无效的独立材质实例。
             if (side == Side.Enemy)

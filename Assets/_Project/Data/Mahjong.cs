@@ -44,15 +44,18 @@ namespace TheLaw.Data
     /// <summary>
     /// 通用障碍物格数据（2026-08-20 决策：轻量 + 预留扩展点——墙体现在只有点数，未来障碍物可加字段；
     /// 决策依据：决策记录_牌数据结构与玩法语义_20260820.md——不重构 Obstacles，对象值表 + 统一 IsBlocked 入口）。
+    /// ⚠️ 2026-08-24：+ instanceId——墙体来源麻将牌的实例 id（破坏时精确转移麻将"使用池→死亡池"；旧档缺省 0 兜底按点数）。
     /// </summary>
     [Serializable]
     public class ObstacleData
     {
-        public int value; // 麻将墙体：点数（破坏时填牌山）；未来障碍物扩展字段
+        public int value;        // 麻将墙体：点数（破坏时填牌山）；未来障碍物扩展字段
+        public int instanceId;   // 2026-08-24：墙体来源麻将牌实例 id（0=旧档/未知——破坏时按点数兜底转移）
 
-        public ObstacleData(int value)
+        public ObstacleData(int value, int instanceId = 0)
         {
             this.value = value;
+            this.instanceId = instanceId;
         }
     }
 }

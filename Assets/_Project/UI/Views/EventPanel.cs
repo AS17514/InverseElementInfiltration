@@ -190,10 +190,19 @@ namespace TheLaw.UI
             {
                 var option = _currentEvent.options[i];
                 var index = i;
+                // 2026-08-23：双文本结构——label 含 "名称\n描述" 时按首个换行拆分（标题/描述都视为必填）
+                string title = option.label;
+                string content = string.Empty;
+                int nl = option.label.IndexOf('\n');
+                if (nl >= 0)
+                {
+                    title = option.label.Substring(0, nl);
+                    content = option.label.Substring(nl + 1);
+                }
                 UIComponentFactory.CreateEventOption(
                     _optionTemplate,
                     _optionsRoot,
-                    new EventOptionViewData(option.label, option.available),
+                    new EventOptionViewData(title, option.available, content),
                     option.available ? () => OnOptionClicked(index) : null);
             }
             RefreshLayout(); // 2026-08-23 时序修复：选项就位后再刷新布局（Grp_EventOptions 已准备好）
@@ -251,31 +260,13 @@ namespace TheLaw.UI
             gameObject.SetActive(true);
         }
 
-        /// <summary>能力描述：事件描述 + 刷新提示 + 候选清单（含每项剩余刷新次数——数据来自 GameState，UI 只读）。</summary>
+        /// <summary>能力描述：事件描述 + 操作提示；候选清单不移入文本区（2026-08-23：与按钮区重复渲染导致叠加——见 docs/能力事件显示-修复参考_20260823.md）。</summary>
         string DescribeAbility()
         {
             var sb = new System.Text.StringBuilder(Describe(_currentEvent));
             sb.AppendLine();
             sb.AppendLine();
             sb.Append("长按选项按钮刷新事件（刷新次数）");
-            if (_gameState != null && _gameState.AbilityCandidates != null)
-            {
-                var refreshLeft = _gameState.AbilityRefreshLeft;
-                for (int i = 0; i < _gameState.AbilityCandidates.Count; i++)
-                {
-                    var relic = _gameState.AbilityCandidates[i];
-                    string name = relic != null ? relic.displayName : $"能力候选 {i + 1}";
-                    string desc = relic != null ? relic.description : string.Empty;
-                    int left = refreshLeft != null && i < refreshLeft.Count ? refreshLeft[i] : 0;
-                    sb.AppendLine();
-                    sb.Append($"能力候选 {i + 1}：{name}（长按刷新 · 剩余 {left} 次）");
-                    if (!string.IsNullOrEmpty(desc))
-                    {
-                        sb.AppendLine();
-                        sb.Append(desc);
-                    }
-                }
-            }
             return sb.ToString();
         }
 
@@ -305,12 +296,11 @@ namespace TheLaw.UI
                 var relic = candidates[i];
                 string name = relic != null ? relic.displayName : $"能力候选 {index + 1}";
                 string desc = relic != null ? relic.description : string.Empty;
-                string label = string.IsNullOrEmpty(desc) ? name : name + "\n" + desc;
                 int left = refreshLeft != null && index < refreshLeft.Count ? refreshLeft[index] : 0;
                 UIComponentFactory.CreateEventOption(
                     _optionTemplate,
                     _optionsRoot,
-                    new EventOptionViewData(label, true),
+                    new EventOptionViewData(name, true, desc), // 2026-08-23：双文本——Title=displayName，Content=description
                     () => SelectAbility(index),
                     left > 0 ? () => RefreshAbility(index) : null); // 剩余次数用尽：不挂长按（长按无效）
             }
@@ -388,7 +378,7 @@ namespace TheLaw.UI
             UIComponentFactory.CreateEventOption(
                 _optionTemplate,
                 _optionsRoot,
-                new EventOptionViewData("继续", true),
+                new EventOptionViewData("继续", true, string.Empty), // 2026-08-23：双文本——仅标题无描述
                 Complete);
             RefreshLayout(); // 2026-08-23 时序修复：按钮就位后再刷新布局
         }

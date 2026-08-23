@@ -14,9 +14,6 @@ MonoBehaviour:
   m_EditorClassIdentifier: 
   _id: 905917341
   entries:
-  - eventId: Event_ability_relic_range
-    weight: 1
-    conditionId: 
-  - eventId: Event_ability_relic_move
+  - eventId: Event_ability_pick
     weight: 1
     conditionId: 

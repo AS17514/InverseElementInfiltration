@@ -32,14 +32,14 @@
     {
       "eventId": "ability_pick",
       "title": "邂逅奇遇",
-      "description": "旅途中你遇到了一段奇遇，选择一份助力。（能力三选一——按当前玩法词条抽取）",
+      "description": "旅途中你遇到了一段奇遇，选择一份助力",
       "isAbilityPick": true,
       "options": []
     },
     {
       "eventId": "ability_relic_range",
       "title": "神秘遗物",
-      "description": "路边石台上放着一枚鹰眼符石，微微发着光。\n你感到一股力量在注视着你。",
+      "description": "路边石台上放着一枚鹰眼符石，微微发着光\n你感到一股力量在注视着你",
       "options": [
         {
           "optionId": "take_range",
@@ -56,7 +56,7 @@
     {
       "eventId": "ability_relic_move",
       "title": "神秘遗物",
-      "description": "一间废弃的武器铺里，\n一双疾风之靴静静挂在墙上，仿佛在等待主人。",
+      "description": "一间废弃的武器铺里，\n一双疾风之靴静静挂在墙上，仿佛在等待主人",
       "options": [
         {
           "optionId": "take_move",
@@ -73,11 +73,11 @@
     {
       "eventId": "edit_standard",
       "title": "工坊匠人",
-      "description": "一位老匠人打量着你的棋子：\n“我可以帮你调整行动编排，把新的战术模块嵌进空槽位。”\n\n（测试：可向棋子的 4 槽中填入/替换行动模块：\n移动[正前方1格] / 攻击[后·左·右选一格]）",
+      "description": "一位老匠人打量着你的棋子：\n“我可以帮你调整行动编排，把新的战术模块嵌进空槽位”\n\n",
       "options": [
         {
           "optionId": "start_edit",
-          "label": "开始编排（编辑棋子程序）",
+          "label": "开始编排",
           "effects": [
             {
               "effectType": "EditProgram"
@@ -86,7 +86,7 @@
         },
         {
           "optionId": "decline_edit",
-          "label": "婉拒（离开）",
+          "label": "婉拒",
           "effects": []
         }
       ]
@@ -94,7 +94,7 @@
     {
       "eventId": "deck_standard",
       "title": "整备营地",
-      "description": "战斗前最后的整备点。\n你可以调整随身的棋子牌组，为接下来的战斗做准备。",
+      "description": "战斗前最后的整备点\n你可以调整随身的棋子牌组，为接下来的战斗做准备",
       "deckSizeLimit": 12,
       "totalValueLimit": 30,
       "allowDuplicate": true,
@@ -102,7 +102,7 @@
       "options": [
         {
           "optionId": "start_deck",
-          "label": "构筑牌组（构筑完成后进入战斗）",
+          "label": "构筑牌组",
           "effects": [
             {
               "effectType": "DeckBuild"

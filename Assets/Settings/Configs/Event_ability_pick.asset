@@ -1,0 +1,23 @@
+%YAML 1.1
+%TAG !u! tag:unity3d.com,2011:
+--- !u!114 &11400000
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 0}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: 2a5229c64c4627840ac82f1898345a61, type: 3}
+  m_Name: Event_ability_pick
+  m_EditorClassIdentifier: 
+  _id: 1397761774
+  title: "\u9082\u9005\u5947\u9047"
+  description: "\u65C5\u9014\u4E2D\u4F60\u9047\u5230\u4E86\u4E00\u6BB5\u5947\u9047\uFF0C\u9009\u62E9\u4E00\u4EFD\u52A9\u529B"
+  options: []
+  isAbilityPick: 1
+  deckSizeLimit: 0
+  totalValueLimit: 0
+  allowDuplicate: 0
+  promoteLimitByInitial: 0

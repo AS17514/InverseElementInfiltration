@@ -12,8 +12,12 @@ namespace TheLaw.Gameplay
     {
         public int Id;                          // 战斗中唯一 id（GameState 分配）
         public PieceDef def;                    // 属于哪种棋子（引用）
-        public int DefId => def != null ? def.Id : _defId;
+        /// <summary>棋子定义 id（2026-08-24：围棋棋子返回专用 GoPiece.DefId——代码内建 def 无真实 Id、不入 ConfigTable）。</summary>
+        public int DefId => IsGo ? GoPiece.DefId : (def != null ? def.Id : _defId);
         private int _defId;
+
+        /// <summary>围棋棋子（2026-08-24——专用"棋子牌"部署：durability=1 一次伤害退场/价值 0/不可行动/不可升变；蓝红 side 切换）。</summary>
+        public bool IsGo;
 
         public Side side;
         public int durability;                  // 当前承伤（被攻击扣次数，归 0 死亡）
@@ -141,6 +145,37 @@ namespace TheLaw.Gameplay
             }
             result.AddRange(tempAbilities);
             return result;
+        }
+    }
+
+    /// <summary>
+    /// 围棋玩法专用棋子（2026-08-24 设计定稿 B1——**代码内建**，不建 PieceDef 配置/资产、不入 ConfigTable）：
+    /// "棋子牌" = Card.Piece(GoPiece.DefId)；部署后 = PieceInstance(IsGo=true)——durability=1（1 次伤害退场）、价值 0、
+    /// 无程序（不可行动）、不可升变、1×1；仅玩家侧（敌方无围棋）；部署不消耗"棋子牌"（牌停留手上——死亡不进弃牌区）。
+    /// </summary>
+    public static class GoPiece
+    {
+        /// <summary>围棋专用 defId（负值——不与真实棋子 id 冲突；不参与 ConfigTable 查询——GetEffective* 不会被调用）。</summary>
+        public const int DefId = -1;
+
+        private static PieceDef _def;
+
+        /// <summary>围棋棋子定义（惰性内建——durability=1/value=0/无程序/promotionConfigId=0）。</summary>
+        public static PieceDef GetDef()
+        {
+            if (_def == null)
+            {
+                _def = ScriptableObject.CreateInstance<PieceDef>();
+                _def.name = "GoPiece";
+                _def.displayName = "围棋棋子";
+                _def.pieceType = PieceType.Initial; // 价值 0 → 初始档（不入构筑/波次池——仅玩家侧部署）
+                _def.value = 0;
+                _def.durability = 1;
+                _def.footprint = Footprint.Size1x1;
+                _def.defaultFacing = Facing.Up;
+                // programSet 空（GetProgram 返回 null → 价值推导 0）、specialAbilities 空、promotionConfigId=0（不可升变）
+            }
+            return _def;
         }
     }
 }

@@ -97,7 +97,8 @@ namespace TheLaw.UI
             CreateGameplay();
             // ④ 注册存档快照
             RegisterSnapshots();
-            SaveManager.Instance.LoadAll(); // 启动读档：音量/显示等设置跨启动生效（SettingsChanged 触发 AudioManager/ScreenSettingsApplier）
+            // ⚠️ 2026-08-23 修复：移除启动自动 LoadAll——它会使"开始新游戏"继承旧档未复位字段（示例：AP 上限、随机种子）
+            // 设置已独立加载（settings.json——SettingsSystem.LoadSettings，见 L123）；游戏状态仅在玩家点"继续"（ContinueGame）时 LoadAll
             // ⑤ 事件接线（进层/开战存档、RunEnded）
             WireEvents();
             // ⑤a 结算面板常驻创建（战斗结束 overlay——自身监听 StateChanged + PushPanel；须在战斗前就绪）
@@ -604,11 +605,14 @@ namespace TheLaw.UI
             _sessionGeneration++; // 新会话边界：旧局异步面板不得接入
             DestroyBattleController();
             DisposeSessionFlow();
-            DestroySessionPanels();
+            DestroySessionPanels(keepBattlePanel: true); // 2026-08-24：读档=同局续玩——保留战斗面板（销毁→异步重建→首波部署事件丢失→表现等待超时）
             SaveManager.Instance.LoadAll(); // 恢复 GameState/RandomManager/Tutorial/Progress
             CreateSessionFlow();            // 重建整局级会话（绑定已恢复的 GameState）
             if (TryResumeSavedState())
             {
+                // 2026-08-23：恢复后预加载 BattlePanel——后续推进到战斗时控制器可同步创建
+                // （否则 _battlePanel 已被 DestroySessionPanels 销毁 → 异步创建 → 首波部署事件丢失 → 表现回执超时）
+                StartCoroutine(PreloadBattlePanelAfterContinue());
                 return;
             }
             // 战斗/其他阶段：后端暂无续玩 API——留在主菜单，存档保留
@@ -620,11 +624,24 @@ namespace TheLaw.UI
         private bool TryResumeSavedState()
         {
             // 战斗阶段：棋盘有棋子（或 GameOver）→ 战斗中。⚠️ CurrentEventId 在战斗开始后仍残留上一事件 id——
-            // 必须先判战斗再判事件，否则会误把战斗档恢复成事件界面。战斗续玩待后端 ResumeBattle API。
+            // 必须先判战斗再判事件，否则会误把战斗档恢复成事件界面。
+            // ⚠️ 2026-08-24 战斗中续玩（临时方案——回战斗开始，SL 重打语义）：加载 SL 槽（状态+RNG 回开战前）→ StartBattle 重开；
+            // 前端控制器由 PhaseChanged(Placement) 自动创建（OnPhaseChanged）；GameOver 档（防御）不可读——清档回主菜单
             if ((_gameState.PiecesById != null && _gameState.PiecesById.Count > 0)
                 || _gameState.Phase == BattlePhase.GameOver)
             {
-                return false;
+                if (_gameState.Phase == BattlePhase.GameOver)
+                {
+                    // 终局档（防御——存档恰落 GameOver→收尾窗口）：不可读档——清档回主菜单
+                    _gameState.ResetForNewRun();
+                    SaveManager.Instance.SaveAll();
+                    _uiManager.ShowPanel("MainMenu");
+                    return true;
+                }
+                SaveManager.Instance.LoadBattleStart(); // SL 槽缺失 → 保持主档（主档可能即开战检查点状态——仍可 StartBattle 重开）
+                _towerFlow.StartBattleAtCurrentFloor(); // 创建 BattleFlow + StartBattle（内部 ResetForBattle + 重存 SL）
+                _uiManager.HidePanel("MainMenu");
+                return true;
             }
             // 编辑中断：EditingDefs 非空 → 直接重开编辑面板（EditorSession 重建；Undo 历史随实例丢失——可接受）
             if (_gameState.EditingDefs != null && _gameState.EditingDefs.Count > 0)
@@ -674,7 +691,8 @@ namespace TheLaw.UI
             StartCoroutine(PreloadBattlePanelThenEnterTower());
         }
 
-        /// <summary>新局进入爬塔前预加载局内 BattlePanel；只缓存面板，不提前创建 BattleController 或显示面板。</summary>
+        /// <summary>新局进入爬塔前预加载局内 BattlePanel；只缓存面板，不提前创建 BattleController 或显示面板。
+        /// ⚠️ 2026-08-23：prefab 根 active=1——缓存后必须显式隐藏，否则会与主菜单/事件界面重叠（战斗开始 ShowPanel("Battle") 才显示）。</summary>
         private System.Collections.IEnumerator PreloadBattlePanelThenEnterTower()
         {
             int generation = _sessionGeneration;
@@ -685,6 +703,7 @@ namespace TheLaw.UI
                     _battlePanel = panel;
                     _uiManager.RegisterPanel(panel);
                     panel.OnSettingsClicked += () => _uiManager.PushOverlay("Settings");
+                    panel.gameObject.SetActive(false); // 预加载隐藏（防与其他界面重叠）
                 }, sessionBound: true);
             }
             // LoadPanelAsync 会在旧代际直接结束；陈旧协程不得继续推进当前新局。
@@ -692,12 +711,51 @@ namespace TheLaw.UI
             EnterTower();
         }
 
+        /// <summary>Continue 恢复后预加载 BattlePanel（同新局预加载，防首波部署事件丢失导致回执超时）。
+        /// 竞态兜底：预加载完成时战斗已开始且控制器未创建（PhaseChanged 的异步创建被本预加载去重跳过）→ 补创建控制器。</summary>
+        private System.Collections.IEnumerator PreloadBattlePanelAfterContinue()
+        {
+            int generation = _sessionGeneration;
+            if (_battlePanel == null)
+            {
+                yield return LoadPanelAsync<BattlePanel>(panel =>
+                {
+                    _battlePanel = panel;
+                    _uiManager.RegisterPanel(panel);
+                    panel.OnSettingsClicked += () => _uiManager.PushOverlay("Settings");
+                    // 2026-08-23：prefab 根 active=1——预加载后先隐藏，防读档继续时战斗界面与事件/主菜单重叠；
+                    // 若战斗已开始（竞态），EnsureBattleControllerIfNeeded → ShowPanel("Battle") 会重新显示
+                    panel.gameObject.SetActive(false);
+                    EnsureBattleControllerIfNeeded();
+                }, sessionBound: true);
+            }
+            else
+            {
+                _battlePanel.gameObject.SetActive(false); // 已有缓存：同样先隐藏（战斗未开始则保持）
+                EnsureBattleControllerIfNeeded();
+            }
+            if (generation != _sessionGeneration) yield break;
+        }
+
+        /// <summary>战斗已开始但控制器未创建（预加载/异步竞态）→ 补创建（防部署事件丢失）。</summary>
+        private void EnsureBattleControllerIfNeeded()
+        {
+            if (_gameState != null && _gameState.Phase == BattlePhase.Placement
+                && _towerFlow != null && _towerFlow.CurrentBattleFlow != null
+                && GameObject.Find("BattleController") == null)
+            {
+                CreateBattleController();
+            }
+        }
+
         /// <summary>
         /// 销毁全部会话面板（编辑/构筑/事件/战斗）——局结束销毁（P4 断链补全，2026-08-13）：
         /// 替代隐藏——面板是局内对象，局的边界就是销毁边界（新实例天然干净，防跨局残留）；
         /// 引用置空 → 新局懒加载自动重建。⚠️ BattleResultPanel 是常驻 overlay，不在此范围。
+        /// ⚠️ 2026-08-24：keepBattlePanel=true = 读档续玩路径（同局续玩——保留战斗面板复用；
+        /// 否则面板销毁→异步重建→首波部署事件（开战瞬间同步发出）丢失→部署表现等待无回执→3s 超时降级）。
         /// </summary>
-        private void DestroySessionPanels()
+        private void DestroySessionPanels(bool keepBattlePanel = false)
         {
             if (_uiManager == null) return; // 防御：编译重载中间态
             _uiManager.HidePanel("PieceEdit");
@@ -714,7 +772,7 @@ namespace TheLaw.UI
             }
             if (_deckBuildPanel != null) { DestroyImmediate(_deckBuildPanel.gameObject); _deckBuildPanel = null; }
             if (_eventPanel != null) { DestroyImmediate(_eventPanel.gameObject); _eventPanel = null; }
-            if (_battlePanel != null) { DestroyImmediate(_battlePanel.gameObject); _battlePanel = null; }
+            if (!keepBattlePanel && _battlePanel != null) { DestroyImmediate(_battlePanel.gameObject); _battlePanel = null; }
         }
 
         /// <summary>进入爬塔：TowerFlow 节点序列驱动（事件关/编辑/战斗）。</summary>

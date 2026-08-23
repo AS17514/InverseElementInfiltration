@@ -14,6 +14,8 @@ MonoBehaviour:
   m_EditorClassIdentifier: 
   _id: 1932796052
   displayName: "\u75BE\u98CE\u4E4B\u9774"
-  description: "\u8F7B\u82E5\u65E0\u7269\u7684\u76AE\u9774\uFF0C\u7A7F\u4E0A\u540E\u6B65\u4F10\u4EFF\u4F5B\u4E58\u7740\u98CE\u3002\uFF08\u6D4B\u8BD5\uFF1A\u79FB\u52A8\u6B65\u6570+1\uFF09"
+  description: "\u8F7B\u82E5\u65E0\u7269\u7684\u76AE\u9774\uFF0C\u7A7F\u4E0A\u540E\u6B65\u4F10\u4EFF\u4F5B\u4E58\u7740\u98CE\u3002\u79FB\u52A8\u6B65\u6570+1"
+  tags: []
+  effects: []
   abilities:
   - {fileID: 11400000, guid: 7a1d6b6959fb0884ca604390386bd996, type: 2}

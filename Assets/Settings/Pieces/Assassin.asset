@@ -22,19 +22,19 @@ MonoBehaviour:
   specialAbilities: []
   programSet:
   - slots:
-    - rid: 7823914081908686878
-    - rid: 7823914081908686879
-    - rid: 7823914081908686880
+    - rid: 4463436102609141787
+    - rid: 4463436102609141788
+    - rid: 4463436102609141789
   promotionConfigId: 0
   references:
     version: 2
     RefIds:
-    - rid: 7823914081908686878
+    - rid: 4463436102609141787
       type: {class: EffectTemplate, ns: TheLaw.Data, asm: Data}
       data:
         id: 2
         abilityKey: Ability_ExtraAction_OnKill_1
-    - rid: 7823914081908686879
+    - rid: 4463436102609141788
       type: {class: MoveTemplate, ns: TheLaw.Data, asm: Data}
       data:
         id: 7
@@ -58,7 +58,7 @@ MonoBehaviour:
             - direction: 1
               steps: 01000000
         jumpOffsets: []
-    - rid: 7823914081908686880
+    - rid: 4463436102609141789
       type: {class: AttackTemplate, ns: TheLaw.Data, asm: Data}
       data:
         id: 8

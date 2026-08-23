@@ -3,66 +3,111 @@
     {
       "relicName": "relic_range",
       "displayName": "鹰眼符石",
-      "description": "打磨光滑的古老符石，凝视它时视线仿佛能穿透战场。（测试：攻击射程+1）",
+      "description": "打磨光滑的古老符石，凝视它时视线仿佛能穿透战场。攻击射程+1",
       "abilities": [
-        { "type": "Passive", "passiveTarget": "AttackRange", "passiveValue": 1 }
+        {
+          "type": "Passive",
+          "passiveTarget": "AttackRange",
+          "passiveValue": 1
+        }
       ]
     },
     {
       "relicName": "relic_move",
       "displayName": "疾风之靴",
-      "description": "轻若无物的皮靴，穿上后步伐仿佛乘着风。（测试：移动步数+1）",
+      "description": "轻若无物的皮靴，穿上后步伐仿佛乘着风。移动步数+1",
       "abilities": [
-        { "type": "Passive", "passiveTarget": "MoveStep", "passiveValue": 1 }
+        {
+          "type": "Passive",
+          "passiveTarget": "MoveStep",
+          "passiveValue": 1
+        }
       ]
     },
     {
       "relicName": "ability_draw_extra",
       "displayName": "过目不忘",
-      "description": "行动点上限 +1；花费行动点抽牌时，可以额外抽一张。",
-      "tags": ["basic"],
+      "description": "行动点上限 +1；可以额外抽取一张牌",
+      "tags": [
+        "basic"
+      ],
       "effects": [
-        { "effectType": "APBonus", "value": 1 },
-        { "effectType": "DrawExtra", "value": 1 }
+        {
+          "effectType": "APBonus",
+          "value": 1
+        },
+        {
+          "effectType": "DrawExtra",
+          "value": 1
+        }
       ]
     },
     {
       "relicName": "ability_promote_copy",
       "displayName": "军备复制",
-      "description": "行动点上限 +1；花费行动点升变棋子时，若升变的棋子为“部署”棋子，可以将那个棋子的一张复制加入手牌。",
-      "tags": ["basic"],
+      "description": "行动点上限 +1；花费行动点升变棋子时，若升变棋子为“部署”棋子，可以将其复制一张加入手牌",
+      "tags": [
+        "basic"
+      ],
       "effects": [
-        { "effectType": "APBonus", "value": 1 },
-        { "effectType": "PromoteCopyDeployable", "value": 1 }
+        {
+          "effectType": "APBonus",
+          "value": 1
+        },
+        {
+          "effectType": "PromoteCopyDeployable",
+          "value": 1
+        }
       ]
     },
     {
       "relicName": "ability_action_economy",
       "displayName": "士气高昂",
-      "description": "执行棋子的行动不消耗行动点，你场上的所有棋子一回合只能行动一次。",
-      "tags": ["basic"],
+      "description": "执行棋子行动不消耗行动点，但棋子每回合只能行动一次",
+      "tags": [
+        "basic"
+      ],
       "effects": [
-        { "effectType": "ActionEconomy", "value": 1 }
+        {
+          "effectType": "ActionEconomy",
+          "value": 1
+        }
       ]
     },
     {
       "relicName": "ability_deploy_row",
       "displayName": "战线推进",
-      "description": "行动点上限 +1；己方的部署区增加一行。",
-      "tags": ["basic"],
+      "description": "行动点上限 +1；己方的部署区增加一行",
+      "tags": [
+        "basic"
+      ],
       "effects": [
-        { "effectType": "APBonus", "value": 1 },
-        { "effectType": "DeployRow", "value": 1 }
+        {
+          "effectType": "APBonus",
+          "value": 1
+        },
+        {
+          "effectType": "DeployRow",
+          "value": 1
+        }
       ]
     },
     {
       "relicName": "ability_edited_strike",
       "displayName": "抽牌即战",
-      "description": "行动点上限 +1；使用行动点抽牌时，若抽到被编辑过的棋子，则可以将它立即部署或升变，并立即执行一次行动。（名称临时拟——待确认）",
-      "tags": ["basic"],
+      "description": "行动点上限 +1；若抽取到被编辑过的棋子，则可以将其立即部署，并执行一次行动",
+      "tags": [
+        "basic"
+      ],
       "effects": [
-        { "effectType": "APBonus", "value": 1 },
-        { "effectType": "DrawEditedImmediate", "value": 1 }
+        {
+          "effectType": "APBonus",
+          "value": 1
+        },
+        {
+          "effectType": "DrawEditedImmediate",
+          "value": 1
+        }
       ]
     }
   ]

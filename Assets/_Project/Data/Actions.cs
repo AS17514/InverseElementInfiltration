@@ -5,10 +5,14 @@ namespace TheLaw.Data
 {
     // ========== 行动族（回放凭据，有目标）==========
 
-    /// <summary>行动基类（Resolver 落账的单位）。</summary>
+    /// <summary>行动基类（Resolver 落账的单位）。
+    /// ⚠️ 2026-08-23 回放增强：附加上下文（side/defId/turn）——离线推演可直接读（旧档缺省=0 兼容，读档不校验）。</summary>
     [Serializable]
     public abstract class ConcreteAction
     {
+        public Side side;       // 发起方阵营（Deploy 自带；其余由 Resolver.LogAction 按棋子补全；旧档缺省=0[Player]）
+        public int defId;       // 发起棋子定义 id（Deploy 为 pieceDefId；旧档缺省 0）
+        public int turn;        // 发起时回合数（GameState.TurnCount；事件区/战斗前 = 0）
     }
 
     /// <summary>移动行动。</summary>
@@ -48,15 +52,16 @@ namespace TheLaw.Data
     public class DeployAction : ConcreteAction
     {
         public int pieceDefId;
-        public Side side;
         public Vector2Int cell;
         public int waveIndex = -1; // 所属波次（-1=非波次棋子；每波得分按此累计）
         public int cardInstanceId; // 2026-08-21：消耗的牌实例 id（0=隐式选择回退）
 
+        // ⚠️ 2026-08-23：side 不再子类声明——统一用基类 ConcreteAction.side（回放上下文字段；同名字段会遮蔽 CS0108 + 存档序列化可能丢回放上下文）
         public DeployAction(int pieceDefId, Side side, Vector2Int cell)
         {
             this.pieceDefId = pieceDefId;
             this.side = side;
+            this.defId = pieceDefId; // 回放上下文同步（部署发起=被部署的定义）
             this.cell = cell;
         }
     }
@@ -94,6 +99,28 @@ namespace TheLaw.Data
         {
             this.pieceId = pieceId;
             this.reason = reason;
+        }
+    }
+
+    /// <summary>死亡记录（2026-08-23 回放增强——死亡也进 ReplayLog，补"死亡黑盒"缺口；非"行动"语义，仅时序占位）。</summary>
+    [Serializable]
+    public class DeathAction : ConcreteAction
+    {
+        public int victimId;
+        public int victimDefId;
+        public Side victimSide;
+        public int killerId = -1;   // -1 = 非攻击击杀（结算/清理/竞态等——未知来源时标识）
+        public int x;
+        public int y;
+
+        public DeathAction(int victimId, int victimDefId, Side victimSide, int killerId, Vector2Int pos)
+        {
+            this.victimId = victimId;
+            this.victimDefId = victimDefId;
+            this.victimSide = victimSide;
+            this.killerId = killerId;
+            this.x = pos.x;
+            this.y = pos.y;
         }
     }
 }

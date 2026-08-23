@@ -40,6 +40,11 @@ namespace TheLaw.Core
         // ===== SFX：其他 =====
         public const string SfxDeathUi = "SFX/death_ui"; // 2026-08-23 由音频交付（原名"sfx_death ui"含空格，已改名合规）；用途已确认（2026-08-23 设计）：**玩家死亡提示音**（我方判负/玩家死亡时播放——挂点待前端）
 
+        // ===== SFX：开场剧情（2026-08-23 新增交付——中文描述名已按规范改名；挂点待前端剧情面板/开场演出）=====
+        public const string SfxStoryWallBreak = "SFX/story_wall_break"; // 开场剧情·墙壁碎裂声（原"墙壁碎裂声.mp3"）
+        public const string SfxStoryScrape = "SFX/story_scrape";       // 开场剧情·摩擦的沙沙声（原"摩擦的沙沙声.mp3"）
+        public const string SfxStoryStatic = "SFX/story_static";       // 开场剧情·雪花屏声（原"雪花屏声.mp3"）
+
         // ===== 遗留兼容（2026-08-23 扩展前旧常量）=====
         public const string SfxAttack = "SFX/attack";   // ⚠️ 旧统一攻击音——资源未交付；前端接入 5 种分发后不再使用（保留防编译破坏）
         public const string SfxUiClick = "SFX/ui_click"; // ⚠️ 旧 UI 占位——无独立资源；UI 音统一用 SfxMahjongTile

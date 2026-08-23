@@ -63,6 +63,8 @@ namespace TheLaw.Gameplay
                 bool canAttack = CanAttackNow(state, piece, program);
                 piece.position = origPos;
                 bool canMove = moveTarget != origPos;
+                // 2026-08-23 诊断（第二梯队）：AI 决策过程（移动预测/攻击评估——统一走 GameState.LogDiagnostic，开关判定在内部）
+                state.LogDiagnostic($"AI决策: 棋子 id={piece.Id} def={piece.DefId} 移动预测=({moveTarget.x},{moveTarget.y}) canAttack={canAttack} canMove={canMove} AP预算={budget}");
                 if (canAttack || canMove)
                 {
                     // 免费资格消费（2026-08-12）：该棋子有免费资格 → 本次执行免费（不扣 AP）

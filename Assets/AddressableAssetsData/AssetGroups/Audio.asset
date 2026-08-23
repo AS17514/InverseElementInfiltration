@@ -77,6 +77,11 @@ MonoBehaviour:
     m_ReadOnly: 0
     m_SerializedLabels: []
     FlaggedDuringContentUpdateRestriction: 0
+  - m_GUID: 8f336602f2aa34047b6a8c2d5a8dc517
+    m_Address: SFX/story_scrape
+    m_ReadOnly: 0
+    m_SerializedLabels: []
+    FlaggedDuringContentUpdateRestriction: 0
   - m_GUID: 94180ddf50b939140aa7335932941b66
     m_Address: SFX/death
     m_ReadOnly: 0
@@ -99,6 +104,16 @@ MonoBehaviour:
     FlaggedDuringContentUpdateRestriction: 0
   - m_GUID: ab08d80b87bab7c4abc32ef4207c8885
     m_Address: SFX/death_ui
+    m_ReadOnly: 0
+    m_SerializedLabels: []
+    FlaggedDuringContentUpdateRestriction: 0
+  - m_GUID: bb73d2d5e84cb0e48a93344fb408b9db
+    m_Address: SFX/story_wall_break
+    m_ReadOnly: 0
+    m_SerializedLabels: []
+    FlaggedDuringContentUpdateRestriction: 0
+  - m_GUID: ef37181dc2b36e74b80a91b5be78a922
+    m_Address: SFX/story_static
     m_ReadOnly: 0
     m_SerializedLabels: []
     FlaggedDuringContentUpdateRestriction: 0

@@ -39,6 +39,12 @@ namespace TheLaw.UI
         {
             PhaseButton = transform.Find("Btn_PhaseAction")?.GetComponent<Button>();
             ExitButton = transform.Find("Btn_Exit")?.GetComponent<Button>();
+            if (ExitButton == null)
+            {
+                // 2026-08-23：prefab 重构后 Btn_Exit 已嵌套（非面板根直接子）——硬路径 Find 失效，按名深搜兜底
+                var exitGo = FindDeep("Btn_Exit");
+                if (exitGo != null) ExitButton = exitGo.GetComponent<Button>();
+            }
             BindSettingsButton();
             if (PhaseButton != null)
             {

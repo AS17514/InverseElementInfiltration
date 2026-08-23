@@ -1,5 +1,6 @@
 using System;
 using System.Collections.Generic;
+using System.Runtime.CompilerServices;
 using Newtonsoft.Json;
 
 namespace TheLaw.Core
@@ -7,6 +8,8 @@ namespace TheLaw.Core
     /// <summary>
     /// 随机管理器：种子随机（随机 bug 可复现）。
     /// ⚠️ 种子/调用计数必须入快照——读档后随机序列不漂移。
+    /// 2026-08-23 诊断（第二梯队）：VerboseEnabled 开启时记录每次调用的来源方法名（[CallerMemberName] 可选参数——
+    /// 不改调用点、不影响 CallCount 与读档对齐；默认关零开销）。
     /// </summary>
     public class RandomManager : BaseManager<RandomManager>, ISnapshot
     {
@@ -16,6 +19,10 @@ namespace TheLaw.Core
         private int _seed = Environment.TickCount;
         private int _callCount;
 
+        // 诊断缓冲（2026-08-23：随机用途标注——调用来源方法名；环形上限防膨胀；默认关）
+        private readonly List<string> _diagnosticCalls = new List<string>();
+        private const int DiagnosticCap = 2000;
+
         public string Key => "RandomManager";
 
         /// <summary>重置种子（测试/复现用）。</summary>
@@ -24,21 +31,23 @@ namespace TheLaw.Core
             _seed = seed;
             _callCount = 0;
             _random = new Random(seed);
+            _diagnosticCalls.Clear();
         }
 
         /// <summary>[minInclusive, maxExclusive) 随机整数。
         /// ⚠️ 2026-08-19：改用 NextDouble 实现（原 `_random.Next(min,max)` 整数消耗与 FromJson 重放的
         /// NextDouble 补不一致 → 读档序列漂移——记忆 #18 警告场景；同款 NextDouble 补必然对齐）。</summary>
-        public int Range(int minInclusive, int maxExclusive)
+        public int Range(int minInclusive, int maxExclusive, [CallerMemberName] string caller = "")
         {
             _callCount++;
+            TraceRandomCall(caller);
             int span = maxExclusive - minInclusive;
             if (span <= 0) return minInclusive;
             return minInclusive + (int)(_random.NextDouble() * span);
         }
 
         /// <summary>加权随机取一项（事件池抽取等）。items 空抛异常。</summary>
-        public T NextWeighted<T>(IList<T> items, Func<T, float> weightGetter)
+        public T NextWeighted<T>(IList<T> items, Func<T, float> weightGetter, [CallerMemberName] string caller = "")
         {
             Assert.IsTrue(items.Count > 0, "NextWeighted: 候选为空");
             float total = 0f;
@@ -55,18 +64,31 @@ namespace TheLaw.Core
                 if (roll < acc)
                 {
                     _callCount++;
+                    TraceRandomCall(caller);
                     return items[i];
                 }
             }
             _callCount++;
+            TraceRandomCall(caller);
             return items[items.Count - 1]; // 浮点误差兜底
         }
+
+        /// <summary>诊断：记录"第几次随机调用 → 来源方法"（仅 VerboseEnabled 时；环形防膨胀）。</summary>
+        private void TraceRandomCall(string caller)
+        {
+            if (!Diagnostics.VerboseEnabled) return;
+            if (_diagnosticCalls.Count >= DiagnosticCap) _diagnosticCalls.RemoveAt(0);
+            _diagnosticCalls.Add($"{_callCount}:{caller}");
+        }
+
+        /// <summary>诊断缓冲（存档查阅——存档时并入快照）。</summary>
+        public List<string> DiagnosticCalls => _diagnosticCalls;
 
         // ---- ISnapshot ----
 
         public string ToJson()
         {
-            return JsonConvert.SerializeObject(new RandomState { Seed = _seed, CallCount = _callCount });
+            return JsonConvert.SerializeObject(new RandomState { Seed = _seed, CallCount = _callCount, DiagnosticCalls = _diagnosticCalls });
         }
 
         public void FromJson(string json)
@@ -75,6 +97,8 @@ namespace TheLaw.Core
             _seed = state.Seed;
             _callCount = state.CallCount;
             _random = new Random(_seed);
+            _diagnosticCalls.Clear();
+            if (state.DiagnosticCalls != null) _diagnosticCalls.AddRange(state.DiagnosticCalls);
             // 重放 _callCount 次调用（保证读档后序列与存档时一致）。
             // ⚠️ 2026-08-13：补的方式必须与消耗方式一致（调用端只用 NextDouble——事件池抽取）——
             // 原用 Next() 整数补，两种方式内部消耗的随机原料数可能不同（旧 .NET 实现）→ 补不齐序列漂移。
@@ -90,6 +114,7 @@ namespace TheLaw.Core
         {
             public int Seed;
             public int CallCount;
+            public List<string> DiagnosticCalls; // 2026-08-23 诊断（旧档缺省 null 兼容）
         }
     }
 }

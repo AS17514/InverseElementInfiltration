@@ -99,6 +99,7 @@ namespace TheLaw.Gameplay
                     {
                         // 相克：直接击败（无视护盾/抗性——伤害打穿护盾+承伤）+ 基础得分 + 棋盘上同属性棋子数量
                         int bypass = target.durability + target.shieldCount + 1;
+                        TraceBattle($"攻击判定: 攻击者 def={piece.DefId} 元素={piece.element} → 目标 def={target.DefId} 元素={target.element} 相克(bypass={bypass})");
                         died = ModifyDurability(target, -bypass, piece);
                         AddBaseScore(CountSameElementOnBoard(piece.element)); // 2026-08-20 计分统一入口（相克额外得分）
                         elementHit = true;
@@ -106,17 +107,20 @@ namespace TheLaw.Gameplay
                     else if (ElementRules.IsGenerating(piece.element, target.element))
                     {
                         // 相生：不造成任何伤害 + 获得目标复制牌入手牌（属性相同）
+                        TraceBattle($"攻击判定: 攻击者 def={piece.DefId} 元素={piece.element} → 目标 def={target.DefId} 元素={target.element} 相生(复制牌)");
                         HandAddCard(Card.Piece(target.DefId, target.element)); // 统一牌区入口
                         elementHit = true;
                         // died 保持 false（无伤害）
                     }
                     else
                     {
+                        TraceBattle($"攻击判定: 攻击者 def={piece.DefId} 元素={piece.element} → 目标 def={target.DefId} 元素={target.element} 普通伤害={damage}");
                         died = ModifyDurability(target, -damage, piece); // 无关：正常伤害
                     }
                 }
                 else
                 {
+                    TraceBattle($"攻击判定: 攻击者 def={piece.DefId} 目标格=({action.targetCell.x},{action.targetCell.y}) 目标=无（空放/墙体）");
                     died = ModifyDurability(target, -damage, piece); // killer = 攻击者
                 }
             }
@@ -168,6 +172,7 @@ namespace TheLaw.Gameplay
                 var victim = _state.GetPieceAt(cell);
                 if (victim != null && (victim.side != attacker.side || action.template.friendlyFire))
                 {
+                    TraceBattle($"AOE命中: 攻击者 def={attacker.DefId} → 目标 def={victim.DefId} side={victim.side} @({cell.x},{cell.y}) 伤害={damage}");
                     bool died = ModifyDurability(victim, -damage, attacker);
                     anyHit = true;
                     EventCenter.Instance.EventTrigger(GameEvent.DamageDealt, new DamageInfo
@@ -396,6 +401,7 @@ namespace TheLaw.Gameplay
                 if (absorbed > 0)
                 {
                     EventCenter.Instance.EventTrigger(GameEvent.BuffsChanged, piece.Id); // buff 变化 → UI 刷新护盾标记
+                    TraceBattle($"承伤: id={piece.Id} def={piece.DefId} 护盾吸收={absorbed} 剩余护盾={piece.shieldCount}");
                 }
                 delta += absorbed;
                 if (delta >= 0)
@@ -404,6 +410,7 @@ namespace TheLaw.Gameplay
                 }
             }
             piece.durability += delta;
+            TraceBattle($"承伤: id={piece.Id} def={piece.DefId} side={piece.side} delta={delta} 剩余={piece.durability} killer={(killer != null ? killer.Id : -1)}");
             if (piece.durability <= 0)
             {
                 HandleDeath(piece, killer);
@@ -416,6 +423,14 @@ namespace TheLaw.Gameplay
 
         private void HandleDeath(PieceInstance victim, PieceInstance killer)
         {
+            // 2026-08-23 死亡回放记录（补"死亡黑盒"缺口——killer=-1 = 非攻击击杀/未知来源；离线推演直读死因）
+            _state.ReplayLog.Add(new DeathAction(victim.Id, victim.DefId, victim.side, killer != null ? killer.Id : -1, victim.position)
+            {
+                side = victim.side,
+                defId = victim.DefId,
+                turn = _state.TurnCount,
+            });
+            Debug.Log($"[Resolver] 死亡: id={victim.Id} def={victim.DefId} side={victim.side} @({victim.position.x},{victim.position.y}) killer={(killer != null ? killer.Id : -1)}");
             _state.Pieces.Remove(victim.position);
             _state.PiecesById.Remove(victim.Id);
 
@@ -1214,8 +1229,27 @@ namespace TheLaw.Gameplay
 
         private void LogAction(ConcreteAction action)
         {
+            // 2026-08-23 回放增强：补全上下文（side/defId/turn）——离线推演直读（此前只记 pieceId，棋子死后无法反查）
+            action.turn = _state.TurnCount;
+            int pieceId = -1;
+            if (action is MoveAction moveAct) pieceId = moveAct.pieceId;
+            else if (action is AttackAction atkAct) pieceId = atkAct.pieceId;
+            else if (action is PromoteAction promoAct) pieceId = promoAct.pieceId;
+            else if (action is SkipAction skipAct) pieceId = skipAct.pieceId;
+            // DeployAction/DeathAction：无 pieceId（side/defId 由各自构造/记录时填入——见 Actions.cs 2026-08-23 注释）
+            if (pieceId > 0 && _state.PiecesById.TryGetValue(pieceId, out var actPiece))
+            {
+                action.side = actPiece.side;
+                action.defId = actPiece.DefId;
+            }
             _state.ReplayLog.Add(action); // 回放记录（数据）
             Debug.Log($"[Resolver] 落账: {action.GetType().Name}"); // 落账日志（现场还原）
+        }
+
+        /// <summary>排查诊断（2026-08-23 第二梯队）：统一走 GameState.LogDiagnostic——开关判定与环形上限在唯一写入口。</summary>
+        private void TraceBattle(string message)
+        {
+            _state.LogDiagnostic(message);
         }
     }
 

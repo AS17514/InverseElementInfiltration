@@ -31,6 +31,46 @@ namespace TheLaw.Gameplay
         /// <summary>手牌（牌列表——棋子牌 Card(defId) / 麻将牌 Card(value)——抽牌堆抽出；2026-08-20 牌结构改造）。</summary>
         public List<Card> Hand { get; internal set; } = new List<Card>();
         public List<int> Graveyard { get; internal set; } = new List<int>(); // 墓地（不算手牌）
+
+        // ========== 牌去向记录区（2026-08-24 用户定案：弃牌区=墓地同一概念[出处：游戏方案描述 §4"死亡棋子进墓地/弃牌堆"]；麻将池独立、升变替换池——记录留痕，不参与规则）==========
+        // 语义：棋子牌死亡→墓地（Graveyard，记死亡时 defId=升变后形态）；场上原牌被升变替换→升变替换池（仅玩家侧，敌方无"牌"概念）；
+        //      麻将摸切/打出墙体→使用池（实际那张牌——含实例 id）；墙体被破坏→从使用池转移至死亡池（死亡池与棋子牌墓地独立）。
+        /// <summary>升变替换池：场上原牌被升变替换（原牌 defId+属性——仅玩家侧；升变后的新牌死亡仍进墓地）。</summary>
+        private readonly List<Card> _promotedReplaced = new List<Card>();
+        /// <summary>麻将使用池：摸切/打出墙体（记录实际那张麻将牌——含实例 id；打出=已使用[在场上也算使用]）。</summary>
+        private readonly List<Card> _mahjongUsed = new List<Card>();
+        /// <summary>麻将死亡池：墙体被破坏（从使用池转移——与棋子牌墓地独立）。</summary>
+        private readonly List<Card> _mahjongDead = new List<Card>();
+
+        /// <summary>升变替换池只读视图。</summary>
+        public IReadOnlyList<Card> PromotedReplacedPile => _promotedReplaced;
+        /// <summary>麻将使用池只读视图。</summary>
+        public IReadOnlyList<Card> MahjongUsedPile => _mahjongUsed;
+        /// <summary>麻将死亡池只读视图。</summary>
+        public IReadOnlyList<Card> MahjongDeadPile => _mahjongDead;
+
+        /// <summary>记录升变替换（原牌进替换池——受限写：append-only，无不变式）。</summary>
+        public void RecordPromotedReplaced(Card card) => _promotedReplaced.Add(card);
+        /// <summary>记录麻将使用（摸切/打出墙体——append-only；非麻将牌忽略）。</summary>
+        public void RecordMahjongUsed(Card card) { if (card.IsMahjong) _mahjongUsed.Add(card); }
+        /// <summary>记录麻将死亡（墙体破坏——append-only；与棋子牌墓地独立）。</summary>
+        public void RecordMahjongDead(Card card) { if (card.IsMahjong) _mahjongDead.Add(card); }
+
+        /// <summary>
+        /// 麻将使用池 → 死亡池转移（2026-08-24：墙体破坏时调用——先按 instanceId 精确；
+        /// 找不到（0=旧档墙体/防御）兜底按点数——同点数等价，转移语义一致）。返回是否转移成功。
+        /// </summary>
+        public bool MoveMahjongUsedToDead(int instanceId, int value)
+        {
+            int idx = _mahjongUsed.FindIndex(c => c.instanceId == instanceId);
+            if (idx < 0) idx = _mahjongUsed.FindIndex(c => c.IsMahjong && c.value == value);
+            if (idx < 0) return false;
+            var card = _mahjongUsed[idx];
+            _mahjongUsed.RemoveAt(idx);
+            _mahjongDead.Add(card);
+            return true;
+        }
+
         /// <summary>抽牌堆（2026-08-19 策划确认新概念）：构筑牌组【部署/升变】棋子 + 麻将玩法 18 张麻将牌；第一回合自动抽 4 + 1 AP 抽 1 行动。</summary>
         public List<Card> DrawPile { get; internal set; } = new List<Card>();
         public int PlayerAP { get; internal set; }
@@ -291,6 +331,9 @@ namespace TheLaw.Gameplay
             PiecesById.Clear();
             Hand.Clear();
             Graveyard.Clear();
+            _promotedReplaced.Clear(); // 2026-08-24：升变替换池随整局重置（整局累计——ResetForBattle 不清）
+            _mahjongUsed.Clear();      // 2026-08-24：麻将使用池随整局重置（与麻将牌跨战斗延续一致）
+            _mahjongDead.Clear();      // 2026-08-24：麻将死亡池随整局重置
             DrawPile.Clear();
             PlayerAP = 0;
             PlayerAPMax = 1; // ⚠️ 2026-08-23 修复：AP 上限须随新局复位——此前漏复位（启动自动读档恢复旧档值 + 同进程多局累计 → 新局继承旧局能力叠加；实测第 5 局开局 5）；初始 1（L37）
@@ -400,6 +443,9 @@ namespace TheLaw.Gameplay
                 EnemyScore = EnemyScore,
                 Hand = new List<Card>(Hand),
                 Graveyard = new List<int>(Graveyard),
+                PromotedReplacedPile = new List<Card>(_promotedReplaced), // 2026-08-24 升变替换池
+                MahjongUsedPile = new List<Card>(_mahjongUsed),           // 2026-08-24 麻将使用池
+                MahjongDeadPile = new List<Card>(_mahjongDead),           // 2026-08-24 麻将死亡池
                 DrawPile = new List<Card>(DrawPile),
                 EnemyWavePool = new List<int>(EnemyWavePool),
                 CurrentPrograms = CurrentPrograms,
@@ -471,6 +517,12 @@ namespace TheLaw.Gameplay
             EnemyScore = dto.EnemyScore;
             Hand = dto.Hand ?? new List<Card>();
             Graveyard = dto.Graveyard ?? new List<int>();
+            _promotedReplaced.Clear();
+            if (dto.PromotedReplacedPile != null) _promotedReplaced.AddRange(dto.PromotedReplacedPile); // 2026-08-24（旧档缺省空）
+            _mahjongUsed.Clear();
+            if (dto.MahjongUsedPile != null) _mahjongUsed.AddRange(dto.MahjongUsedPile);                 // 2026-08-24（旧档缺省空）
+            _mahjongDead.Clear();
+            if (dto.MahjongDeadPile != null) _mahjongDead.AddRange(dto.MahjongDeadPile);                 // 2026-08-24（旧档缺省空）
             DrawPile = dto.DrawPile ?? new List<Card>();
             EnemyWavePool = dto.EnemyWavePool ?? new List<int>();
             ReAssignCardIdsAfterLoad(); // 2026-08-21：旧档兼容——牌实例 id 缺省 0 或重复 → 重分配（新档 id 已唯一则不动）
@@ -589,6 +641,9 @@ namespace TheLaw.Gameplay
         public int EnemyScore;
         public List<Card> Hand;          // 牌（棋子牌/麻将牌——2026-08-20 牌结构改造）
         public List<int> Graveyard;
+        public List<Card> PromotedReplacedPile; // 升变替换池（2026-08-24——原牌被升变替换）
+        public List<Card> MahjongUsedPile;      // 麻将使用池（2026-08-24——摸切/打出墙体）
+        public List<Card> MahjongDeadPile;      // 麻将死亡池（2026-08-24——墙体破坏；与棋子牌墓地独立）
         public List<Card> DrawPile;      // 抽牌堆（牌——2026-08-20）
         public List<int> EnemyWavePool;
         public Dictionary<int, List<Template>> CurrentPrograms;

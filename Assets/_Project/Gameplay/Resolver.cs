@@ -372,6 +372,12 @@ namespace TheLaw.Gameplay
             {
                 HandRemovePieceAt(consumedCardIndex); // 升变牌打出：移除实际消耗的同一张牌（统一牌区入口）
             }
+            // ⚠️ 2026-08-24 牌去向记录：场上原牌被升变替换 → 进升变替换池（仅玩家侧——敌方无"牌"概念；
+            // 升变后的新牌（升变牌）死亡仍由 HandleDeath 记入墓地——记死亡时 defId = 升变后形态）
+            if (piece.side == Side.Player)
+            {
+                _state.RecordPromotedReplaced(Card.Piece(oldDefId, oldElement));
+            }
             // ⚠️ 2026-08-22 能力 PromoteCopyDeployable：升变"部署"棋子 → 该棋子一张复制加入手牌（通用版——非属性玩法）
             if (_state.HasRelicEffect(RelicEffectType.PromoteCopyDeployable)
                 && _state.GetEffectiveType(oldDefId) == PieceType.Deployable)
@@ -521,9 +527,12 @@ namespace TheLaw.Gameplay
             {
                 return false;
             }
-            _state.MahjongWalls[cell] = new ObstacleData(mahjongCard.value);
-            _state.MahjongWalls[second] = new ObstacleData(mahjongCard.value);
-            RemoveOneMahjongFromHand(mahjongCard.value); // 手牌移除该麻将牌（同点数多张——只移除一张）
+            // 2026-08-24 牌去向记录：先取实际那张牌（含实例 id）——墙体记录 id（破坏时精确转移使用池→死亡池）+ 记使用池
+            var actual = TakeMahjongFromHand(mahjongCard.value); // 手牌移除该麻将牌（同点数多张——只移除一张）
+            int instanceId = actual.HasValue ? actual.Value.instanceId : 0;
+            _state.MahjongWalls[cell] = new ObstacleData(mahjongCard.value, instanceId);
+            _state.MahjongWalls[second] = new ObstacleData(mahjongCard.value, instanceId);
+            if (actual.HasValue) _state.RecordMahjongUsed(actual.Value); // 使用池：打出墙体 = 使用（在场上也算使用；被破坏才转死亡池）
             EventCenter.Instance.EventTrigger(GameEvent.StateChanged, "mahjong-wall");
             return true;
         }
@@ -549,6 +558,7 @@ namespace TheLaw.Gameplay
                 : cell + Vector2Int.up;
             _state.MahjongWalls.Remove(cell);
             _state.MahjongWalls.Remove(second);
+            _state.MoveMahjongUsedToDead(wall.instanceId, wall.value); // 2026-08-24：使用池→死亡池（精确按 instanceId；0/找不到兜底按点数——同点数等价）
             PushMahjongScore(wall.value);       // 破坏 → 填牌山点数
             AddBaseScore(1);                     // 破坏 → 基础得分 +1（2026-08-20 计分统一入口——顺带补发计分事件）
             EventCenter.Instance.EventTrigger(GameEvent.StateChanged, "mahjong-wall");
@@ -557,19 +567,28 @@ namespace TheLaw.Gameplay
         /// <summary>
         /// 麻将：摸切（手牌行动）——手牌麻将牌填入牌山 + 抽一张牌。
         /// 抽一张 = 从抽牌堆（DrawCard）；手牌移除该麻将。
+        /// 2026-08-24：实际取走的那张牌（含实例 id）记录进麻将使用池。
         /// </summary>
         public void MochiCut(Card mahjongCard)
         {
             if (!mahjongCard.IsMahjong) return;
-            RemoveOneMahjongFromHand(mahjongCard.value);
+            var actual = TakeMahjongFromHand(mahjongCard.value);
+            if (actual.HasValue) _state.RecordMahjongUsed(actual.Value); // 使用池：摸切 = 使用（手牌消耗）
             PushMahjongScore(mahjongCard.value);
             DrawCard();
         }
 
-        /// <summary>手牌移除一张指定点数的麻将牌（Card 值语义——同点数多张只去一张；统一牌区入口）。</summary>
-        private void RemoveOneMahjongFromHand(int value)
+        /// <summary>
+        /// 手牌取走一张指定点数的麻将牌（Card 值语义——同点数多张只去一张；统一牌区入口）。
+        /// 返回实际取走的那张（含实例 id——麻将池记录用）；手牌无该点数 = null。
+        /// </summary>
+        private Card? TakeMahjongFromHand(int value)
         {
+            int idx = _state.Hand.FindIndex(c => c.IsMahjong && c.value == value);
+            if (idx < 0) return null;
+            var card = _state.Hand[idx];
             HandRemoveMahjong(value);
+            return card;
         }
 
         /// <summary>

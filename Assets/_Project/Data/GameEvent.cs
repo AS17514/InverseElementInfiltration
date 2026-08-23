@@ -25,6 +25,7 @@ namespace TheLaw.Data
         AbilityCandidatesDrawn,  // 能力事件候选就绪（2026-08-22：词条过滤随机 3——UI 显示三选一 + 每项可刷新；查询 GameState.AbilityCandidates/AbilityRefreshLeft）
         ExtraActionGranted,    // 免费行动资格授予（携带棋子 Id——UI 显示"免费行动"标记）
         BuffsChanged,          // 棋子 buff 变化（携带棋子 Id——UI 刷新该棋子的 buff 标记；查询 BuffDisplay.GetBuffs）
+        HintRequested,         // 通用变亮/提示通道（2026-08-23：携带 HintPayload——kind 决定渲染器与样式、targetId 定位对象；显示真值查后端状态容器）
 
         // ---- UI → 规则层（玩家输入/表现完成）----
         PlayerCellSelected,    // ⚠️ 2026-08-23 标注：**死声明**——玩家选格实际走 `BattleFlow.OnPlayerCellSelected` 直调（与 OnPlayerRequest* 同模式）；保留标注，待清理决策

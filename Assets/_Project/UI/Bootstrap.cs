@@ -97,7 +97,8 @@ namespace TheLaw.UI
             CreateGameplay();
             // ④ 注册存档快照
             RegisterSnapshots();
-            SaveManager.Instance.LoadAll(); // 启动读档：音量/显示等设置跨启动生效（SettingsChanged 触发 AudioManager/ScreenSettingsApplier）
+            // ⚠️ 2026-08-23 修复：移除启动自动 LoadAll——它会使"开始新游戏"继承旧档未复位字段（示例：AP 上限、随机种子）
+            // 设置已独立加载（settings.json——SettingsSystem.LoadSettings，见 L123）；游戏状态仅在玩家点"继续"（ContinueGame）时 LoadAll
             // ⑤ 事件接线（进层/开战存档、RunEnded）
             WireEvents();
             // ⑤a 结算面板常驻创建（战斗结束 overlay——自身监听 StateChanged + PushPanel；须在战斗前就绪）

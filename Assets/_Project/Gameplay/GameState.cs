@@ -63,6 +63,8 @@ namespace TheLaw.Gameplay
         // ========== 局内 ==========
         /// <summary>玩法激活集合（2026-08-20：本关已激活的玩法——"mahjong"/"element"等；改变规则事件选择玩法后加入；机制后议，先用配置/进关填入占位）。</summary>
         public HashSet<string> ActiveStyles { get; internal set; } = new HashSet<string>();
+        /// <summary>E5 资格牌实例 id（2026-08-23 高亮资格式定案：抽到被编辑棋牌时授予；玩家打出该牌=免费+立即执行，其他行动/回合结束=取消；0=无资格）。入档（战斗中途存档一致）。</summary>
+        public int EditedCardQualifyId { get; internal set; }
 
         // ========== 麻将玩法（2026-08-20——玩法机制区）==========
         /// <summary>牌山（麻将玩法：数字队列——最多 2 个；敌方棋子被击败/己方麻将牌被破坏/摸切填入；第 3 个填入时先判定刻子/顺子）。</summary>
@@ -291,11 +293,13 @@ namespace TheLaw.Gameplay
             Graveyard.Clear();
             DrawPile.Clear();
             PlayerAP = 0;
+            PlayerAPMax = 1; // ⚠️ 2026-08-23 修复：AP 上限须随新局复位——此前漏复位（启动自动读档恢复旧档值 + 同进程多局累计 → 新局继承旧局能力叠加；实测第 5 局开局 5）；初始 1（L37）
             PlayerScore = 0;
             BaseScore = 0;
             ScoreMultiplier = 1;
             EnemyWavePool.Clear();
             EnemyAP = 0;
+            EnemyAPMax = 3; // ⚠️ 2026-08-23 修复：敌方上限一并复位（此前漏——当前由 EnterFloor 按关覆盖无实际影响，一并清净；初始 3（L48））
             EnemyScore = 0;
             CurrentPrograms.Clear();
             EditingDefs.Clear();
@@ -319,11 +323,13 @@ namespace TheLaw.Gameplay
             FanCount = 0;
             MahjongWalls.Clear();
             ActiveStyles.Clear(); // 玩法激活随整局重置（跨关累积——ResetForBattle 不清）
+            EditedCardQualifyId = 0; // 2026-08-23：E5 资格随整局重置
             CurrentFloor = 0;
             CurrentNodeIndex = 0;
             NodeStates.Clear();
             ReplayLog.Clear();
             _nextCardId = 1; // 2026-08-21：牌实例 id 计数器随整局重置（保持现状）
+            _nextPieceId = 1; // ⚠️ 2026-08-23 决策 1 修正：棋子 Id 改回"局内单调"——新局重新计数（状态清理已完备[死亡/战斗边界清资格/预告/已行动集]，Id 复用不再有串态风险；同进程连开多局也归 1；Continue 读档恢复沿用存档值不受影响）
             // 2026-08-23 决策 1：棋子实例 Id **全局单调递增**——不随新局/战斗重置
             // （NextPieceId 已入档 = 天然记录"上次用到的位置"；Id 永不重复 → 按 Id 存的状态不可能串到新棋子，
             // 与 _nextCardId 的业务面区分：棋子 Id 全局延续是本决策，牌 Id 保持原状）
@@ -365,6 +371,7 @@ namespace TheLaw.Gameplay
             WaveEndCountdown = -1;
             FreeExecutes.Clear();      // 2026-08-23：免费执行资格属战斗内（击杀授予）——跨战斗必须清（_nextPieceId 重置后 Id 复用会串资格）
             ActionEconomyActed.Clear(); // 2026-08-23：行动经济已行动集属战斗内（玩家回合开始也会重置——战斗边界一并清，防 Id 复用串态）
+            EditedCardQualifyId = 0;     // 2026-08-23：E5 资格属战斗内瞬态——战斗边界清
             // 麻将玩法状态每关清（牌山/番数/墙体随战斗重置）
             MahjongScore.Clear();
             FanCount = 0;
@@ -412,6 +419,7 @@ namespace TheLaw.Gameplay
                 ConsumedModules = ConsumedModules, // 2026-08-23：本层模块消耗（净增量——入档，中断续玩一致）
                 DiagnosticLog = _diagnosticLog, // 2026-08-23：排查诊断（开时才非空）
                 ActiveStyles = new List<string>(ActiveStyles),
+                EditedCardQualifyId = EditedCardQualifyId, // 2026-08-23：E5 资格（0=无）
                 PresentationTimeouts = PresentationTimeouts, // 2026-08-21 诊断（存档可查——只写不读）
                 MahjongScore = new List<int>(MahjongScore),
                 FanCount = FanCount,
@@ -506,6 +514,7 @@ namespace TheLaw.Gameplay
             _diagnosticLog.Clear();
             if (dto.DiagnosticLog != null) _diagnosticLog.AddRange(dto.DiagnosticLog); // 2026-08-23：排查诊断（旧档缺省空）
             ActiveStyles = dto.ActiveStyles != null ? new HashSet<string>(dto.ActiveStyles) : new HashSet<string>();
+            EditedCardQualifyId = dto.EditedCardQualifyId; // 2026-08-23：E5 资格（旧档缺省 0=无资格）
             PresentationTimeouts = dto.PresentationTimeouts ?? new List<TimeoutRecord>(); // 诊断保留（不参与逻辑）
             MahjongScore = dto.MahjongScore ?? new List<int>();
             FanCount = dto.FanCount;
@@ -599,6 +608,7 @@ namespace TheLaw.Gameplay
         public Dictionary<string, int> ConsumedModules; // 本层模块消耗净增量（2026-08-23 决策 4）
         public List<string> DiagnosticLog; // 排查诊断（2026-08-23 第二梯队——开时才非空）
         public List<string> ActiveStyles;   // 玩法激活（2026-08-20）
+        public int EditedCardQualifyId;        // E5 资格牌实例 id（2026-08-23；0=无）
         public List<TimeoutRecord> PresentationTimeouts; // 表现回执超时诊断（2026-08-21）
         public List<int> MahjongScore;       // 麻将牌山（2026-08-20）
         public int FanCount;                 // 麻将番数（2026-08-20）

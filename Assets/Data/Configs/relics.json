@@ -54,6 +54,16 @@
         { "effectType": "APBonus", "value": 1 },
         { "effectType": "DeployRow", "value": 1 }
       ]
+    },
+    {
+      "relicName": "ability_edited_strike",
+      "displayName": "抽牌即战",
+      "description": "行动点上限 +1；使用行动点抽牌时，若抽到被编辑过的棋子，则可以将它立即部署或升变，并立即执行一次行动。（名称临时拟——待确认）",
+      "tags": ["basic"],
+      "effects": [
+        { "effectType": "APBonus", "value": 1 },
+        { "effectType": "DrawEditedImmediate", "value": 1 }
+      ]
     }
   ]
 }

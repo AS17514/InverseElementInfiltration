@@ -15,11 +15,11 @@ MonoBehaviour:
   _id: 846345926
   templateKey: Attack-18
   template:
-    rid: 4463436046253948943
+    rid: 7823914167428448271
   references:
     version: 2
     RefIds:
-    - rid: 4463436046253948943
+    - rid: 7823914167428448271
       type: {class: AttackTemplate, ns: TheLaw.Data, asm: Data}
       data:
         id: 18

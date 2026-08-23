@@ -26,6 +26,7 @@ MonoBehaviour:
       amount: 0
       abilityId: 0
       relicName: 
+  isAbilityPick: 0
   deckSizeLimit: 12
   totalValueLimit: 30
   allowDuplicate: 1

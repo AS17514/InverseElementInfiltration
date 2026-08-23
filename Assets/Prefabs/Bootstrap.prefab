@@ -60,9 +60,9 @@ MonoBehaviour:
   _abilityConfigs:
   - {fileID: 11400000, guid: 6dcedbaef4ed3bd468db849ad89183bf, type: 2}
   - {fileID: 11400000, guid: 7f5871e59c74be34990075cfa17d7202, type: 2}
+  - {fileID: 11400000, guid: ef89ead9d7aa079469803dc3920f382e, type: 2}
   - {fileID: 11400000, guid: 04a16084fa6bb2e4e9657e159eb03d3d, type: 2}
   - {fileID: 11400000, guid: 7a1d6b6959fb0884ca604390386bd996, type: 2}
-  - {fileID: 11400000, guid: ef89ead9d7aa079469803dc3920f382e, type: 2}
   _floorConfigs:
   - {fileID: 11400000, guid: 63df94cabd1c3ce409eda3e678cd83f1, type: 2}
   _mapConfigs:
@@ -73,11 +73,16 @@ MonoBehaviour:
   - {fileID: 11400000, guid: 87170fb17f3ecd041a61cc15cb689814, type: 2}
   - {fileID: 11400000, guid: 4e90f84222d58d040bbf3137f39834e4, type: 2}
   _eventConfigs:
+  - {fileID: 11400000, guid: 6c3b76b188ccb494eaabb51770645f7b, type: 2}
   - {fileID: 11400000, guid: 84f5400f76a44a947ac25abdabeb0c0d, type: 2}
   - {fileID: 11400000, guid: 274e1f828718821479ab66033f1fbb4c, type: 2}
   - {fileID: 11400000, guid: 51331f4bda6c3534181b735907630fa9, type: 2}
   - {fileID: 11400000, guid: f8b36a95405b66c43a740be0cdb44197, type: 2}
   _relicConfigs:
+  - {fileID: 11400000, guid: c8b12ccab28b5ca409fc722020f853ea, type: 2}
+  - {fileID: 11400000, guid: 812fa5557c980ed4696f860918873784, type: 2}
+  - {fileID: 11400000, guid: be34e1252769d694eb26fe455efefe33, type: 2}
+  - {fileID: 11400000, guid: afd4939f6852c58449226add0f7eea3c, type: 2}
   - {fileID: 11400000, guid: 47a029b14c1916443a4f9e894e03a57f, type: 2}
   - {fileID: 11400000, guid: b047e44ca096a1b42b2f5cfa4f213c1b, type: 2}
   _templateConfigs:
@@ -107,5 +112,5 @@ MonoBehaviour:
   - {fileID: 11400000, guid: 2bb9646ba9efd7c41a6ce39e1c180fe3, type: 2}
   _directToBattle: 0
   _slotDescriptions: {fileID: 4900000, guid: 61641052052f35242aa0036fb7af08a7, type: 3}
-  _buffDescriptions: {fileID: 0}
+  _buffDescriptions: {fileID: 4900000, guid: 756b431d675f2d0469856b187d65f822, type: 3}
   _slotValues: {fileID: 4900000, guid: fd1b4c51f71842f45a7bc65f03c4ff5e, type: 3}

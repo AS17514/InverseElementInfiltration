@@ -32,6 +32,7 @@ MonoBehaviour:
     label: "\u5A49\u62D2\uFF08\u79BB\u5F00\uFF09"
     available: 1
     effects: []
+  isAbilityPick: 0
   deckSizeLimit: 0
   totalValueLimit: 0
   allowDuplicate: 0

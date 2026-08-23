@@ -568,8 +568,9 @@ namespace TheLaw.UI
                 var infoImg = _pieceInfo.GetComponent<Image>();
                 if (infoImg != null)
                 {
+                    // 2026-08-23：背景按棋子类型着色，但不设透明（原 0.45f 半透明为多余设置——prefab 根 Image 已是不透明）
                     var c = CardTypeColors.For(GetEffectiveType(def.Id));
-                    infoImg.color = new Color(c.r, c.g, c.b, 0.45f);
+                    infoImg.color = new Color(c.r, c.g, c.b, 1f);
                 }
                 _pieceInfo.gameObject.SetActive(true);
             }

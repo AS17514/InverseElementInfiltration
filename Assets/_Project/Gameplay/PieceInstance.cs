@@ -18,8 +18,6 @@ namespace TheLaw.Gameplay
 
         /// <summary>围棋棋子（2026-08-24——专用"棋子牌"部署：durability=1 一次伤害退场/价值 0/不可行动/不可升变；蓝红 side 切换）。</summary>
         public bool IsGo;
-        /// <summary>升变前 defId（2026-08-24——弃牌区"升变死亡记两张"溯源；0=未升变过；升变时 Resolver 记录、入档）。</summary>
-        public int LastPromotedFromDefId;
 
         public Side side;
         public int durability;                  // 当前承伤（被攻击扣次数，归 0 死亡）

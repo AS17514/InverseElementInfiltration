@@ -1179,7 +1179,7 @@ namespace TheLaw.Gameplay
                 int slot = 0;
                 foreach (var defId in defIds)
                 {
-                    // 固定站位（与阵容顺序对应）；空 = 部署区自动找位；固定位被占用（前一波残留）→ 跳过该棋子
+                    // 固定站位（与阵容顺序对应）；空 = 部署区自动找位；固定位被占用 → 找替代格（2026-08-24 策划新语义——不再跳过）
                     var cell = wave.positions.Count > 0
                         ? (slot < wave.positions.Count ? wave.positions[slot] : new Vector2Int(-1, -1))
                         : FindDeployCell(Side.Enemy);
@@ -1190,7 +1190,12 @@ namespace TheLaw.Gameplay
                     }
                     if (wave.positions.Count > 0 && (_state.Pieces.ContainsKey(cell) || _state.Obstacles.Contains(cell)))
                     {
-                        continue; // 固定站位被占用——跳过（前一波棋子未清理）
+                        // ⚠️ 2026-08-24 策划新语义：该出棋子的位置被占 → 敌方部署区选别的空格；部署区满 → 部署区外一排找，以此类推
+                        cell = FindAlternateDeployCell(Side.Enemy);
+                        if (cell.x < 0)
+                        {
+                            break; // 全棋盘无空位（罕见）
+                        }
                     }
                     var deployAction = new DeployAction(defId, Side.Enemy, cell) { waveIndex = _deployedWaveIndex }; // 打波次标（每波得分）
                     _resolver.Resolve(deployAction);
@@ -1286,6 +1291,27 @@ namespace TheLaw.Gameplay
                 }
             }
             return new Vector2Int(-1, -1); // 无空位
+        }
+
+        /// <summary>波次部署替代格（2026-08-24 策划新语义）：固定站位被占用 → 敌方部署区选别的空格；部署区满 → 部署区外一排找，以此类推（从敌方侧向棋盘下方逐排）。</summary>
+        private Vector2Int FindAlternateDeployCell(Side side)
+        {
+            if (side != Side.Enemy)
+            {
+                return FindDeployCell(side); // 玩家侧维持原逻辑（无此需求）
+            }
+            for (int y = 7; y >= 0; y--) // 敌方部署区（y6-7）优先 → 外扩（y5→0）逐排
+            {
+                for (int x = 0; x < 8; x++)
+                {
+                    var cell = new Vector2Int(x, y);
+                    if (!_state.Pieces.ContainsKey(cell) && !_state.Obstacles.Contains(cell))
+                    {
+                        return cell;
+                    }
+                }
+            }
+            return new Vector2Int(-1, -1); // 全棋盘无空位
         }
 
         /// <summary>玩家部署是否允许：阶段限定种类（Placement=初始 / PlayerTurn=部署）+ 手牌持有（防重复部署）。

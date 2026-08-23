@@ -358,8 +358,10 @@ namespace TheLaw.Gameplay
             var oldDefId = piece.DefId;      // 升变前 def（相生复制牌用——被升变棋子）
             var oldElement = piece.element;  // 升变前属性（相克/相生判定用——旧棋子 vs 新棋子）
             piece.def = newDef;
-            piece.LastPromotedFromDefId = oldDefId; // 2026-08-24 升变溯源（弃牌区"升变死亡记两张"——原牌 defId；入档）
             piece.ApplyDefProperties(); // 承伤+护盾按新身体重算（2026-08-12：护盾此前漏算——升变丢新身体护盾；统一初始化路径）
+            // ⚠️ 2026-08-24 策划新语义（补充）：被升变的棋子（原牌）**立刻**进入弃牌区（升变瞬间记录，非死亡时两张）——
+            // 死亡时弃牌区只记升变牌（当前形态）——见 HandleDeath
+            _state.Discard.RecordPieceDeath(Card.Piece(oldDefId, oldElement));
             // ⚠️ 2026-08-20「属性」玩法：升变 = 新身体 → 属性重随机（激活玩法时）；
             // 相克/相生判定（升变棋子 vs 被升变棋子属性）：
             //   相克 → 倍率 +1（当回合——结算后复位 1）；相生 → 被升变棋子的复制牌入手牌（属性 = 旧属性）
@@ -458,12 +460,9 @@ namespace TheLaw.Gameplay
                 if (!victim.IsGo)
                 {
                     _state.Graveyard.Add(victim.DefId);
-                    // 弃牌区·棋子死亡（Card 化——双写 A：Graveyard 保留 + DiscardZone 权威；升变死亡记两张：原牌 + 升变牌）
-                    if (victim.LastPromotedFromDefId > 0)
-                    {
-                        _state.Discard.RecordPieceDeath(Card.Piece(victim.LastPromotedFromDefId, victim.element)); // 原本被升变的牌
-                    }
-                    _state.Discard.RecordPieceDeath(Card.Piece(victim.DefId, victim.element)); // 升变牌本身（当前形态）
+                    // 弃牌区·棋子死亡（Card 化——双写 A：Graveyard 保留 + DiscardZone 权威）
+                    // ⚠️ 2026-08-24 策划新语义：死亡时**只记升变牌（当前形态）**——原牌已在升变瞬间进弃牌区（ResolvePromote）
+                    _state.Discard.RecordPieceDeath(Card.Piece(victim.DefId, victim.element));
                     // ⚠️ EnemyScore：**无策划依据的遗留实现**（2026-08-19 确认保留——仅结算面板显示"敌方得分"，不参与任何判定；
                     // 玩家计分规则（回合计分）只有玩家侧——见 计分规则_策划口述_20260819.md）
                     _state.EnemyScore += killValue;
@@ -676,30 +675,38 @@ namespace TheLaw.Gameplay
             _state.PiecesById[piece.Id] = piece;
             _state.GoDeployCount++;
             EventCenter.Instance.EventTrigger(GameEvent.PieceDeployed, new DeployInfo { PieceId = piece.Id, DefId = GoPiece.DefId, Side = side, Cell = cell });
-            CheckGoCapture(); // 部署后围杀检查（B7：全场一次）
+            CheckGoCapture(cell); // 落子瞬间围杀检查（2026-08-24 策划新语义：只有本次落子补全的包围才生效）
             return true;
         }
 
         /// <summary>
-        /// 围杀检查（2026-08-24 定稿——简化单子版）：遍历全场——某棋子四邻（上下左右）全被"对方色围棋棋子"占据（边界算墙）
-        /// → 无气 → 提子退场（HandleDeath：真实棋子走完整死亡流程[墓地/弃牌区/计分]；围棋棋子死亡但"棋子牌"未消耗——不进弃牌区）。
-        /// 每次成功提子 → 倍率 +1（"自己刷分提升倍率"）。判定时机：围棋部署后调用；多处同时被围一次性处理；围棋不可移动 → 无连锁。
+        /// 围杀检查（2026-08-24 策划新语义——**落子瞬间一次性判定**）：只有本次落子**正好组成包围**（被围棋子四邻含本次落子格）才生效；
+        /// 被围住（四邻全被对方色围棋占据、边界算墙）的棋子死——一次性计算该区域；**之后该区域可正常有相反颜色的别的棋子生存**（无持续判定）。
+        /// 包围者只能是围棋棋子（真实棋子不参与）；每提一子 → 倍率 +1（"自己刷分提升倍率"）。
         /// </summary>
-        private void CheckGoCapture()
+        private void CheckGoCapture(Vector2Int placedCell)
         {
             if (!_state.IsStyleActive("go")) return;
             var victims = new List<PieceInstance>();
             foreach (var piece in _state.Pieces.Values)
             {
                 if (piece == null) continue;
-                if (IsSurroundedByGo(piece)) victims.Add(piece);
+                // 只有本次落子补全的包围才判定（被围棋子四邻必须包含本次落子格）；无连锁（围棋不可移动）
+                if (IsAdjacentTo(piece, placedCell) && IsSurroundedByGo(piece)) victims.Add(piece);
             }
             foreach (var v in victims)
             {
-                if (!_state.PiecesById.ContainsKey(v.Id)) continue; // 防御（正常无连锁——提子不产生新包围）
-                AddMultiplier(1); // 围杀 → 倍率 +1（可刷分）
+                if (!_state.PiecesById.ContainsKey(v.Id)) continue; // 防御
+                AddMultiplier(1); // 围杀 → 倍率 +1
                 HandleDeath(v, null); // 提子（killer=null——非攻击击杀）
             }
+        }
+
+        private static bool IsAdjacentTo(PieceInstance piece, Vector2Int cell)
+        {
+            var pos = piece.position;
+            return (pos + Vector2Int.up) == cell || (pos + Vector2Int.down) == cell
+                || (pos + Vector2Int.left) == cell || (pos + Vector2Int.right) == cell;
         }
 
         /// <summary>某棋子四邻是否全被"对方色围棋棋子"占据（出界=边界算墙=无气贡献；空格/非围棋棋子/己方围棋=有气）。</summary>

@@ -538,7 +538,6 @@ namespace TheLaw.Gameplay
                     ShieldCount = piece.shieldCount,
                     WaveIndex = piece.waveIndex, // 波次标（2026-08-13 补——原 DTO 缺字段，读档后每波得分链路断）
                     Element = piece.element,     // 属性玩法（2026-08-20——读档恢复）
-                    LastPromotedFromDefId = piece.LastPromotedFromDefId, // 2026-08-24 升变溯源（弃牌区两张）
                     IsGo = piece.IsGo,           // 2026-08-24 围棋棋子
                 });
             }
@@ -652,7 +651,6 @@ namespace TheLaw.Gameplay
                         shieldCount = pdto.ShieldCount,
                         waveIndex = pdto.WaveIndex, // 波次标（2026-08-13 补：第 3 关每波得分依赖——原 DTO 缺字段读档归 -1）
                         element = pdto.Element,     // 属性（2026-08-20——缺省 None）
-                        LastPromotedFromDefId = pdto.LastPromotedFromDefId, // 2026-08-24 升变溯源
                         IsGo = pdto.IsGo,           // 2026-08-24 围棋棋子
                     };
                     foreach (var abilityId in pdto.TempAbilities)
@@ -756,7 +754,6 @@ namespace TheLaw.Gameplay
         public int ShieldCount;
         public int WaveIndex; // 所属波次（2026-08-13 补——每波得分按此累计）
         public Element Element; // 属性玩法（2026-08-20）
-        public int LastPromotedFromDefId; // 升变前 defId（2026-08-24——升变死亡"弃牌区两张"溯源；0=未升变过）
         public bool IsGo; // 围棋棋子（2026-08-24——专用"棋子牌"部署，B1 定稿）
     }
 

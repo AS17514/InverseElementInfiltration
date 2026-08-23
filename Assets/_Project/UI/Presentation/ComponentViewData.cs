@@ -104,12 +104,19 @@ namespace TheLaw.UI
 
     public sealed class EventOptionViewData
     {
-        public string Label { get; }
+        /// <summary>选项标题（Txt_OptionTitle——displayName/名称）。</summary>
+        public string Title { get; }
+        /// <summary>选项描述（Txt_Content——description；2026-08-23 新增双文本结构）。</summary>
+        public string Content { get; }
         public bool Interactable { get; }
 
-        public EventOptionViewData(string label, bool interactable)
+        /// <summary>兼容旧语义：Label = 标题（新结构请用 Title/Content）。</summary>
+        public string Label => Title;
+
+        public EventOptionViewData(string title, bool interactable, string content = "")
         {
-            Label = label ?? string.Empty;
+            Title = title ?? string.Empty;
+            Content = content ?? string.Empty;
             Interactable = interactable;
         }
     }

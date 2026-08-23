@@ -610,6 +610,9 @@ namespace TheLaw.UI
             CreateSessionFlow();            // 重建整局级会话（绑定已恢复的 GameState）
             if (TryResumeSavedState())
             {
+                // 2026-08-23：恢复后预加载 BattlePanel——后续推进到战斗时控制器可同步创建
+                // （否则 _battlePanel 已被 DestroySessionPanels 销毁 → 异步创建 → 首波部署事件丢失 → 表现回执超时）
+                StartCoroutine(PreloadBattlePanelAfterContinue());
                 return;
             }
             // 战斗/其他阶段：后端暂无续玩 API——留在主菜单，存档保留
@@ -675,7 +678,8 @@ namespace TheLaw.UI
             StartCoroutine(PreloadBattlePanelThenEnterTower());
         }
 
-        /// <summary>新局进入爬塔前预加载局内 BattlePanel；只缓存面板，不提前创建 BattleController 或显示面板。</summary>
+        /// <summary>新局进入爬塔前预加载局内 BattlePanel；只缓存面板，不提前创建 BattleController 或显示面板。
+        /// ⚠️ 2026-08-23：prefab 根 active=1——缓存后必须显式隐藏，否则会与主菜单/事件界面重叠（战斗开始 ShowPanel("Battle") 才显示）。</summary>
         private System.Collections.IEnumerator PreloadBattlePanelThenEnterTower()
         {
             int generation = _sessionGeneration;
@@ -686,11 +690,49 @@ namespace TheLaw.UI
                     _battlePanel = panel;
                     _uiManager.RegisterPanel(panel);
                     panel.OnSettingsClicked += () => _uiManager.PushOverlay("Settings");
+                    panel.gameObject.SetActive(false); // 预加载隐藏（防与其他界面重叠）
                 }, sessionBound: true);
             }
             // LoadPanelAsync 会在旧代际直接结束；陈旧协程不得继续推进当前新局。
             if (generation != _sessionGeneration) yield break;
             EnterTower();
+        }
+
+        /// <summary>Continue 恢复后预加载 BattlePanel（同新局预加载，防首波部署事件丢失导致回执超时）。
+        /// 竞态兜底：预加载完成时战斗已开始且控制器未创建（PhaseChanged 的异步创建被本预加载去重跳过）→ 补创建控制器。</summary>
+        private System.Collections.IEnumerator PreloadBattlePanelAfterContinue()
+        {
+            int generation = _sessionGeneration;
+            if (_battlePanel == null)
+            {
+                yield return LoadPanelAsync<BattlePanel>(panel =>
+                {
+                    _battlePanel = panel;
+                    _uiManager.RegisterPanel(panel);
+                    panel.OnSettingsClicked += () => _uiManager.PushOverlay("Settings");
+                    // 2026-08-23：prefab 根 active=1——预加载后先隐藏，防读档继续时战斗界面与事件/主菜单重叠；
+                    // 若战斗已开始（竞态），EnsureBattleControllerIfNeeded → ShowPanel("Battle") 会重新显示
+                    panel.gameObject.SetActive(false);
+                    EnsureBattleControllerIfNeeded();
+                }, sessionBound: true);
+            }
+            else
+            {
+                _battlePanel.gameObject.SetActive(false); // 已有缓存：同样先隐藏（战斗未开始则保持）
+                EnsureBattleControllerIfNeeded();
+            }
+            if (generation != _sessionGeneration) yield break;
+        }
+
+        /// <summary>战斗已开始但控制器未创建（预加载/异步竞态）→ 补创建（防部署事件丢失）。</summary>
+        private void EnsureBattleControllerIfNeeded()
+        {
+            if (_gameState != null && _gameState.Phase == BattlePhase.Placement
+                && _towerFlow != null && _towerFlow.CurrentBattleFlow != null
+                && GameObject.Find("BattleController") == null)
+            {
+                CreateBattleController();
+            }
         }
 
         /// <summary>

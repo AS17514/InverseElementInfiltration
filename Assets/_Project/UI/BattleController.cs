@@ -142,7 +142,6 @@ namespace TheLaw.UI
         // ====== 遗物栏（2026-08-14：Btn_Relic 切换 Grp_RelicDisplay；图标占位色块 + hover 描述）======
         Button _relicBtn;
         RectTransform _relicDisplay;   // Grp_RelicDisplay（横向列表容器——布局用户已设）
-        GameObject _relicIconTemplate; // Image.prefab（图标占位——Addressables）
         bool _relicListShown;
         int _relicListGen;             // 列表重建代际（快速连点防旧协程写入——2026-08-14 M1）
         UnityEngine.EventSystems.PointerEventData _relicPointerData; // 复用指针数据（点击外部检测——避免每帧分配）
@@ -185,6 +184,15 @@ namespace TheLaw.UI
         int _lastPlayerScore = -1;
         SpriteRenderer[] _infoProgramBlocks = new SpriteRenderer[4]; // 行为逻辑块（SpriteRenderer）
         List<Template> _infoProgram; // 当前信息面板显示的程序（浮窗内容源）
+        DG.Tweening.Tween _phaseFlashTween; // 准备完成按钮文字闪动 tween（显式管理，防销毁后访问）
+        bool _phaseTipShowing;             // 阶段按钮 hover 提示是否正在显示（2026-08-23 准备引导）
+
+        // ====== 通用变亮通道（HintRequested——2026-08-23：E5 资格等提示；视觉与升变预告红框相互独立）======
+        GameObject _qualifyCardHighlight;      // 当前 E5 资格高亮的手牌卡（CardQualify targetId=牌 instanceId）
+        Vector3 _qualifyCardBaseScale;         // 高亮前卡片缩放（恢复用）
+        Color _qualifyCardBaseColor = Color.white;
+        bool _qualifyCardHasColor;
+        DG.Tweening.Tween _abilityFlashTween;  // 左面能力面板（Txt_Abilities）金色脉冲
 
         // ========== 生命周期 ==========
         void OnDestroy()
@@ -202,8 +210,13 @@ namespace TheLaw.UI
             EventCenter.Instance.RemoveEventListener(GameEvent.BuffsChanged, OnBuffsChanged);
             EventCenter.Instance.RemoveEventListener(GameEvent.ExtraActionGranted, OnExtraActionGranted);
             EventCenter.Instance.RemoveEventListener(GameEvent.RelicObtained, OnRelicObtained);
+            EventCenter.Instance.RemoveEventListener(GameEvent.HintRequested, OnHintRequested);
+            if (_abilityFlashTween != null) { _abilityFlashTween.Kill(); _abilityFlashTween = null; }
+            ClearCardQualifyHighlight();
             if (_handPosTween != null) _handPosTween.Kill();
             if (_handSizeTween != null) _handSizeTween.Kill();
+            if (_phaseFlashTween != null) { _phaseFlashTween.Kill(); _phaseFlashTween = null; }
+            if (_phaseTipShowing) { _phaseTipShowing = false; TooltipManager.Instance.Hide(); }
             _pendingPromotionWarnings.Clear();
             // 遗物按钮监听对称清理（L1——不依赖下个 BC 的 Init RemoveAllListeners 兜底）
             if (_relicBtn != null) _relicBtn.onClick.RemoveListener(ToggleRelicList);
@@ -248,6 +261,7 @@ namespace TheLaw.UI
             EventCenter.Instance.AddEventListener(GameEvent.StateChanged, OnStateChanged);
             EventCenter.Instance.AddEventListener(GameEvent.BuffsChanged, OnBuffsChanged); // buff 变化 → 刷新选中棋子信息面板
             EventCenter.Instance.AddEventListener(GameEvent.ExtraActionGranted, OnExtraActionGranted); // 免费行动授予 → 刷新并播放提示音
+            EventCenter.Instance.AddEventListener(GameEvent.HintRequested, OnHintRequested); // 通用变亮通道（2026-08-23：E5 资格等提示）
             EventCenter.Instance.AddEventListener(GameEvent.RelicObtained, OnRelicObtained); // 道中获得遗物/能力 → 刷新全局能力栏
 
             // UI 架构重构 §五：面板局内缓存（Bootstrap 管理生命周期）——每场绑定不创建
@@ -262,6 +276,10 @@ namespace TheLaw.UI
             {
                 _panel.PhaseButton.onClick.RemoveAllListeners();
                 _panel.PhaseButton.onClick.AddListener(OnPhaseButtonClicked);
+                // 2026-08-23：准备阶段 hover 引导 tip（未部署完初始棋子时显示）
+                var phaseHover = _panel.PhaseButton.gameObject.GetComponent<PhaseButtonHoverTip>();
+                if (phaseHover == null) phaseHover = _panel.PhaseButton.gameObject.AddComponent<PhaseButtonHoverTip>();
+                phaseHover.Init(this);
             }
             if (_panel.DrawButton != null)
             {
@@ -292,6 +310,18 @@ namespace TheLaw.UI
             ClearPieceInfo(); // 初始：信息面板隐藏（无选中/无临时状态）
             // 补齐开局已有棋子视觉（首波部署早于控制器创建——PieceDeployed 事件已丢）
             SyncExistingPieces();
+            // 2026-08-23：控制器异步创建时首波部署事件已丢失、视觉由上方补齐——若后端已在等该部署表现回执
+            // （token != -1）→ 立即补回执（视觉同步即表现完成），防"无回执 → 3s 超时降级"
+            var pendingToken = _flow != null ? _flow.CurrentPresentationToken : default;
+            if (pendingToken.actionId != -1)
+            {
+                EventCenter.Instance.EventTrigger(GameEvent.PresentationFinished, new PresentationInfo
+                {
+                    SessionId = pendingToken.sessionId,
+                    ActionId = pendingToken.actionId
+                });
+                Debug.Log($"[Battle] 开局视觉同步后补发部署表现回执 token=({pendingToken.sessionId},{pendingToken.actionId})");
+            }
             // 回合进度条：加载波次节点模板 + 首次刷新（2026-08-12）
             StartCoroutine(LoadWaveNodeTemplate());
             RefreshTurnProgress();
@@ -398,30 +428,19 @@ namespace TheLaw.UI
 
         System.Collections.IEnumerator BuildRelicIcons(int gen)
         {
-            if (_relicIconTemplate == null)
-            {
-                var handle = UnityEngine.AddressableAssets.Addressables.LoadAssetAsync<GameObject>("Image");
-                yield return handle;
-                // 代际校验：yield 期间列表被重建/关闭 → 放弃（防写脏数据，M1）
-                if (gen != _relicListGen || !_relicListShown) yield break;
-                if (handle.Status != UnityEngine.ResourceManagement.AsyncOperations.AsyncOperationStatus.Succeeded || handle.Result == null)
-                {
-                    Debug.LogWarning("[Battle] Image 预制体加载失败——遗物图标不可用");
-                    yield break;
-                }
-                _relicIconTemplate = handle.Result;
-            }
-            // 伪 null 守卫：面板/列表可能在协程期间被销毁（BC OnDestroy）——Instantiate 前必须显式判空（M2）
+            // 2026-08-23：原 Addressables "Image" 模板已删除（断链）——改为代码生成色块，不依赖 prefab（见 docs/能力事件显示-修复参考_20260823.md）
             if (_relicDisplay == null || _state == null) yield break;
+            // 代际校验：yield 期间列表被重建/关闭 → 放弃（防写脏数据，M1）
+            if (gen != _relicListGen || !_relicListShown) yield break;
             foreach (var relic in _state.Relics)
             {
-                var go = Instantiate(_relicIconTemplate, _relicDisplay);
-                go.name = $"RelicIcon_{relic.name}";
-                var img = go.GetComponent<UnityEngine.UI.Image>();
+                var go = new GameObject($"RelicIcon_{relic.name}");
+                go.transform.SetParent(_relicDisplay, false);
+                var img = go.AddComponent<UnityEngine.UI.Image>();
                 if (img != null)
                 {
                     img.color = ItemGettingPanel.RelicTint(relic); // 占位色块（与获取弹窗同色）
-                    img.raycastTarget = true; // 显式保证可 hover/点击（消除对 Image.prefab 内部默认值的隐性依赖，M4）
+                    img.raycastTarget = true; // 可 hover/点击
                 }
                 // hover 描述浮窗（TooltipManager）
                 var hover = go.GetComponent<RelicIconHover>();
@@ -782,7 +801,19 @@ namespace TheLaw.UI
                 {
                     StartCoroutine(PlayWithCount(play, () => pending--));
                 }
-                while (pending > 0) yield return null; // 组内全部完成 → 回执一次
+                // 前端兜底（2026-08-23）：慢机/重帧时表现协程可能 >3s 才播完 → 后端超时降级（LogError）。
+                // 批次等待用 scaled time（暂停中不触发），超过 2s 未播完 → 强制收尾回执（防后端 3s 超时；迟到动画无害）
+                float batchStartTime = UnityEngine.Time.time;
+                while (pending > 0)
+                {
+                    if (UnityEngine.Time.time - batchStartTime > 2f)
+                    {
+                        pending = 0; // 放弃等待：直接回执（token 仍是本组快照——后端正常推进）
+                        Debug.LogWarning($"[BattleController] 表现批次 {batch.Count} 项 2s 未播完——前端强制收尾回执（表现协程疑似卡住，本次已放行）");
+                        break;
+                    }
+                    yield return null; // 组内全部完成 → 回执一次
+                }
                 _batchFlashAttackers = null;
                 EventCenter.Instance.EventTrigger(GameEvent.PresentationFinished, new PresentationInfo
                 {
@@ -1323,16 +1354,104 @@ namespace TheLaw.UI
             {
                 foreach (var relic in _state.Relics)
                 {
-                    if (relic == null || relic.abilities == null) continue;
-                    foreach (var ability in relic.abilities)
+                    if (relic == null) continue;
+                    // 2026-08-23：新能力模型（RelicEffectSpec 组合）无 abilities——回退显示遗物 displayName
+                    if (relic.abilities != null && relic.abilities.Count > 0)
                     {
-                        if (ability == null) continue;
-                        string name = DisplayNames.OfAbilityType(ability.type);
-                        if (!names.Contains(name)) names.Add(name);
+                        foreach (var ability in relic.abilities)
+                        {
+                            if (ability == null) continue;
+                            string name = DisplayNames.OfAbilityType(ability.type);
+                            if (!names.Contains(name)) names.Add(name);
+                        }
+                    }
+                    else if (!string.IsNullOrEmpty(relic.displayName))
+                    {
+                        if (!names.Contains(relic.displayName)) names.Add(relic.displayName);
                     }
                 }
             }
             Set(_infoAbilities, names.Count > 0 ? string.Join("、", names) : "无");
+        }
+
+        // ========== 通用变亮通道（HintRequested——2026-08-23：E5 资格等提示）==========
+
+        /// <summary>通用变亮/提示通道：CardQualify（E5 抽牌即战资格）→ 手牌变亮 + 左面能力面板变亮；0=取消。</summary>
+        void OnHintRequested(object data)
+        {
+            if (!(data is HintPayload hp)) return;
+            if (hp.kind == HintKind.CardQualify)
+            {
+                ApplyCardQualifyHighlight(hp.targetId); // 真值以 GameState.EditedCardQualifyId 为准（payload 是即时刷新信号）
+            }
+        }
+
+        /// <summary>按 GameState 真值回填资格高亮（开局/读档/手牌重建后调用）。</summary>
+        void RefreshQualifyHighlight()
+        {
+            ApplyCardQualifyHighlight(_state != null ? _state.EditedCardQualifyId : 0);
+        }
+
+        /// <summary>E5 资格：手牌卡变亮（scale 放大 + 金色 tint）+ 左面能力面板金色脉冲；targetId=牌 instanceId，0=取消。</summary>
+        void ApplyCardQualifyHighlight(int cardInstanceId)
+        {
+            ClearCardQualifyHighlight();
+            bool on = cardInstanceId != 0;
+            if (on && _panel != null && _panel.HandRoot != null)
+            {
+                foreach (var drag in _panel.HandRoot.GetComponentsInChildren<HandCardDrag>(true))
+                {
+                    if (drag.CardInstanceId == cardInstanceId)
+                    {
+                        var go = drag.gameObject;
+                        _qualifyCardHighlight = go;
+                        _qualifyCardBaseScale = go.transform.localScale;
+                        go.transform.localScale = _qualifyCardBaseScale * 1.15f;
+                        var img = go.GetComponent<UnityEngine.UI.Image>();
+                        if (img != null)
+                        {
+                            _qualifyCardHasColor = true;
+                            _qualifyCardBaseColor = img.color;
+                            img.color = new Color(1f, 0.9f, 0.55f, img.color.a); // 金色高亮（视觉自决——与升变预告红框独立）
+                        }
+                        break;
+                    }
+                }
+            }
+            ApplyAbilityPanelHighlight(on);
+        }
+
+        void ClearCardQualifyHighlight()
+        {
+            if (_qualifyCardHighlight != null)
+            {
+                _qualifyCardHighlight.transform.localScale = _qualifyCardBaseScale;
+                var img = _qualifyCardHighlight.GetComponent<UnityEngine.UI.Image>();
+                if (img != null && _qualifyCardHasColor) img.color = _qualifyCardBaseColor;
+                _qualifyCardHighlight = null;
+            }
+        }
+
+        /// <summary>左面能力面板（Txt_Abilities——道中能力栏）金色脉冲；与手牌高亮独立开关。</summary>
+        void ApplyAbilityPanelHighlight(bool on)
+        {
+            EnsureInfoRefs();
+            if (_infoAbilities == null) return;
+            if (on)
+            {
+                if (_abilityFlashTween != null) return; // 已在闪
+                var baseColor = _infoAbilities.color;
+                var flashColor = new Color(1f, 0.85f, 0.25f);
+                _abilityFlashTween = DOTween.To(() => baseColor, c => _infoAbilities.color = c, flashColor, 0.45f)
+                    .SetLoops(-1, LoopType.Yoyo).SetEase(Ease.InOutSine);
+            }
+            else
+            {
+                if (_abilityFlashTween == null) return;
+                _abilityFlashTween.Kill();
+                _abilityFlashTween = null;
+                _infoAbilities.color = Color.white; // 恢复
+            }
         }
 
         void RefreshScore()
@@ -1385,11 +1504,12 @@ namespace TheLaw.UI
             Debug.Log($"[Battle] RefreshPhaseButton phase={_state.Phase} eventNameSet=true");
             var btn = _panel.PhaseButton;
             var txt = _panel.PhaseButtonText;
+            bool placementReady = _state.Phase == BattlePhase.Placement && !HasInitialInHand();
             switch (_state.Phase)
             {
                 case BattlePhase.Placement:
                     // 摆放前置（规则层）：手牌还有初始棋子时禁用（文字恒为"结束准备"）
-                    btn.interactable = !HasInitialInHand();
+                    btn.interactable = placementReady;
                     if (txt != null) txt.text = "结束准备";
                     if (_panel != null) _panel.SetEventName("我方准备");
                     break;
@@ -1413,6 +1533,81 @@ namespace TheLaw.UI
                 default:
                     btn.gameObject.SetActive(false);
                     break;
+            }
+            // 2026-08-23：准备完成 → 按钮文字闪动提醒玩家激活；未完成/非准备 → 停止闪动 + 关闭残留提示
+            SetPhaseButtonFlash(placementReady);
+            if (!placementReady && _phaseTipShowing)
+            {
+                _phaseTipShowing = false;
+                TooltipManager.Instance.Hide();
+            }
+        }
+
+        /// <summary>阶段按钮 hover 进入/离开（2026-08-23：准备阶段未部署完初始棋子时显示引导 tip）。</summary>
+        void OnPhaseButtonHover(bool enter)
+        {
+            if (!enter)
+            {
+                if (_phaseTipShowing)
+                {
+                    _phaseTipShowing = false;
+                    TooltipManager.Instance.Hide();
+                }
+                return;
+            }
+            if (_panel == null || _panel.PhaseButton == null
+                || _state.Phase != BattlePhase.Placement || !HasInitialInHand())
+            {
+                return; // 仅"准备阶段且还有初始棋子未部署"时提示
+            }
+            var canvas = _panel.PhaseButton.GetComponentInParent<Canvas>();
+            if (canvas == null) return;
+            Vector2 screen = RectTransformUtility.WorldToScreenPoint(canvas.worldCamera, _panel.PhaseButton.transform.position);
+            _phaseTipShowing = true;
+            TooltipManager.Instance.ShowAtScreen("部署完所有初始棋子后激活此按钮", screen);
+        }
+
+        /// <summary>准备完成 → 阶段按钮文字闪动提醒（2026-08-23；显式管理 tween 防销毁后访问）。</summary>
+        void SetPhaseButtonFlash(bool on)
+        {
+            var txt = _panel != null ? _panel.PhaseButtonText : null;
+            if (txt == null) return;
+            if (on)
+            {
+                if (_phaseFlashTween != null) return; // 已在闪动
+                // TMP 无 DOColor 扩展（DOTween TMP 模块未启用）——用 DOTween.To 颜色补间（基色→亮金往复）
+                var baseColor = txt.color;
+                var flashColor = new Color(1f, 0.85f, 0.25f);
+                _phaseFlashTween = DOTween.To(() => baseColor, c => txt.color = c, flashColor, 0.45f)
+                    .SetLoops(-1, LoopType.Yoyo).SetEase(Ease.InOutSine);
+            }
+            else
+            {
+                if (_phaseFlashTween == null) return;
+                _phaseFlashTween.Kill();
+                _phaseFlashTween = null;
+                txt.color = Color.white; // 恢复原色
+            }
+        }
+
+        /// <summary>阶段按钮 hover 检测组件（2026-08-23：准备阶段引导 tip——纯转发输入）。</summary>
+        public class PhaseButtonHoverTip : MonoBehaviour, IPointerEnterHandler, IPointerExitHandler
+        {
+            private BattleController _owner;
+
+            public void Init(BattleController owner)
+            {
+                _owner = owner;
+            }
+
+            public void OnPointerEnter(PointerEventData eventData)
+            {
+                _owner?.OnPhaseButtonHover(true);
+            }
+
+            public void OnPointerExit(PointerEventData eventData)
+            {
+                _owner?.OnPhaseButtonHover(false);
             }
         }
 
@@ -1930,6 +2125,7 @@ namespace TheLaw.UI
             layout.RefreshCards(fromEmpty);
             // 已实例化卡片不依赖 prefab handle；每次重建释放本次加载引用，避免 refcount 累积。
             UnityEngine.AddressableAssets.Addressables.Release(handle);
+            RefreshQualifyHighlight(); // 2026-08-23：手牌重建后回填 E5 资格高亮（真值在 GameState.EditedCardQualifyId）
         }
 
         /// <summary>新卡淡入（alpha 0→1，按索引错峰）——重建后重排有过渡而非瞬间出现。</summary>

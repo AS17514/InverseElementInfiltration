@@ -41,6 +41,17 @@ namespace TheLaw.Gameplay
         /// <summary>当前战斗实例（Bootstrap 创建战斗控制器时取——非战斗中为 null）。</summary>
         public BattleFlow CurrentBattleFlow => _battleFlow;
 
+        /// <summary>战斗中续玩/重开当前关战斗（2026-08-24 临时方案：Continue 战斗档 → 已加载 SL 槽 → 直接开战；
+        /// 不经 AdvanceNode 推进——战斗从开头重打[SL 重打语义]，构筑/遗物/塔进度保留）。</summary>
+        public void StartBattleAtCurrentFloor()
+        {
+            var floor = _map.floors[_state.CurrentFloor];
+            _state.CurrentFloorConfig = floor; // 2026-08-24 续玩：SL 槽不含 CurrentFloorConfig（不入档——EnterFloor 路径重设）——补设
+            var aiParams = GetDefaultAIParams();
+            _battleFlow = _battleFlowFactory();
+            _battleFlow.StartBattle(floor, aiParams);
+        }
+
         /// <summary>
         /// 销毁当前战斗实例（"离开销毁"——注销监听防幽灵回调；胜利/失败/退出/新游戏路径均调用）。
         /// ⚠️ 2026-08-13 战斗级改造：BattleFlow 每场创建、战斗结束销毁——瞬态字段随实例消失（不再依赖手清清单）。

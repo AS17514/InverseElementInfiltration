@@ -108,6 +108,9 @@ namespace TheLaw.Gameplay
             // 先分离非初始牌，再创建 Placement UI；避免构筑结果在准备阶段短暂显示为满手牌。
             // StartPlayerTurn 仍保留幂等防御调用，首回合只负责自动抽 4 张。
             _resolver.SetupDrawPile();
+            // ⚠️ 2026-08-24 战斗中续玩（临时方案）：开战快照 SL 槽——必须在**波次随机（HandleWaveAndPromotions）之前**保存
+            // （GameState + RNG 独立槽位；Continue 战斗档加载后 StartBattle 重开 → 与首次完全一致[含首波随机阵容]）
+            SaveManager.Instance.SaveBattleStart();
             ChangePhase(BattlePhase.Placement, force: true); // 强制：塔流程 Phase 可能已停在 Placement——必须发事件让 UI 创建战斗控制器
             // 开局部署首波（startTurn=1 的波——玩家摆位需要看到敌方位置参照）
             HandleWaveAndPromotions();
@@ -502,8 +505,9 @@ namespace TheLaw.Gameplay
                             }
                             // ⚠️ 2026-08-22 行动经济（ActionEconomy）：普通执行不耗 AP + 每棋子每回合一次；
                             // 免费行动/额外行动（request.free——击杀触发）为"额外行动"——穿透限制（不查已行动集）。
+                            // ⚠️ 2026-08-24 敌我边界修正：行动经济**己方限定**（决策记录_能力事件——敌方不受此能力）
                             bool isExtra = request.free; // 额外行动（免费行动）——穿透
-                            if (_state.ActionEconomyActive && !isExtra)
+                            if (side == Side.Player && _state.ActionEconomyActive && !isExtra)
                             {
                                 if (_state.ActionEconomyActed.Contains(execute.pieceId))
                                 {
@@ -513,13 +517,15 @@ namespace TheLaw.Gameplay
                             }
                             // 免费执行资格（额外行动——方案 B）：有资格 → 本次免费 + 资格用掉（保留到使用为止，有效期待策划拍板）
                             // ⚠️ 2026-08-20 统一入口：资格用掉经 Resolver（ConsumeFreeExecute）——BattleFlow 不再直写状态（回归落账纪律）
-                            bool free = isExtra || _state.ActionEconomyActive || _state.FreeExecutes.Contains(execute.pieceId);
+                            // ⚠️ 2026-08-24：免费/行动经济均**己方限定**（敌方 AI 有独立预算逻辑）
+                            bool free = isExtra || (side == Side.Player
+                                && (_state.ActionEconomyActive || _state.FreeExecutes.Contains(execute.pieceId)));
                             if (isExtra && _state.FreeExecutes.Contains(execute.pieceId))
                             {
                                 _resolver.ConsumeFreeExecute(execute.pieceId);
                             }
                             ExecutePiece(execute.pieceId, free, side); // 玩家逐槽选择 / AI 自动选（内部按 side 分流）
-                            if (_state.ActionEconomyActive)
+                            if (side == Side.Player && _state.ActionEconomyActive)
                             {
                                 _state.ActionEconomyActed.Add(execute.pieceId); // 标记本回合已行动（buff 切态 B）
                             }
@@ -675,11 +681,45 @@ namespace TheLaw.Gameplay
 
         // ⚠️ 2026-08-22 插入执行（免费行动"获得即立即执行"——复用免费行动逻辑/同执行链；E5 同链待接）：
         // 击杀授予免费行动 → ExtraActionGranted → 入队 → 当前请求收尾/表现排空后强制该棋执行（free=额外行动）。
+        private readonly Queue<int> _pendingEnemyImmediateExecutes = new Queue<int>(); // 2026-08-24：敌方击杀触发额外行动（敌方回合内立即再执行一次——AI 自动；玩家队列见 L59）
+
         private void OnExtraActionGranted(object data)
         {
             if (!(data is int pieceId)) return;
-            _pendingImmediateExecutes.Enqueue(pieceId);
-            TryFlushImmediateExecutes();
+            var piece = _state.GetPiece(pieceId);
+            if (piece == null) return;
+            if (piece.side == Side.Player)
+            {
+                _pendingImmediateExecutes.Enqueue(pieceId);
+                TryFlushImmediateExecutes();
+            }
+            else
+            {
+                // ⚠️ 2026-08-24 敌我边界修正：敌方击杀触发 OnKill+ExtraAction → 敌方回合内立即额外行动执行
+                //（不进入玩家免费资格机制——AI 自动选格，free=额外）
+                _pendingEnemyImmediateExecutes.Enqueue(pieceId);
+                TryFlushEnemyImmediateExecutes();
+            }
+        }
+
+        /// <summary>敌方立即额外行动（2026-08-24：敌方回合内空闲时强制该棋再执行一次——与玩家 TryFlushImmediateExecutes 对称）。</summary>
+        private void TryFlushEnemyImmediateExecutes()
+        {
+            while (_pendingEnemyImmediateExecutes.Count > 0)
+            {
+                if (_state.Phase != BattlePhase.EnemyTurn || _ctx != null || _waitingPresentation)
+                {
+                    return; // 非空闲（非敌方回合/执行中/表现中——收尾点再触发）
+                }
+                int pieceId = _pendingEnemyImmediateExecutes.Dequeue();
+                var piece = _state.GetPiece(pieceId);
+                if (piece == null || piece.side != Side.Enemy)
+                {
+                    continue; // 已不在/非敌方——跳过
+                }
+                ExecutePiece(pieceId, true, Side.Enemy); // 立即执行（额外行动——AI 自动选格）
+                return; // 一次一个（执行收尾点再次触发）
+            }
         }
 
         /// <summary>空闲时触发强制插入执行（玩家回合 + 非执行中 + 队非空 → 出队执行该棋——free=额外）。</summary>
@@ -1019,6 +1059,7 @@ namespace TheLaw.Gameplay
             // 敌方逐步决策（2026-08-13）：当前行动完整执行完（扣费后）→ 基于最新状态决策下一步；预算 0/无行动 → 收尾
             if (side == Side.Enemy)
             {
+                TryFlushEnemyImmediateExecutes(); // 2026-08-24：敌方击杀触发额外行动——先于正常决策立即执行
                 TryNextEnemyDecision();
             }
         }
@@ -1104,6 +1145,7 @@ namespace TheLaw.Gameplay
                     AdvanceSlot();
                 }
             }
+            TryFlushEnemyImmediateExecutes(); // 2026-08-24：敌方击杀额外行动（表现排空后收尾前补触发——被 _ctx/阶段挡则无害）
             TryEndEnemyTurn(); // 动画播完（一轮表现队列排干）——检查敌方回合能否收尾
         }
 

@@ -1,4 +1,4 @@
-﻿using System;
+using System;
 using System.Collections.Generic;
 using TheLaw.Core;
 using TheLaw.Data;
@@ -717,7 +717,7 @@ namespace TheLaw.Gameplay
         public List<int> EditingDefs;
         public Dictionary<int, List<Template>> HiddenModules;   // 编辑会话 hide 模式（2026-08-19）
         public List<int> EditCandidates;                        // 编辑事件三选一候选（defId）
-        public List<Template> EditModuleCandidates;             // 编辑事件 6 候选模块
+        public List<Template> EditModuleCandidates;             // 编辑事件模块候选（2026-08-24 起 4 个：移动/攻击各 2——效果不参与）
         public List<int> Relics;
         public List<int> AbilityCandidates;   // 能力事件候选（2026-08-22——id 列表）
         public List<int> AbilityRefreshLeft;  // 候选刷新次数（2026-08-22）

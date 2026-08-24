@@ -58,6 +58,16 @@ namespace TheLaw.UI
             if (_material != null) _material.SetFloat(PulseId, 0f);
         }
 
+        /// <summary>五行静态描边（2026-08-25）：设置轮廓色 + 停止呼吸（不闪烁）——与升变预告共用组件。</summary>
+        public void SetElementColor(Color color)
+        {
+            if (_material == null) Initialize(GetComponent<SpriteRenderer>());
+            if (_material == null) return;
+            KillPulse();
+            _material.SetColor(OutlineColorId, color);
+            _material.SetFloat(PulseId, 0f);
+        }
+
         public void PlayPromotionFlash()
         {
             HideWarning();

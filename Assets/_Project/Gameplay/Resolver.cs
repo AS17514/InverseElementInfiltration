@@ -904,11 +904,11 @@ namespace TheLaw.Gameplay
 
         // ========== 玩法·围棋（2026-08-24 设计定稿——仅玩家侧）==========
 
-        /// <summary>部署"棋子牌"（不耗 AP、每回合限次[1/速攻→2]、任意空格——BattleFlow 校验）：蓝红 side 切换（首次蓝）+ 围杀检查。</summary>
+        /// <summary>部署"棋子牌"（不耗 AP、每回合限次[1/速攻→2/买子+/次]——BattleFlow 校验）：蓝红 side 切换（首次蓝）+ 围杀检查。</summary>
         public bool DeployGoPiece(Vector2Int cell)
         {
             if (!_state.IsStyleActive(StyleRegistry.Go)) return false;
-            if (_state.GoDeployCount >= _state.GoDeployLimit()) return false; // 每回合限次（速攻→2；BattleFlow 已校验——防御，规则单一来源 GameState）
+            if (_state.GoDeployCount >= _state.GoDeployCapacity()) return false; // 每回合容量（免费限次+买子；BattleFlow 已校验——防御，单一来源 GameState）
             if (_state.Pieces.ContainsKey(cell)) return false; // 空格（任意格——非占用即可）
             // 颜色切换：首次蓝（Player）；之后每次部署切换（上次红→本次蓝、上次蓝→本次红）
             Side side = !_state.GoEverDeployed ? Side.Player : (_state.GoLastColor == Side.Player ? Side.Enemy : Side.Player);
@@ -1047,7 +1047,6 @@ namespace TheLaw.Gameplay
             var card = view[discardIndex];
             int cost = CardValueForToken(card);
             if (cost <= 0 || _state.TokenCount < cost) return false; // 代币不足（含 0 价值牌不可买）
-            _state.TokenCount -= cost;
             if (card.IsPiece)
             {
                 HandAddCard(Card.Piece(card.defId, card.element)); // 复制（新实例 id 统一分配）
@@ -1060,23 +1059,58 @@ namespace TheLaw.Gameplay
             {
                 return false;
             }
-            // ⚠️ 2026-08-24 能力「节流」：消耗代币 → 倍率+1；购买非初始棋子 → 返还 1 代币（麻将牌非棋子不返还）
+            DeductToken(cost); // 2026-08-24 统一扣币点（节流/老虎机联动——买子共用）
+            // ⚠️ 2026-08-24 能力「节流」：购买非初始棋子 → 返还 1 代币（麻将牌非棋子不返还）
+            if (_state.HasRelicEffect(RelicEffectType.TokenSpendMultiplier)
+                && card.IsPiece && _state.GetEffectiveType(card.defId) != PieceType.Initial)
+            {
+                _state.TokenCount += 1; // 购买非初始棋子返还 1 代币
+            }
+            AddBaseScore(cost); // 基础得分 + 消耗代币数
+            return true;
+        }
+
+        /// <summary>
+        /// 统一扣币点（2026-08-24 能力池 P2/P4：TokenCount 扣减唯一入口——购买/买子共用）：
+        /// 扣减 + 能力「节流」（每次消耗代币 → 倍率+1）+ 能力「老虎机」（花费数 == 当前骰子点数 → 抽一张并丢弃一张到弃牌区；策划定案精确匹配）。
+        /// </summary>
+        private void DeductToken(int amount)
+        {
+            _state.TokenCount -= amount;
             if (_state.HasRelicEffect(RelicEffectType.TokenSpendMultiplier))
             {
                 AddMultiplier(1); // 每次消耗代币 → 倍率 +1（统一入口）
-                if (card.IsPiece && _state.GetEffectiveType(card.defId) != PieceType.Initial)
-                {
-                    _state.TokenCount += 1; // 购买非初始棋子返还 1 代币
-                }
             }
-            // ⚠️ 2026-08-24 能力「老虎机」：花费代币数 == 当前骰子点数 → 抽一张牌并丢弃一张到弃牌区（策划定案：数额精确匹配）
-            if (_state.HasRelicEffect(RelicEffectType.SlotDrawOnMatch) && cost == _state.DiceValue && _state.DiceValue > 0)
+            if (_state.HasRelicEffect(RelicEffectType.SlotDrawOnMatch) && amount == _state.DiceValue && _state.DiceValue > 0)
             {
                 DrawCard(); // 抽一张（抽牌堆随机）
                 DropRandomCardToDiscard(); // 丢弃一张（手牌随机 → 弃牌区）
             }
-            AddBaseScore(cost); // 基础得分 + 消耗代币数
             EventCenter.Instance.EventTrigger(GameEvent.StateChanged, "token");
+        }
+
+        /// <summary>买子费用（2026-08-24 能力「买子」：effects TokenBuyGo value——配置 2；未持有 = -1 不可买）。</summary>
+        private int GoBuyCost()
+        {
+            foreach (var relic in _state.Relics)
+            {
+                if (relic == null) continue;
+                foreach (var e in relic.effects)
+                {
+                    if (e != null && e.type == RelicEffectType.TokenBuyGo) return Mathf.Max(1, e.value);
+                }
+            }
+            return -1;
+        }
+
+        /// <summary>围棋·买子落账（2026-08-24 能力「买子」：固定费用代币 → 获得**一次围棋部署次数**——当回合有效、不耗 AP；节流/老虎机经统一扣币点联动）。</summary>
+        public bool BuyGoDeploy()
+        {
+            int cost = GoBuyCost();
+            if (cost <= 0 || _state.TokenCount < cost) return false; // 未持有/代币不足
+            _state.GoExtraDeploys += 1; // 当回合可用部署次数 +1（回合开始清）
+            DeductToken(cost);          // 统一扣币点（节流/老虎机联动）
+            EventCenter.Instance.EventTrigger(GameEvent.StateChanged, "go"); // 次数变化（前端刷新）
             return true;
         }
 

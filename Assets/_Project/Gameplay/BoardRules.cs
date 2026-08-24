@@ -169,7 +169,9 @@ namespace TheLaw.Gameplay
             // 近战群攻：范围内全部不截断；被动射程修正逐方向作用
             if (template.rangeSteps.Count > 0)
             {
-                int rangeMod = GetPassiveModifier(state, piece, PassiveTarget.AttackRange);
+                // ⚠️ 2026-08-24 能力「强劲」：直射专属射程修正（仅 DirectFire + 玩家侧——与通用 AttackRange 并存叠加）
+                int rangeMod = GetPassiveModifier(state, piece, PassiveTarget.AttackRange)
+                    + ((template.mode == AttackMode.DirectFire && piece.side == Side.Player) ? state.DirectFireRangeBonus : 0);
                 foreach (var step in template.rangeSteps)
                 {
                     int maxR = 0;
@@ -196,7 +198,8 @@ namespace TheLaw.Gameplay
                 return result;
             }
 
-            int range = template.range + GetPassiveModifier(state, piece, PassiveTarget.AttackRange);
+            int range = template.range + GetPassiveModifier(state, piece, PassiveTarget.AttackRange)
+                + ((template.mode == AttackMode.DirectFire && piece.side == Side.Player) ? state.DirectFireRangeBonus : 0); // 2026-08-24 能力「强劲」：直射专属（仅玩家侧）
             for (int dir = 1; dir <= (int)Direction.DownRight; dir <<= 1)
             {
                 if ((template.directions & (Direction)dir) == 0)

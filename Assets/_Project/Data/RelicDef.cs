@@ -39,6 +39,8 @@ namespace TheLaw.Data
         // ====== 2026-08-24 能力池 P3（震击/吃子——"编辑"前缀能力，tags basic）======
         ShockWall,                  // 震击：开局非部署区随机生成 2 个不可破坏墙；我方攻击墙 → 周围 8 格所有棋子受固定 1 伤害
         Devour,                     // 吃子：我方执行跳过攻击槽；移动落点可踩敌方格并直接击败（无视承伤含护盾——仅玩家侧）
+        DirectFireRange,            // 强劲：我方棋子【直射】距离 +value（仅 DirectFire——通用 AttackRange 修正并存可叠加）
+        TokenBuyGo,                 // 买子：固定 value 代币购买一次围棋部署次数（当回合有效；不耗 AP；突破免费限次）
     }
 
     /// <summary>能力基础效果规格（组合中的一个原子效果——type + value）。</summary>

@@ -382,6 +382,39 @@
           "value": 1
         }
       ]
+    },
+    {
+      "relicName": "ability_strong",
+      "displayName": "强劲",
+      "description": "行动点上限 +1；我方棋子的直射距离+1",
+      "tags": [
+        "basic"
+      ],
+      "effects": [
+        {
+          "effectType": "APBonus",
+          "value": 1
+        },
+        {
+          "effectType": "DirectFireRange",
+          "value": 1
+        }
+      ]
+    },
+    {
+      "relicName": "ability_go_buy",
+      "displayName": "买子",
+      "description": "可以固定花费2代币购买一次围棋“棋子”",
+      "tags": [
+        "go",
+        "token"
+      ],
+      "effects": [
+        {
+          "effectType": "TokenBuyGo",
+          "value": 2
+        }
+      ]
     }
   ]
 }

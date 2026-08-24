@@ -173,6 +173,7 @@ namespace TheLaw.Gameplay
             _state.PlayerAP = _state.PlayerAPMax;
             _state.ActionEconomyActed.Clear(); // 2026-08-22 行动经济：新回合重置已行动集（buff 回态 A）
             _state.GoDeployCount = 0;          // 2026-08-24 围棋：每回合限部署 1 次（回合开始重置）
+            _state.GoExtraDeploys = 0;     // 2026-08-24 能力「买子」：购买次数当回合有效——回合开始清（作废未用次数）
             _state.DiceMovePending = false;    // 2026-08-24 骰子：点数移动 buff **不跨回合**（新回合清）
             _state.DiceMoveSteps = 0;
             _diceRigPending = false;           // 2026-08-24 能力「出千」：自选瞬态不跨回合（未选则作废）
@@ -402,6 +403,7 @@ namespace TheLaw.Gameplay
         public void OnPlayerRequestDiceMove(DiceMoveRequest request) => ProcessRequest(request, Side.Player);
         public void OnPlayerRequestDeployGo(DeployGoRequest request) => ProcessRequest(request, Side.Player);
         public void OnPlayerRequestBuyToken(BuyTokenRequest request) => ProcessRequest(request, Side.Player);
+        public void OnPlayerRequestBuyGo(BuyGoRequest request) => ProcessRequest(request, Side.Player); // 2026-08-24 能力「买子」
 
         private void ProcessRequest(Request request, Side side)
         {
@@ -619,9 +621,9 @@ namespace TheLaw.Gameplay
                         }
                         break;
                     case DeployGoRequest dg:
-                        // 围棋·部署"棋子牌"（不耗 AP、每回合限 1 次[能力「速攻」→2 次]、任意**空**格[非占用/非障碍/非墙体]；AP=0 豁免）
+                        // 围棋·部署"棋子牌"（不耗 AP、每回合容量内[免费限次+买子]、任意**空**格[非占用/非障碍/非墙体]；AP=0 豁免）
                         if (side == Side.Player && _state.IsStyleActive(StyleRegistry.Go)
-                            && _state.GoDeployCount < GoDeployLimit()
+                            && _state.GoDeployCount < _state.GoDeployCapacity()
                             && !_state.Pieces.ContainsKey(dg.cell) && !_state.IsBlocked(dg.cell))
                         {
                             _resolver.DeployGoPiece(dg.cell); // 内部含围杀检查
@@ -632,6 +634,13 @@ namespace TheLaw.Gameplay
                         if (side == Side.Player && _state.IsStyleActive(StyleRegistry.Token))
                         {
                             _resolver.BuyFromDiscard(bt.discardIndex);
+                        }
+                        break;
+                    case BuyGoRequest:
+                        // 围棋·买子（2026-08-24 能力「买子」：固定费用代币 → 一次部署次数[当回合]；不耗 AP；费用/余额校验在 Resolver；AP=0 豁免）
+                        if (side == Side.Player && _state.IsStyleActive(StyleRegistry.Go) && _state.IsStyleActive(StyleRegistry.Token))
+                        {
+                            _resolver.BuyGoDeploy();
                         }
                         break;
                 }
@@ -658,11 +667,11 @@ namespace TheLaw.Gameplay
 
         /// <summary>成本预检豁免集（2026-08-23 决策记录_回合结束手动化与AP豁免集——单一收口）。
         /// ⚠️ 未来新增"免费/无需 AP"的行动类型时，在此登记（连同前端契约一起）——避免散落各处忘加。
-        /// 2026-08-24 登记：围棋部署/代币购买/骰子移动启动（新玩法免费类——不耗 AP）。</summary>
+        /// 2026-08-24 登记：围棋部署/代币购买/骰子移动启动/买子（新玩法免费类——不耗 AP）。</summary>
         private bool IsExemptFromApCost(Request request, bool requestFree, bool qualifiedUse)
         {
             if (requestFree || qualifiedUse) return true;
-            return request is DeployGoRequest || request is BuyTokenRequest || request is DiceMoveRequest;
+            return request is DeployGoRequest || request is BuyTokenRequest || request is DiceMoveRequest || request is BuyGoRequest; // 2026-08-24 买子
         }
 
         private void DeductActionPoint(bool free, Side side)
@@ -1006,9 +1015,6 @@ namespace TheLaw.Gameplay
         private Side _waitingDiceMoveSide;
         /// <summary>能力「出千」自选等待（2026-08-24：投掷请求挂起——弹 1-6 自选；不跨回合——回合开始清；瞬态不入档）。</summary>
         private bool _diceRigPending;
-
-        /// <summary>围棋每回合部署次数上限（2026-08-24 能力「速攻」：1→2——规则单一来源在 GameState.GoDeployLimit）。</summary>
-        private int GoDeployLimit() => _state.GoDeployLimit();
 
         /// <summary>出千自选结果（2026-08-24 前端回调：投掷自选面板选数后调用——校验 1-6 + 等待态 + 玩家回合；落账同普通投掷）。</summary>
         public void OnDiceNumberSelected(int value)

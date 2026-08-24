@@ -161,4 +161,11 @@ namespace TheLaw.Data
             this.discardIndex = discardIndex;
         }
     }
+
+    /// <summary>围棋·买子请求（2026-08-24 能力「买子」：固定 2 代币购买**一次围棋部署次数**——当回合有效、不耗 AP；突破免费限次）。</summary>
+    [Serializable]
+    public class BuyGoRequest : Request
+    {
+        public BuyGoRequest() { }
+    }
 }

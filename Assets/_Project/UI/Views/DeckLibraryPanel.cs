@@ -7,6 +7,7 @@ using UnityEngine;
 using UnityEngine.AddressableAssets;
 using UnityEngine.ResourceManagement.AsyncOperations;
 using UnityEngine.UI;
+using TMPro;
 
 namespace TheLaw.UI
 {
@@ -28,6 +29,10 @@ namespace TheLaw.UI
         RectTransform _drawContainer;    // Grp_Pile_Draw_（抽牌区卡容器）
         RectTransform _discardContainer; // Grp_Pile_Discard_（弃牌堆卡容器）
         Button _confirmButton;           // Btn_Confirm（关闭）
+        bool _buyMode;                   // 代币购买模式（2026-08-24：点弃牌区牌购买 → 回调索引 → 关闭）
+        System.Action<int> _onBuy;       // 购买回调（discardIndex——DiscardView 顺序）
+        TMP_Text _titleText;             // Txt_Name（标题——购买模式改提示）
+        string _defaultTitle;
 
         GameObject _cardTemplate;        // Piece_Handcard（Addressables 缓存——实例化后不依赖 handle）
         const string CardAddress = "Piece_Handcard";
@@ -45,6 +50,8 @@ namespace TheLaw.UI
             base.OnShow();
             if (_state == null) _state = GameState.Instance;
             ResolveNodes();
+            if (!_buyMode && _titleText != null && _defaultTitle != null && _titleText.text != _defaultTitle)
+                _titleText.text = _defaultTitle; // 非购买模式：标题复原（购买关闭后下次普通浏览）
             EventCenter.Instance.AddEventListener(GameEvent.PieceDied, OnPileChanged);
             EventCenter.Instance.AddEventListener(GameEvent.PiecePromoted, OnPileChanged);
             EventCenter.Instance.AddEventListener(GameEvent.HandChanged, OnHandChanged);
@@ -80,6 +87,8 @@ namespace TheLaw.UI
                 _confirmButton.onClick.RemoveAllListeners();
                 _confirmButton.onClick.AddListener(Close);
             }
+            _titleText = FindDeep(transform, "Txt_Name")?.GetComponent<TMP_Text>();
+            if (_titleText != null && string.IsNullOrEmpty(_defaultTitle)) _defaultTitle = _titleText.text;
             if (_drawContainer == null || _discardContainer == null)
                 Debug.LogWarning($"[DeckLibrary] 卡容器缺失：Draw={_drawContainer != null} Discard={_discardContainer != null}");
         }
@@ -87,8 +96,30 @@ namespace TheLaw.UI
         /// <summary>关闭 = overlay 弹栈（UIManager 负责 Hide + GamePause.Pop——不能直调 Hide，否则暂停计数泄漏）。</summary>
         void Close()
         {
+            if (_buyMode)
+            {
+                _buyMode = false;
+                _onBuy = null;
+                if (_titleText != null && _defaultTitle != null) _titleText.text = _defaultTitle;
+            }
             if (_uiManager != null) _uiManager.PopOverlay();
             else Hide();
+        }
+
+        /// <summary>代币购买模式（2026-08-24）：标题改提示 + 弃牌区牌可点击（点击=购买该牌 → 回调 discardIndex → 关闭）。</summary>
+        public void EnterBuyMode(System.Action<int> onBuy)
+        {
+            _buyMode = true;
+            _onBuy = onBuy;
+            if (_titleText != null) _titleText.text = "选择要购买的牌";
+        }
+
+        void OnDiscardCardClicked(int discardIndex)
+        {
+            if (!_buyMode) return;
+            var handler = _onBuy;
+            Close(); // 先关闭（弹栈恢复）再回调——回调内发购买请求
+            handler?.Invoke(discardIndex);
         }
 
         protected override void OnBgClicked() => Close(); // 点背景关闭（PanelBase 根 Button 回调）
@@ -115,12 +146,12 @@ namespace TheLaw.UI
         {
             if (_state == null || _cardTemplate == null) return;
             if (_drawContainer == null || _discardContainer == null) ResolveNodes();
-            BuildPile(_drawContainer, _state.DrawPile);
-            BuildPile(_discardContainer, _state.Discard.PieceDeaths);
+            BuildPile(_drawContainer, _state.DrawPile, false);
+            BuildPile(_discardContainer, _state.Discard.PieceDeaths, _buyMode); // 购买模式：弃牌区牌可点击（索引 = DiscardView 前段）
         }
 
         /// <summary>重建单个牌堆：清空 → 生成手牌卡（仅棋子牌——麻将表现留待玩法实现，同战斗手牌口径）→ 手动排列。</summary>
-        void BuildPile(RectTransform container, IReadOnlyList<Card> cards)
+        void BuildPile(RectTransform container, IReadOnlyList<Card> cards, bool clickable = false)
         {
             if (container == null) return;
             // 同步销毁防同帧双份（2026-08-23 事件面板同款经验）
@@ -141,6 +172,14 @@ namespace TheLaw.UI
                 var view = UIComponentFactory.CreateHandCard(_cardTemplate, container, data);
                 view.gameObject.name = $"PileCard_{def.Id}_{def.displayName}";
                 view.gameObject.SetActive(true);
+                if (clickable)
+                {
+                    var btn = view.gameObject.GetComponent<Button>();
+                    if (btn == null) btn = view.gameObject.AddComponent<Button>();
+                    btn.onClick.RemoveAllListeners();
+                    int index = i; // 弃牌区行序 = DiscardView 前段（PieceDeaths 全棋子卡，无跳过偏移）
+                    btn.onClick.AddListener(() => OnDiscardCardClicked(index));
+                }
             }
             RefreshLayout(); // 容器尺寸由父布局驱动——先落布局再算卡位
             ArrangeCards(container);

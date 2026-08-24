@@ -53,6 +53,172 @@ namespace TheLaw.UI
         readonly Queue<int> _pendingForcedExecs = new Queue<int>(); // 免费行动待强制执行队（镜像后端 _pendingImmediateExecutes 时机）
         bool _freeActionTipShowing;                                      // 免费行动提示防连发
         const float FreeActionTipDuration = 2.0f;                        // 免费行动提示显示时长（秒）
+        // ========== 玩法面板·骰子（2026-08-24：Grp_FloorPlay_Dice——投掷/点数直线移动；方向选择 = 场上高亮可达格点击，与移动选格同操作习惯；后端契约 StateChanged("dice-move-select") → OnDiceDirectionSelected）==========
+
+        void EnsureDiceRefs()
+        {
+            if (_grpFloorPlayDice != null) return;
+            if (_grpPlayRoot == null) _grpPlayRoot = FindSceneTransform("Grp_Play");
+            if (_grpPlayRoot == null) return;
+            var dicePanel = _grpPlayRoot.Find("Grp_FloorPlay_Dice");
+            _grpFloorPlayDice = dicePanel != null ? dicePanel.gameObject : null;
+            if (_grpFloorPlayDice == null) return;
+            var roll = FindDeep(_grpFloorPlayDice.transform, "Btn_RollDice");
+            _rollDiceBtn = roll != null ? roll.GetComponent<Button>() : null;
+            if (_rollDiceBtn != null)
+            {
+                _rollDiceBtn.onClick.RemoveListener(OnRollDiceClicked); // 每场战斗重接线（防重复监听）
+                _rollDiceBtn.onClick.AddListener(OnRollDiceClicked);
+            }
+            var move = FindDeep(_grpFloorPlayDice.transform, "Btn_DiceMove");
+            _diceMoveBtn = move != null ? move.GetComponent<Button>() : null;
+            if (_diceMoveBtn != null)
+            {
+                _diceMoveBtn.onClick.RemoveListener(OnDiceMoveClicked);
+                _diceMoveBtn.onClick.AddListener(OnDiceMoveClicked);
+            }
+            _diceValueText = GetTmp(_grpFloorPlayDice, "Txt_DiceValue");
+            _diceHintText = GetTmp(_grpFloorPlayDice, "Txt_DiceHint");
+        }
+
+        /// <summary>骰子面板刷新：显隐（按玩法激活）+ 点数 + 按钮可用性 + 提示。</summary>
+        void RefreshDicePanel()
+        {
+            EnsureDiceRefs();
+            bool active = _state != null && _state.IsStyleActive(StyleRegistry.Dice);
+            if (_grpFloorPlayDice != null && _grpFloorPlayDice.activeSelf != active) _grpFloorPlayDice.SetActive(active);
+            if (!active)
+            {
+                CancelDiceMoveSelect();
+                RefreshGrpPlayVisibility();
+                return;
+            }
+            if (_diceValueText != null) _diceValueText.text = _state.DiceValue.ToString();
+            bool canAct = _state.Phase == BattlePhase.PlayerTurn && !_executing && !_presentationPlaying && !_diceMoveSelecting;
+            if (_rollDiceBtn != null) _rollDiceBtn.interactable = canAct;
+            if (_diceMoveBtn != null) _diceMoveBtn.interactable = canAct && _state.DiceValue > 0;
+            if (_diceHintText != null)
+            {
+                _diceHintText.text = _diceMoveSelecting
+                    ? "点数直线移动：点选场上可达格"
+                    : _state.DiceValue > 0
+                        ? "点数 " + _state.DiceValue + "：可启动直线移动"
+                        : "投掷骰子获得点数（执行类行动 1 AP）";
+            }
+            RefreshGrpPlayVisibility();
+        }
+
+        void OnRollDiceClicked()
+        {
+            if (_flow == null || _state == null) return;
+            if (_state.Phase != BattlePhase.PlayerTurn || _executing || _presentationPlaying || _diceMoveSelecting) return;
+            _flow.OnPlayerRequestRollDice(new RollDiceRequest()); // 执行类行动 1 AP——后端校验/落账
+            RefreshDicePanel();
+        }
+
+        void OnDiceMoveClicked()
+        {
+            if (_flow == null || _state == null) return;
+            if (_state.Phase != BattlePhase.PlayerTurn || _executing || _presentationPlaying || _diceMoveSelecting) return;
+            if (_state.DiceValue <= 0)
+            {
+                if (_diceHintText != null) _diceHintText.text = "先投掷获得点数";
+                return;
+            }
+            _flow.OnPlayerRequestDiceMove(new DiceMoveRequest()); // 不耗 AP 消耗点数 → 后端发 StateChanged("dice-move-select")
+        }
+
+        /// <summary>点数直线移动选方向：场上高亮 4 向可达终点（镜像后端校验——逐格界内非障碍 + 终点非占用），点格反推方向。</summary>
+        void EnterDiceMoveSelect()
+        {
+            EnsureDiceRefs();
+            if (_state == null) return;
+            int pieceId = _selectedPieceId >= 0 ? _selectedPieceId : _execPieceId; // 启动时玩家正在操作的棋子
+            var piece = _state.GetPiece(pieceId);
+            if (piece == null || piece.side != Side.Player) return;
+            // 后端重定向（未进入普通执行）：退出普通执行镜像，防与方向选择冲突
+            if (_executing)
+            {
+                _executing = false;
+                _execPieceId = -1;
+                _execProgram = null;
+                _execIndex = 0;
+                _awaitingCell = false;
+                _selectResultDirty = false;
+            }
+            _diceMoveSelecting = true;
+            _diceMovePieceId = pieceId;
+            int steps = _state.DiceMoveSteps;
+            var reachable = new List<Vector2Int>();
+            _diceMoveDirections.Clear();
+            foreach (var dir in new[] { Direction.Up, Direction.Down, Direction.Left, Direction.Right })
+            {
+                var cursor = piece.position;
+                bool ok = true;
+                for (int i = 0; i < steps; i++)
+                {
+                    cursor += DiceDirectionToVector(dir);
+                    if (!_boardRules.IsInsideBoard(cursor) || _state.IsBlocked(cursor)) { ok = false; break; }
+                }
+                if (!ok) continue;
+                if (_state.GetPieceAt(cursor) != null) continue; // 终点占用——不可达（后端同判定）
+                reachable.Add(cursor);
+                _diceMoveDirections[cursor] = dir;
+            }
+            if (reachable.Count == 0)
+            {
+                CancelDiceMoveSelect(); // 无可达方向——取消（后端亦会校验失败重选）
+                return;
+            }
+            ShowHighlights(reachable, null); // 绿块——与移动选格同视觉（原操作习惯）
+            RefreshDicePanel();
+        }
+
+        void CancelDiceMoveSelect()
+        {
+            if (!_diceMoveSelecting && _diceMovePieceId < 0 && _diceMoveDirections.Count == 0) return;
+            _diceMoveSelecting = false;
+            _diceMovePieceId = -1;
+            _diceMoveDirections.Clear();
+            ClearHighlights();
+            RefreshDicePanel();
+        }
+
+        static Vector2Int DiceDirectionToVector(Direction dir)
+        {
+            switch (dir)
+            {
+                case Direction.Up: return Vector2Int.up;
+                case Direction.Down: return Vector2Int.down;
+                case Direction.Left: return Vector2Int.left;
+                case Direction.Right: return Vector2Int.right;
+                default: return Vector2Int.zero;
+            }
+        }
+
+        // ====== 玩法面板·围棋（2026-08-24：Grp_FloorPlay_Go——手牌式拖拽部署，牌不消耗）======
+        Transform _grpPlayRoot;      // Grp_Play（关卡玩法容器——与棋子信息区同位置切换显隐）
+        GameObject _grpFloorPlayGo;  // Grp_FloorPlay_Go
+        // ====== 玩法面板·代币（2026-08-24：Grp_FloorPlay_Token——购买弃牌区牌复制入手牌）======
+        GameObject _grpFloorPlayToken; // Grp_FloorPlay_Token
+        TMP_Text _tokenCountText;      // Txt_TokenCount_K (1)——数值（Txt_TokenCount_K = 标签"拥有代币："）
+        Button _buyTokenBtn;           // Btn_BuyToken（购买——打开牌库面板购买模式）
+        GameObject _goCard;          // Piece_Handcard（围棋棋子牌——拖拽源）
+        CanvasGroup _goCardCg;       // 拖拽中半透明（牌不消耗，停留面板）
+        TMP_Text _goCountText, _goNextText, _goHintText; // Txt_Count / Txt_Next / Txt_Hint(动态提示)；Txt_Tip 常驻文本预制体已设——代码不写
+        bool _draggingGo;            // 围棋拖拽进行中
+        Vector2Int _goPreviewCell = new Vector2Int(-1, -1);
+        Button _goBuyBtn;            // Btn_BuyGo（能力「买子」——花代币 +1 次部署；围棋+代币激活时显示）
+        TMP_Text _goBuyBtnText;      // 按钮文本（"花 X 代币 +1 次"）
+        // ====== 玩法面板·骰子（2026-08-24：Grp_FloorPlay_Dice——投掷/点数直线移动；方向选择 = 场上高亮可达格点击，与移动选格同操作习惯）======
+        GameObject _grpFloorPlayDice;  // Grp_FloorPlay_Dice
+        Button _rollDiceBtn;           // Btn_RollDice（投掷——执行类行动 1 AP）
+        Button _diceMoveBtn;           // Btn_DiceMove（点数直线移动启动）
+        TMP_Text _diceValueText;       // Txt_DiceValue（当前点数）
+        TMP_Text _diceHintText;        // Txt_DiceHint（动态提示）
+        bool _diceMoveSelecting;       // 点数直线移动选方向中（场上高亮）
+        int _diceMovePieceId = -1;     // 移动选择中的棋子
+        readonly Dictionary<Vector2Int, Direction> _diceMoveDirections = new Dictionary<Vector2Int, Direction>(); // 可达格 → 方向
         int _selectedPieceId = -1;
         // 敌方升变预告可能早于 Piece View 创建：按 pieceId 缓存，视觉出现后补应用。
         readonly Dictionary<int, PromoteAnnouncement> _pendingPromotionWarnings = new Dictionary<int, PromoteAnnouncement>();
@@ -120,8 +286,12 @@ namespace TheLaw.UI
             if (_phaseTipShowing) { _phaseTipShowing = false; TooltipManager.Instance.Hide(); }
             if (_apEmptyTipShowing) { _apEmptyTipShowing = false; TooltipManager.Instance.Hide(); }
             if (_freeActionTipShowing) { _freeActionTipShowing = false; TooltipManager.Instance.Hide(); }
+            _diceMoveSelecting = false;
+            _diceMovePieceId = -1;
+            _diceMoveDirections.Clear();
             _pendingForcedExecs.Clear();
             _pendingPromotionWarnings.Clear();
+            if (_buyTokenBtn != null) _buyTokenBtn.onClick.RemoveListener(OnBuyTokenClicked);
             // 遗物按钮监听对称清理（L1——不依赖下个 BC 的 Init RemoveAllListeners 兜底）
             if (_relicBtn != null) _relicBtn.onClick.RemoveListener(ToggleRelicList);
             // UI 架构重构 §五：面板局内复用——只解绑不销毁（面板生命周期归 Bootstrap：局结束统一销毁）
@@ -411,6 +581,20 @@ namespace TheLaw.UI
             if (_awaitingCell)
             {
                 OnCellPicked(cell); // 执行中：当前槽选格
+                return;
+            }
+
+            if (_diceMoveSelecting)
+            {
+                // 点数直线移动：只响应可达格（场上高亮——与移动选格同操作习惯）
+                if (_diceMoveDirections.TryGetValue(cell, out var diceDir))
+                {
+                    _diceMoveSelecting = false;
+                    _diceMovePieceId = -1;
+                    ClearHighlights();
+                    _flow.OnDiceDirectionSelected(diceDir);
+                    RefreshDicePanel(); // 点数已消耗 → 面板刷新（先投掷提示）
+                }
                 return;
             }
 
@@ -927,6 +1111,292 @@ namespace TheLaw.UI
         void OnRelicObtained(object data)
         {
             RefreshEventAbilities();
+            RefreshGoPanel(); // 速攻/买子等能力 → 围棋容量/面板刷新
+            RefreshDicePanel(); // 玩法激活/能力 → 骰子面板刷新
+        }
+
+        // ========== 玩法面板·围棋（2026-08-24：手牌式拖拽部署——牌不消耗；Grp_FloorPlay_Go 与棋子信息区同位置切换显隐）==========
+
+        void EnsureGoRefs()
+        {
+            if (_grpPlayRoot != null) return;
+            _grpPlayRoot = FindSceneTransform("Grp_Play");
+            if (_grpPlayRoot == null) return;
+            var goPanel = _grpPlayRoot.Find("Grp_FloorPlay_Go");
+            _grpFloorPlayGo = goPanel != null ? goPanel.gameObject : null;
+            if (_grpFloorPlayGo == null) return;
+            var card = FindDeep(_grpFloorPlayGo.transform, "Piece_Handcard");
+            _goCard = card != null ? card.gameObject : null;
+            _goCountText = GetTmp(_grpFloorPlayGo, "Txt_Count");
+            _goNextText = GetTmp(_grpFloorPlayGo, "Txt_Next");
+            _goHintText = GetTmp(_grpFloorPlayGo, "Txt_Hint"); // Txt_Tip 常驻文本预制体预设——不解析不写入
+            var buyBtnTransform = FindDeep(_grpFloorPlayGo.transform, "Btn_BuyGo");
+            _goBuyBtn = buyBtnTransform != null ? buyBtnTransform.GetComponent<Button>() : null;
+            _goBuyBtnText = _goBuyBtn != null ? _goBuyBtn.GetComponentInChildren<TMP_Text>(true) : null;
+            if (_goBuyBtn != null)
+            {
+                _goBuyBtn.onClick.RemoveListener(OnBuyGoClicked); // 每场战斗重接线（防重复监听）
+                _goBuyBtn.onClick.AddListener(OnBuyGoClicked);
+                var tip = _goBuyBtn.GetComponent<GoBuyButtonTip>();
+                if (tip == null) tip = _goBuyBtn.gameObject.AddComponent<GoBuyButtonTip>();
+                tip.Init(this, _goBuyBtn);
+            }
+            if (_goCard != null)
+            {
+                var drag = _goCard.GetComponent<GoCardDrag>();
+                if (drag == null) drag = _goCard.AddComponent<GoCardDrag>();
+                drag.Init(this); // 每场战斗重接线（防旧控制器野引用）
+                _goCardCg = _goCard.GetComponent<CanvasGroup>();
+                if (_goCardCg == null) _goCardCg = _goCard.AddComponent<CanvasGroup>();
+            }
+        }
+
+        Transform FindSceneTransform(string name)
+        {
+            foreach (var go in FindObjectsOfType<GameObject>(true))
+            {
+                if (go.name == name) return go.transform;
+            }
+            return null;
+        }
+
+        /// <summary>关卡玩法容器显隐：未选中棋子 + 有激活玩法 → 显示（与棋子信息区 Grp_Piece 同位置切换——李毕契约）。</summary>
+        void RefreshGrpPlayVisibility()
+        {
+            EnsureGoRefs();
+            if (_grpPlayRoot == null) return;
+            bool anyPlay = _state != null && (_state.IsStyleActive(StyleRegistry.Go) || _state.IsStyleActive(StyleRegistry.Token) || _state.IsStyleActive(StyleRegistry.Dice));
+            bool show = anyPlay && _selectedPieceId < 0;
+            if (_grpPlayRoot.gameObject.activeSelf != show) _grpPlayRoot.gameObject.SetActive(show);
+        }
+
+        // ========== 玩法面板·代币（2026-08-24：Grp_FloorPlay_Token——购买弃牌区牌复制入手牌）==========
+
+        void EnsureTokenRefs()
+        {
+            if (_grpPlayRoot == null) _grpPlayRoot = FindSceneTransform("Grp_Play");
+            if (_grpPlayRoot == null || _grpFloorPlayToken != null) return;
+            var panel = _grpPlayRoot.Find("Grp_FloorPlay_Token");
+            _grpFloorPlayToken = panel != null ? panel.gameObject : null;
+            if (_grpFloorPlayToken == null) return;
+            _tokenCountText = GetTmp(_grpFloorPlayToken, "Txt_TokenCount_K (1)"); // 数值节点（Txt_TokenCount_K = 标签"拥有代币："）
+            var buyBtnTransform = FindDeep(_grpFloorPlayToken.transform, "Btn_BuyToken");
+            _buyTokenBtn = buyBtnTransform != null ? buyBtnTransform.GetComponent<Button>() : null;
+            if (_buyTokenBtn != null)
+            {
+                _buyTokenBtn.onClick.RemoveListener(OnBuyTokenClicked); // 每场战斗重接线（防重复监听）
+                _buyTokenBtn.onClick.AddListener(OnBuyTokenClicked);
+            }
+        }
+
+        /// <summary>代币面板刷新：显隐（按玩法激活）+ 数量 + 购买列表（复用围棋刷新时机——激活/状态/阶段变化）。</summary>
+        void RefreshTokenPanel()
+        {
+            EnsureTokenRefs();
+            bool active = _state != null && _state.IsStyleActive(StyleRegistry.Token);
+            if (_grpFloorPlayToken != null && _grpFloorPlayToken.activeSelf != active) _grpFloorPlayToken.SetActive(active);
+            if (!active)
+            {
+                RefreshGrpPlayVisibility();
+                return;
+            }
+            if (_tokenCountText != null) _tokenCountText.text = _state.TokenCount.ToString();
+            RefreshGrpPlayVisibility();
+        }
+
+        /// <summary>购买按钮：打开牌库面板购买模式（2026-08-24 复用——弃牌区选牌点击即购买，标题改提示）。</summary>
+        void OnBuyTokenClicked()
+        {
+            if (_uiManager == null) return;
+            var panel = _uiManager.GetPanel("DeckLibrary");
+            if (panel is DeckLibraryPanel deck)
+            {
+                deck.EnterBuyMode(OnTokenBuyPicked);
+                _uiManager.PushOverlay("DeckLibrary");
+            }
+            else
+            {
+                Debug.LogWarning("[Battle] 牌库面板未注册——代币购买无法打开");
+            }
+            RefreshTokenPanel();
+        }
+
+        /// <summary>购买回调（牌库面板购买模式——弃牌区牌点击；discardIndex = DiscardView 顺序）。</summary>
+        void OnTokenBuyPicked(int discardIndex)
+        {
+            if (_flow == null) return;
+            _flow.OnPlayerRequestBuyToken(new BuyTokenRequest(discardIndex)); // 后端校验费用/余额；成功复制入手牌 + 发 StateChanged("token")
+            RefreshTokenPanel();
+        }
+
+        /// <summary>围棋面板刷新：显隐（按玩法激活）+ 剩余次数/下次颜色/提示。</summary>
+        void RefreshGoPanel()
+        {
+            EnsureGoRefs();
+            RefreshTokenPanel(); // 代币面板随围棋刷新时机一并刷新（玩法激活/状态/阶段变化）
+            bool active = _state != null && _state.IsStyleActive(StyleRegistry.Go);
+            if (_grpFloorPlayGo != null && _grpFloorPlayGo.activeSelf != active) _grpFloorPlayGo.SetActive(active);
+            if (!active)
+            {
+                RefreshGrpPlayVisibility();
+                return;
+            }
+            int used = _state.GoDeployCount;
+            int cap = _state.GoDeployCapacity();
+            int remain = Mathf.Max(0, cap - used);
+            if (_goCountText != null) _goCountText.text = remain.ToString();
+            string next = !_state.GoEverDeployed ? "蓝" : (_state.GoLastColor == Side.Player ? "红" : "蓝");
+            if (_goNextText != null) _goNextText.text = next;
+            RefreshGoBuyButton(); // 买子按钮显隐/置灰/文本
+            if (_goHintText != null)
+            {
+                // Txt_Hint = 动态提示（能力提示——速攻/升值/假定/买子，按持有能力；空=无能力）
+                _goHintText.text = BuildGoAbilityHints();
+            }
+            RefreshGrpPlayVisibility();
+        }
+
+        /// <summary>买子费用（前端只读镜像——与 Resolver.GoBuyCost 同口径：遗物 effects TokenBuyGo value；未持有 = -1）。</summary>
+        int GoBuyCost()
+        {
+            if (_state == null || _state.Relics == null) return -1;
+            foreach (var relic in _state.Relics)
+            {
+                if (relic == null || relic.effects == null) continue;
+                foreach (var e in relic.effects)
+                {
+                    if (e != null && e.type == RelicEffectType.TokenBuyGo) return Mathf.Max(1, e.value);
+                }
+            }
+            return -1;
+        }
+
+        /// <summary>买子按钮：持有「买子」能力 && 围棋+代币玩法激活 → 显示；代币不足置灰（hover 提示原因）。</summary>
+        void RefreshGoBuyButton()
+        {
+            if (_goBuyBtn == null) return;
+            int cost = GoBuyCost();
+            bool show = cost > 0
+                && _state.IsStyleActive(StyleRegistry.Go)
+                && _state.IsStyleActive(StyleRegistry.Token);
+            if (_goBuyBtn.gameObject.activeSelf != show) _goBuyBtn.gameObject.SetActive(show);
+            if (!show) return;
+            if (_goBuyBtnText != null) _goBuyBtnText.text = "花 " + cost + " 代币 +1 次";
+            _goBuyBtn.interactable = _state.TokenCount >= cost;
+        }
+
+        void OnBuyGoClicked()
+        {
+            if (_flow == null) return;
+            _flow.OnPlayerRequestBuyGo(new BuyGoRequest()); // 后端校验费用/余额；成功发 StateChanged("go")
+            RefreshGoPanel();
+        }
+
+        /// <summary>买子按钮 hover 提示（未激活代币玩法 → 说明原因；代币不足 → 提示差额；正常 → 说明作用）。
+        /// public：GoBuyButtonTip 与 GoCardDrag 为命名空间级组件类（同 HandCardDrag——非嵌套），需公开访问。</summary>
+        public string BuildGoBuyTip()
+        {
+            if (_state == null) return null;
+            int cost = GoBuyCost();
+            if (!_state.IsStyleActive(StyleRegistry.Token))
+                return "买子需要激活代币玩法（代币：购买弃牌区牌获得）";
+            if (cost > 0 && _state.TokenCount < cost)
+                return "代币不足（需 " + cost + "，当前 " + _state.TokenCount + "）";
+            if (cost > 0)
+                return "花 " + cost + " 代币 +1 次部署（当回合）";
+            return "买子：花代币 +1 次部署";
+        }
+
+        /// <summary>能力提示行（Txt_Hint——让玩家知道当前围棋被哪些能力强化；空=无能力）。</summary>
+        string BuildGoAbilityHints()
+        {
+            if (_state == null) return "";
+            var lines = new List<string>();
+            if (_state.HasRelicEffect(RelicEffectType.GoDeployExtra))
+                lines.Add("速攻：每回合 " + _state.GoDeployLimit() + " 次");
+            if (_state.HasRelicEffect(RelicEffectType.GoValueUp))
+                lines.Add("升值：场上围棋价值 +" + _state.GoValueBonus);
+            if (_state.HasRelicEffect(RelicEffectType.GoPromote))
+                lines.Add("假定：围棋可升变");
+            int cost = GoBuyCost();
+            if (cost > 0)
+                lines.Add("买子：花 " + cost + " 代币 +1 次部署");
+            return string.Join("\n", lines);
+        }
+
+        /// <summary>围棋卡拖拽门槛：玩法激活 + 玩家回合 + 本回合容量未满 + 非执行/表现中。</summary>
+        bool CanDragGoCard()
+        {
+            return _state != null && _state.IsStyleActive(StyleRegistry.Go)
+                && _state.Phase == BattlePhase.PlayerTurn
+                && _state.GoDeployCount < _state.GoDeployCapacity()
+                && !_executing && !_presentationPlaying;
+        }
+
+        /// <summary>围棋拖拽开始：创建棋盘预览（GoPiece 代码内建 def——占位立绘；牌不消耗仅半透明）。</summary>
+        public void OnGoDragStart()
+        {
+            if (!CanDragGoCard()) return;
+            if (_previewPiece != null) Destroy(_previewPiece);
+            _draggingGo = true;
+            PieceViewFactory.EnsureSprites();
+            _previewPiece = PieceViewFactory.CreatePieceView(-1, GoPiece.DefId, Side.Player, new Vector2Int(-9, -9), Color.white);
+            SetPreviewAlpha(0.6f);
+            var shadow = _previewPiece.transform.Find("Shadow");
+            if (shadow != null) shadow.gameObject.SetActive(false);
+            _previewPiece.transform.position = new Vector3(0f, -50f, 0f); // 隐藏待命
+            if (_goCardCg != null) _goCardCg.alpha = 0.5f;
+        }
+
+        /// <summary>围棋拖拽跟随：任意空格吸附（非占用/非障碍/界内——后端同口径）。</summary>
+        public void OnGoDrag(Vector2 screenPos)
+        {
+            if (!_draggingGo || _previewPiece == null) return;
+            var cam = Camera.main;
+            if (cam == null) return;
+            var ray = cam.ScreenPointToRay(screenPos);
+            var plane = new Plane(Vector3.up, Vector3.zero);
+            if (!plane.Raycast(ray, out float enter))
+            {
+                _goPreviewCell = new Vector2Int(-1, -1);
+                return;
+            }
+            Vector3 boardPoint = ray.GetPoint(enter);
+            var cell = PieceViewFactory.CellFromWorld(boardPoint);
+            if (IsGoCell(cell))
+            {
+                _previewPiece.transform.position = PieceViewFactory.CellToWorld(cell);
+                _goPreviewCell = cell;
+                RefacePreview();
+                return;
+            }
+            boardPoint.y = Mathf.Clamp(boardPoint.y, 0.05f, 5f);
+            _previewPiece.transform.position = boardPoint;
+            RefacePreview();
+            _goPreviewCell = new Vector2Int(-1, -1);
+        }
+
+        bool IsGoCell(Vector2Int cell)
+        {
+            if (cell.x < 0 || cell.x >= 8 || cell.y < 0 || cell.y >= 8) return false; // 8×8 棋盘
+            if (_state.Pieces.ContainsKey(cell)) return false; // 任意空格（非占用）
+            return !_state.IsBlocked(cell); // 障碍/麻将墙体不可落子（后端同口径）
+        }
+
+        /// <summary>围棋拖拽结束：落子（DeployGoRequest——不耗 AP；后端校验容量/围杀）→ 清理预览 → 刷新面板。</summary>
+        public void OnGoDragEnd()
+        {
+            if (!_draggingGo) return;
+            _draggingGo = false;
+            if (_goPreviewCell.x >= 0)
+            {
+                _flow.OnPlayerRequestDeployGo(new DeployGoRequest(_goPreviewCell));
+            }
+            if (_previewPiece != null) Destroy(_previewPiece);
+            _previewPiece = null;
+            _goPreviewCell = new Vector2Int(-1, -1);
+            if (_goCardCg != null) _goCardCg.alpha = 1f;
+            RefreshGoPanel();
         }
 
         // ========== 表现动画（DOTween 优先，测试最小可用）==========
@@ -1180,6 +1650,7 @@ namespace TheLaw.UI
             _awaitingCell = false;
             _selectResultDirty = false;
             UpdateHandPositionByPhase();
+            CancelDiceMoveSelect(); // 阶段切换：取消骰子方向选择态
             if (_state.Phase == BattlePhase.PlayerTurn) TryStartForcedExec(); // 插入执行：回合切换后（后端同守卫）触发
 
             // 阶段展示信号：下一帧通知规则层（动画优先——无动画的阶段切换至少展示一帧）
@@ -1266,6 +1737,15 @@ namespace TheLaw.UI
                 {
                     ShowApEmptyTip(); // 行动点耗尽 → "请结束回合"悬浮提示（2026-08-24 可选挂点）
                 }
+                else if (s == "style" || s == "go" || s == "token" || s == "dice")
+                {
+                    RefreshGoPanel(); // 玩法激活/围棋状态变化（次数/颜色/容量/买子可买性）
+                    RefreshDicePanel(); // 玩法激活/骰子状态（点数/按钮可用性）
+                }
+                else if (s == "dice-move-select")
+                {
+                    EnterDiceMoveSelect(); // 点数直线移动：场上高亮可达格 → 点格选方向（后端契约）
+                }
             }
             RefreshDrawPile();
             RefreshScore(); // score / mahjong-hu 等 StateChanged 信号均可安全刷新
@@ -1294,6 +1774,8 @@ namespace TheLaw.UI
             RefreshDrawPile();
             RefreshScore();
             RefreshEventAbilities();
+            RefreshGoPanel();
+            RefreshDicePanel(); // 玩法面板：骰子显隐/点数/提示
         }
 
         /// <summary>
@@ -1715,6 +2197,7 @@ namespace TheLaw.UI
 
             FillInfo(def, piece);
             if (_pieceInfoRoot != null) _pieceInfoRoot.gameObject.SetActive(true);
+            RefreshGrpPlayVisibility(); // 选中棋子 → 隐藏关卡玩法面板（同位置切换显隐）
         }
 
         void FillInfo(PieceDef def, PieceInstance piece)
@@ -1799,6 +2282,7 @@ namespace TheLaw.UI
         {
             EnsureInfoRefs();
             if (_pieceInfoRoot != null) _pieceInfoRoot.gameObject.SetActive(false);
+            RefreshGrpPlayVisibility(); // 取消选中 → 恢复关卡玩法面板
             Set(_infoName, "");
             Set(_infoType, "");
             Set(_infoValue, "");
@@ -2419,6 +2903,61 @@ namespace TheLaw.UI
         public void OnEndDrag(PointerEventData eventData)
         {
             _controller.OnCardDragEnd(eventData);
+        }
+    }
+
+    /// <summary>围棋棋子牌拖拽（2026-08-24：手牌式拖到任意空格部署——牌不消耗；整套流程同手牌部署）。</summary>
+    public class GoCardDrag : MonoBehaviour, IBeginDragHandler, IDragHandler, IEndDragHandler
+    {
+        BattleController _controller;
+
+        public void Init(BattleController controller)
+        {
+            _controller = controller;
+        }
+
+        public void OnBeginDrag(PointerEventData eventData)
+        {
+            _controller.OnGoDragStart();
+        }
+
+        public void OnDrag(PointerEventData eventData)
+        {
+            _controller.OnGoDrag(eventData.position);
+        }
+
+        public void OnEndDrag(PointerEventData eventData)
+        {
+            _controller.OnGoDragEnd();
+        }
+    }
+
+    /// <summary>买子按钮 hover 提示（2026-08-26：未激活代币玩法/代币不足时说明原因——防玩家困惑）。</summary>
+    public class GoBuyButtonTip : MonoBehaviour, IPointerEnterHandler, IPointerExitHandler
+    {
+        BattleController _controller;
+        Button _button;
+
+        public void Init(BattleController controller, Button button)
+        {
+            _controller = controller;
+            _button = button;
+        }
+
+        public void OnPointerEnter(PointerEventData eventData)
+        {
+            if (_controller == null || _button == null) return;
+            var canvas = _button.GetComponentInParent<Canvas>();
+            Vector2 screen = canvas != null && canvas.worldCamera != null
+                ? RectTransformUtility.WorldToScreenPoint(canvas.worldCamera, _button.transform.position)
+                : eventData.position;
+            string msg = _controller.BuildGoBuyTip();
+            if (msg != null) TooltipManager.Instance.ShowAtScreen(msg, screen);
+        }
+
+        public void OnPointerExit(PointerEventData eventData)
+        {
+            TooltipManager.Instance.Hide();
         }
     }
 }

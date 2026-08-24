@@ -85,7 +85,8 @@ namespace TheLaw.Data
         public List<MovePath> paths = new List<MovePath>();
 
         /// <summary>
-        /// 跳跃落点（2026-08-16）：相对棋子位置的偏移集合（绝对方向——与攻击模板 points 同语义，不随 facing 旋转）。
+        /// 跳跃落点（2026-08-16；**2026-08-24 语义修正：按 facing 旋转**——与 directions/points 同范式"相对朝向"）：
+        /// 相对棋子朝向的偏移集合（配置以"棋子朝 Up"为基准——前方 = +dy；解析时按 facing 旋转，敌方自动 180° 朝向我方）。
         /// 与常规路径共存（GetLegalMoves 落点并集）；跳跃只查落点合法性（界内 + 非占用 + 非障碍），不查中间路径。
         /// 配置来源：templates.json jumpOffsets / 棋子 JSON 移动模块 jumpOffsets。
         /// </summary>
@@ -127,7 +128,12 @@ namespace TheLaw.Data
         public int damage = 1;                     // 伤害（扣承伤次数）
         public bool friendlyFire = true;           // 友伤开关（默认 true——"大部分有友伤"）
         public AttackShape shape = AttackShape.Single; // 范围形状（保留——攻击模板不再使用；特殊能力附着用 Cross）
-        public List<Vector2Int> points = new List<Vector2Int>(); // 抛射/法术：自由点选攻击点（相对棋子锚点的偏移集合，无射程概念、任意形状、对点攻击无视障碍）
+        /// <summary>
+        /// 自由点选攻击点（抛射/法术——**2026-08-24 语义修正：按 facing 旋转**，与 directions 同范式"相对朝向"）：
+        /// 相对棋子朝向的偏移集合（配置以"棋子朝 Up"为基准——前方 = +dy；解析时 RotateVector，敌方自动 180° 朝向我方）；
+        /// 无射程概念、任意形状、对点攻击无视障碍。
+        /// </summary>
+        public List<Vector2Int> points = new List<Vector2Int>();
 
         /// <summary>
         /// 方向→射程集合（方案 B，2026-08-16）：非空时优先于 directions+range——

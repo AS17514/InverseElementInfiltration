@@ -109,11 +109,11 @@ namespace TheLaw.Gameplay
                     }
                 }
             }
-            // 跳跃落点（2026-08-16）：相对棋子位置偏移（绝对方向——与攻击 points 同语义，不随 facing 旋转）；
+            // 跳跃落点（2026-08-16）：相对棋子位置偏移；2026-08-24 修复：与 points 同改**按 facing 旋转**（配置以"棋子朝 Up"为基准——前方=+dy）
             // 与常规路径共存（落点并集）；跳跃只查落点合法性（界内 + 非占用 + 非障碍——吃子例外同 CanLandOnCell），不查中间路径
             foreach (var offset in template.jumpOffsets)
             {
-                var cell = piece.position + offset;
+                var cell = piece.position + RotateVector(offset, piece.facing); // 2026-08-24：按 facing 旋转（历史：绝对坐标致"前方跳跃"方向错误）
                 if (IsInsideBoard(cell) && !state.IsBlocked(cell) && CanLandOnCell(state, piece, cell))
                 {
                     reachable.Add(cell);
@@ -147,13 +147,14 @@ namespace TheLaw.Gameplay
         /// </summary>
         public List<Vector2Int> GetAttackableCells(GameState state, PieceInstance piece, AttackTemplate template)
         {
-            // 抛射/法术：自由点选攻击点（相对棋子锚点偏移，无视障碍对点攻击）
+            // 抛射/法术：自由点选攻击点（相对棋子**朝向**偏移——2026-08-24 修复：points 改为按 facing 旋转（同 directions 范式），
+            // 配置以"棋子朝 Up"为基准填点（前方=+dy）；敌方 facing Down 自动 180° 旋转朝向我方——对称自洽；无视障碍对点攻击）
             if ((template.mode == AttackMode.Arcing || template.mode == AttackMode.Spell) && template.points.Count > 0)
             {
                 var pointCells = new List<Vector2Int>();
                 foreach (var offset in template.points)
                 {
-                    var cell = piece.position + offset;
+                    var cell = piece.position + RotateVector(offset, piece.facing); // 2026-08-24：按 facing 旋转（历史：绝对坐标致玩家炮手方向错误）
                     if (IsInsideBoard(cell))
                     {
                         pointCells.Add(cell);

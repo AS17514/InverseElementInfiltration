@@ -1,4 +1,4 @@
-namespace TheLaw.Data
+﻿namespace TheLaw.Data
 {
     /// <summary>
     /// 游戏事件枚举（事件名 = 枚举，不会拼错——"UI 不加门面层"决策）。
@@ -23,6 +23,7 @@ namespace TheLaw.Data
         EventOpened,           // 事件关打开（携带 CurrentEventId——UI 打开事件界面）
         EditCandidatesDrawn,   // 编辑事件候选就绪（2026-08-19：三选一棋子 + 6 候选模块已抽取——UI 显示三选一；查询 GameState.EditCandidates/EditModuleCandidates）
         AbilityCandidatesDrawn,  // 能力事件候选就绪（2026-08-22：词条过滤随机 3——UI 显示三选一 + 每项可刷新；查询 GameState.AbilityCandidates/AbilityRefreshLeft）
+        RuleCandidatesDrawn,     // 玩法事件候选就绪（2026-08-24：未激活玩法随机 2——UI 显示二选一[不可刷新]；查询 GameState.RuleCandidates）
         ExtraActionGranted,    // 免费行动资格授予（携带棋子 Id——UI 显示"免费行动"标记）
         BuffsChanged,          // 棋子 buff 变化（携带棋子 Id——UI 刷新该棋子的 buff 标记；查询 BuffDisplay.GetBuffs）
         HintRequested,         // 通用变亮/提示通道（2026-08-23：携带 HintPayload——kind 决定渲染器与样式、targetId 定位对象；显示真值查后端状态容器）

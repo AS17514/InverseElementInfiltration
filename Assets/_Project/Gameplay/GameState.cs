@@ -1,4 +1,4 @@
-using System;
+﻿using System;
 using System.Collections.Generic;
 using TheLaw.Core;
 using TheLaw.Data;
@@ -142,6 +142,8 @@ namespace TheLaw.Gameplay
         public List<RelicDef> AbilityCandidates { get; internal set; } = new List<RelicDef>();
         /// <summary>能力候选刷新次数（2026-08-22：每项各可刷新 1 次——与 AbilityCandidates 顺序对应）。</summary>
         public List<int> AbilityRefreshLeft { get; internal set; } = new List<int>();
+        /// <summary>玩法事件二选一候选（2026-08-24 玩法选择机制：未激活玩法随机抽 2——玩家选 1 激活；落选保留[后续可再出现]；事件进行中入档——中断续玩一致）。</summary>
+        public List<string> RuleCandidates { get; internal set; } = new List<string>();
         /// <summary>行动经济已行动集（2026-08-22：ActionEconomy 激活时——本回合已执行过行动的棋子——回合级，回合开始重置；额外行动穿透不查此集）。</summary>
         public HashSet<int> ActionEconomyActed { get; internal set; } = new HashSet<int>();
         /// <summary>本层模块消耗（净增量——2026-08-23 决策 4 定案"消耗制=池子构成规则"）：
@@ -383,6 +385,7 @@ namespace TheLaw.Gameplay
             Relics.Clear();
             AbilityCandidates.Clear();   // 2026-08-22 能力候选（整局重置）
             AbilityRefreshLeft.Clear();
+            RuleCandidates.Clear();      // 2026-08-24 玩法事件候选（整局重置——新局重新抽取）
             ActionEconomyActed.Clear();
             ConsumedModules.Clear(); // 2026-08-23：本层模块消耗随整局重置（层内由 EnterFloor 清——跨层复原）
             _diagnosticLog.Clear(); // 2026-08-23：排查诊断随整局重置
@@ -501,6 +504,7 @@ namespace TheLaw.Gameplay
                 Relics = Relics.ConvertAll(r => r.Id),
                 AbilityCandidates = AbilityCandidates.ConvertAll(r => r.Id), // 2026-08-22 能力事件候选（事件进行中入档）
                 AbilityRefreshLeft = new List<int>(AbilityRefreshLeft),
+                RuleCandidates = new List<string>(RuleCandidates), // 2026-08-24 玩法事件候选（事件进行中入档）
                 WaveScores = new List<int>(WaveScores),
                 PromoteAnnouncements = PromoteAnnouncements,
                 WaveEndCountdown = WaveEndCountdown,
@@ -607,6 +611,7 @@ namespace TheLaw.Gameplay
                 }
             }
             AbilityRefreshLeft = dto.AbilityRefreshLeft ?? new List<int>();
+            RuleCandidates = dto.RuleCandidates ?? new List<string>(); // 2026-08-24 玩法事件候选（旧档缺省空）
             WaveScores = dto.WaveScores ?? new List<int>();
             PromoteAnnouncements = dto.PromoteAnnouncements ?? new List<PromoteAnnouncement>();
             WaveEndCountdown = dto.WaveEndCountdown;
@@ -716,6 +721,7 @@ namespace TheLaw.Gameplay
         public List<int> Relics;
         public List<int> AbilityCandidates;   // 能力事件候选（2026-08-22——id 列表）
         public List<int> AbilityRefreshLeft;  // 候选刷新次数（2026-08-22）
+        public List<string> RuleCandidates;   // 玩法事件候选（2026-08-24——玩法 id 列表）
         public List<int> WaveScores;
         public List<PromoteAnnouncement> PromoteAnnouncements;
         public int WaveEndCountdown;

@@ -1,4 +1,4 @@
-using System.Collections.Generic;
+﻿using System.Collections.Generic;
 using TheLaw.Core;
 using UnityEngine;
 
@@ -15,6 +15,13 @@ namespace TheLaw.Data
         /// 不显示普通 options（动态候选）。
         /// </summary>
         public bool isAbilityPick;
+
+        /// <summary>
+        /// 玩法事件（2026-08-24 玩法选择机制）：true = 打开时从未激活玩法随机抽 2 候选 → 前端二选一（不可刷新）。
+        /// 已选玩法后续不再出现（候选池 = 全部玩法 − 已激活）；落选玩法保留（后续仍可能再出现）。
+        /// 不显示普通 options（动态候选）。与 isAbilityPick 互斥（事件二选一）。
+        /// </summary>
+        public bool isRulePick;
 
         // ====== 牌组构筑限制（DeckBuild 事件用；0 = 无限制）======
         public int deckSizeLimit;        // 牌组牌数上限（0 = 不限制）

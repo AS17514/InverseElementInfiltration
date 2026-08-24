@@ -173,7 +173,7 @@ namespace TheLaw.Gameplay
             _state.GoDeployCount = 0;          // 2026-08-24 围棋：每回合限部署 1 次（回合开始重置）
             _state.DiceMovePending = false;    // 2026-08-24 骰子：点数移动 buff **不跨回合**（新回合清）
             _state.DiceMoveSteps = 0;
-            if (_state.IsStyleActive("token"))
+            if (_state.IsStyleActive(StyleRegistry.Token))
             {
                 _state.TokenCount += 1;        // 2026-08-24 代币：每回合开始 +1（初始 0；不跨战斗）
                 EventCenter.Instance.EventTrigger(GameEvent.StateChanged, "token");
@@ -458,7 +458,7 @@ namespace TheLaw.Gameplay
                         if (deployValid)
                         {
                             // ⚠️ 2026-08-24 代币玩法：购买的"初始棋子"复制可**不耗 AP** 部署（口述定稿——C5；IsDeployAllowed 已放行）
-                            bool freeDeploy = side == Side.Player && _state.IsStyleActive("token")
+                            bool freeDeploy = side == Side.Player && _state.IsStyleActive(StyleRegistry.Token)
                                 && deployDef != null && _state.GetEffectiveType(deployDef.Id) == PieceType.Initial;
                             var deployAction = new DeployAction(deploy.pieceDefId, side, deploy.cell) { cardInstanceId = deploy.cardInstanceId }; // 2026-08-21：精确消费实例 id
                             _resolver.Resolve(deployAction);
@@ -498,7 +498,7 @@ namespace TheLaw.Gameplay
                             if (_state.GetPiece(execute.pieceId).IsGo) { break; } // 2026-08-24 围棋不可行动（含骰子移动重定向——均拒绝）
                             // ⚠️ 2026-08-24 骰子玩法：全场"点数直线移动"buff——点某棋子执行时重定向
                             // （不进入普通执行/扣 AP 逻辑；执行点数步直线移动后取消全场 buff）
-                            if (side == Side.Player && _state.IsStyleActive("dice") && _state.DiceMovePending)
+                            if (side == Side.Player && _state.IsStyleActive(StyleRegistry.Dice) && _state.DiceMovePending)
                             {
                                 TryStartDiceMove(execute.pieceId, side);
                                 break; // 骰子移动处理——不继续普通执行
@@ -590,7 +590,7 @@ namespace TheLaw.Gameplay
                     // ========== 2026-08-24 新玩法（骰子/围棋/代币——设计定稿；仅玩家侧）==========
                     case RollDiceRequest:
                         // 骰子·投掷（执行类行动 1 AP）：随机 1~6 → 点数 + 基础分
-                        if (side == Side.Player && _state.IsStyleActive("dice"))
+                        if (side == Side.Player && _state.IsStyleActive(StyleRegistry.Dice))
                         {
                             _resolver.RollDice();
                             DeductActionPoint(request.free, side);
@@ -598,14 +598,14 @@ namespace TheLaw.Gameplay
                         break;
                     case DiceMoveRequest:
                         // 骰子·点数直线移动启动（不耗 AP——消耗点数；挂全场 buff；AP=0 豁免见 IsExemptFromApCost）
-                        if (side == Side.Player && _state.IsStyleActive("dice"))
+                        if (side == Side.Player && _state.IsStyleActive(StyleRegistry.Dice))
                         {
                             _resolver.StartDiceMove(); // 点数>0 才成功（内部校验）
                         }
                         break;
                     case DeployGoRequest dg:
                         // 围棋·部署"棋子牌"（不耗 AP、每回合限 1 次、任意**空**格[非占用/非障碍/非墙体]；AP=0 豁免）
-                        if (side == Side.Player && _state.IsStyleActive("go")
+                        if (side == Side.Player && _state.IsStyleActive(StyleRegistry.Go)
                             && _state.GoDeployCount < 1 && !_state.Pieces.ContainsKey(dg.cell) && !_state.IsBlocked(dg.cell))
                         {
                             _resolver.DeployGoPiece(dg.cell); // 内部含围杀检查
@@ -613,7 +613,7 @@ namespace TheLaw.Gameplay
                         break;
                     case BuyTokenRequest bt:
                         // 代币·购买（不耗 AP——消耗代币；选弃牌区牌 → 复制入手牌；AP=0 豁免）
-                        if (side == Side.Player && _state.IsStyleActive("token"))
+                        if (side == Side.Player && _state.IsStyleActive(StyleRegistry.Token))
                         {
                             _resolver.BuyFromDiscard(bt.discardIndex);
                         }
@@ -1367,7 +1367,7 @@ namespace TheLaw.Gameplay
             if (phase == BattlePhase.PlayerTurn && _state.GetEffectiveType(def.Id) != PieceType.Deployable)
             {
                 // ⚠️ 2026-08-24 代币玩法：购买的"初始棋子"复制可在战斗中部署（免费——口述定稿）
-                if (!(_state.IsStyleActive("token") && _state.GetEffectiveType(def.Id) == PieceType.Initial))
+                if (!(_state.IsStyleActive(StyleRegistry.Token) && _state.GetEffectiveType(def.Id) == PieceType.Initial))
                 {
                     return false; // 部署阶段只能放部署棋子（升变棋子靠升变操作上场）
                 }
@@ -1426,7 +1426,7 @@ namespace TheLaw.Gameplay
         /// 触发：无玩家目标可打时，打掉堵路的红围棋（防玩家用红围棋封死敌方行动路径）；玩家目标优先。</summary>
         private Vector2Int? FindBlockedByGo(PieceInstance piece)
         {
-            if (!_state.IsStyleActive("go")) return null;
+            if (!_state.IsStyleActive(StyleRegistry.Go)) return null;
             var program = piece.GetProgram(_state);
             if (program == null) return null;
             foreach (var slot in program)

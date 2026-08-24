@@ -1,4 +1,4 @@
-using System.Collections.Generic;
+﻿using System.Collections.Generic;
 using TheLaw.Core;
 using TheLaw.Data;
 
@@ -56,6 +56,12 @@ namespace TheLaw.Gameplay
             {
                 _resolver.DrawAbilityCandidates();
                 return; // 能力事件不走普通 EventOpened/选项流（前端按 AbilityCandidatesDrawn 显示三选一）
+            }
+            // 玩法事件（2026-08-24 玩法选择机制）：打开即从未激活玩法抽 2 候选（二选一，不可刷新）——不显示固定选项
+            if (ev != null && ev.isRulePick)
+            {
+                _resolver.DrawRuleCandidates();
+                return; // 玩法事件不走普通 EventOpened/选项流（前端按 RuleCandidatesDrawn 显示二选一）
             }
             // 通知 UI：事件关打开（携带当前事件 id——UI 据此打开事件界面）
             EventCenter.Instance.EventTrigger(GameEvent.EventOpened, _state.CurrentEventId);

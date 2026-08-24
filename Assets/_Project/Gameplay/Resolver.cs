@@ -1,4 +1,4 @@
-using System.Collections.Generic;
+﻿using System.Collections.Generic;
 using TheLaw.Core;
 using TheLaw.Data;
 using UnityEngine;
@@ -93,7 +93,7 @@ namespace TheLaw.Gameplay
             if (target != null)
             {
                 // ⚠️ 2026-08-20「属性」玩法：攻击命中按属性判定相克/相生（仅双方棋子且双方有属性——麻将牌/无属性不判）
-                if (_state.IsStyleActive("element") && piece.element != Element.None && target.element != Element.None)
+                if (_state.IsStyleActive(StyleRegistry.Element) && piece.element != Element.None && target.element != Element.None)
                 {
                     if (ElementRules.IsCountering(piece.element, target.element))
                     {
@@ -277,7 +277,7 @@ namespace TheLaw.Gameplay
             };
             // ⚠️ 2026-08-20「属性」玩法：创建时分配属性（一方应含双方棋子——部署/波次都经此）
             // 复制牌（Card 带属性）优先用实际消耗牌属性；否则激活玩法时随机（金木水火土）
-            if (_state.IsStyleActive("element"))
+            if (_state.IsStyleActive(StyleRegistry.Element))
             {
                 piece.element = consumedCard.element;
                 if (piece.element == Element.None)
@@ -292,7 +292,7 @@ namespace TheLaw.Gameplay
             _state.Pieces[action.cell] = piece;
             _state.PiecesById[piece.Id] = piece;
             // ⚠️ 2026-08-24 骰子玩法：部署"价值 = 骰子点数"的棋子 → 倍率 +1（正常耗 AP 部署，额外奖励；不消耗点数）
-            if (action.side == Side.Player && _state.IsStyleActive("dice")
+            if (action.side == Side.Player && _state.IsStyleActive(StyleRegistry.Dice)
                 && _state.DiceValue > 0 && PieceValue.SumValue(piece.GetProgram(_state)) == _state.DiceValue)
             {
                 AddMultiplier(1);
@@ -368,7 +368,7 @@ namespace TheLaw.Gameplay
             // ⚠️ 2026-08-20「属性」玩法：升变 = 新身体 → 属性重随机（激活玩法时）；
             // 相克/相生判定（升变棋子 vs 被升变棋子属性）：
             //   相克 → 倍率 +1（当回合——结算后复位 1）；相生 → 被升变棋子的复制牌入手牌（属性 = 旧属性）
-            if (_state.IsStyleActive("element"))
+            if (_state.IsStyleActive(StyleRegistry.Element))
             {
                 piece.element = RandomElement();
                 if (ElementRules.IsCountering(piece.element, oldElement))
@@ -662,7 +662,7 @@ namespace TheLaw.Gameplay
         /// <summary>部署"棋子牌"（不耗 AP、每回合 1 次、任意空格——BattleFlow 校验）：蓝红 side 切换（首次蓝）+ 围杀检查。</summary>
         public bool DeployGoPiece(Vector2Int cell)
         {
-            if (!_state.IsStyleActive("go")) return false;
+            if (!_state.IsStyleActive(StyleRegistry.Go)) return false;
             if (_state.GoDeployCount >= 1) return false; // 每回合限 1 次（BattleFlow 已校验——防御）
             if (_state.Pieces.ContainsKey(cell)) return false; // 空格（任意格——非占用即可）
             // 颜色切换：首次蓝（Player）；之后每次部署切换（上次红→本次蓝、上次蓝→本次红）
@@ -689,7 +689,7 @@ namespace TheLaw.Gameplay
         /// </summary>
         private void CheckGoCapture(Vector2Int placedCell)
         {
-            if (!_state.IsStyleActive("go")) return;
+            if (!_state.IsStyleActive(StyleRegistry.Go)) return;
             var victims = new List<PieceInstance>();
             foreach (var piece in _state.Pieces.Values)
             {
@@ -729,12 +729,50 @@ namespace TheLaw.Gameplay
 
         private static bool IsInsideBoard(Vector2Int cell) => cell.x >= 0 && cell.x < 8 && cell.y >= 0 && cell.y < 8;
 
-        /// <summary>玩法激活落账（2026-08-24：改变规则事件/玩法选择机制落地后调用——ActiveStyles 唯一写入口；当前暂无调用方，随 E1 接入）。</summary>
+        /// <summary>玩法激活落账（2026-08-24：改变规则事件/玩法选择机制落地后调用——ActiveStyles 唯一写入口；2026-08-24 由 SelectRule 调用）。</summary>
         public void SetStyleActive(string style)
         {
             if (string.IsNullOrEmpty(style)) return;
             _state.ActiveStyles.Add(style);
             EventCenter.Instance.EventTrigger(GameEvent.StateChanged, "style");
+        }
+
+        // ========== 玩法事件·二选一（2026-08-24 策划定案——决策记录_玩法选择机制_二选一）==========
+
+        /// <summary>
+        /// 玩法事件候选抽取（事件打开时调用——isRulePick）：从未激活玩法随机抽 2（无放回）——
+        /// 候选池 = 全部玩法 − ActiveStyles（已选玩法后续不再出现）；**落选玩法保留**（后续仍可能再出现——无永久排除记录，由池推导）；
+        /// 池 <2 时按实际数量（当前 5 玩法 + 第 2-4 关各 1 次事件不会触发——防御）；发 RuleCandidatesDrawn。
+        /// RandomManager 种子相关可复现（读档续玩候选一致）。
+        /// </summary>
+        public void DrawRuleCandidates()
+        {
+            var available = new List<string>();
+            foreach (var style in StyleRegistry.All)
+            {
+                if (!_state.ActiveStyles.Contains(style)) available.Add(style);
+            }
+            var picked = new List<string>();
+            var copy = new List<string>(available);
+            while (picked.Count < 2 && copy.Count > 0)
+            {
+                int idx = RandomManager.Instance.Range(0, copy.Count);
+                picked.Add(copy[idx]);
+                copy.RemoveAt(idx);
+            }
+            _state.RuleCandidates = picked;
+            EventCenter.Instance.EventTrigger(GameEvent.RuleCandidatesDrawn, _state.RuleCandidates);
+        }
+
+        /// <summary>玩法事件选择落账（2026-08-24：选候选 index → 激活（SetStyleActive——唯一写入口）→ 清候选 → 事件完成推进）。</summary>
+        public void SelectRule(int choiceIndex)
+        {
+            if (choiceIndex < 0 || choiceIndex >= _state.RuleCandidates.Count) return;
+            var style = _state.RuleCandidates[choiceIndex];
+            if (string.IsNullOrEmpty(style)) return;
+            SetStyleActive(style); // 激活（已选玩法后续不再出现——池推导自然排除）
+            _state.RuleCandidates.Clear();
+            EventCenter.Instance.EventTrigger(GameEvent.EventCompleted, _state.CurrentEventId); // 事件完成（推进流程）
         }
 
         // ========== 玩法·代币（2026-08-24 设计定稿——仅玩家侧；不跨战斗）==========
@@ -751,7 +789,7 @@ namespace TheLaw.Gameplay
         /// <summary>购买（2026-08-24）：选弃牌区一张牌 → 消耗该牌价值数代币（棋子=推导价值；麻将=点数）→ 复制入手牌 + 基础分+消耗数；每回合不限次。</summary>
         public bool BuyFromDiscard(int discardIndex)
         {
-            if (!_state.IsStyleActive("token")) return false;
+            if (!_state.IsStyleActive(StyleRegistry.Token)) return false;
             var view = DiscardView();
             if (discardIndex < 0 || discardIndex >= view.Count) return false;
             var card = view[discardIndex];

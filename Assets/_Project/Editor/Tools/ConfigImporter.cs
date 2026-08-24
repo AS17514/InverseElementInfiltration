@@ -302,6 +302,7 @@ namespace TheLaw.EditorTools
                     def.title = e.title;
                     def.description = e.description;
                     def.isAbilityPick = e.isAbilityPick; // 2026-08-22：能力三选一事件（动态候选——不显示固定 options）
+                    def.isRulePick = e.isRulePick; // 2026-08-24：玩法事件二选一（动态候选——不显示固定 options；与 isAbilityPick 互斥）
                     def.deckSizeLimit = e.deckSizeLimit;
                     def.totalValueLimit = e.totalValueLimit;
                     def.allowDuplicate = e.allowDuplicate;            // 构筑新规则开关（2026-08-15：可复数）
@@ -810,7 +811,7 @@ namespace TheLaw.EditorTools
         private class EventsJson { public List<PoolJson> pools; public List<EventJson> events; }
         private class PoolJson { public string poolName; public List<EntryJson> entries; }
         private class EntryJson { public string eventId; public float weight; }
-        private class EventJson { public string eventId; public string title; public string description; public bool isAbilityPick; public int deckSizeLimit; public int totalValueLimit; public bool allowDuplicate; public bool promoteLimitByInitial; public List<OptionJson> options; }
+        private class EventJson { public string eventId; public string title; public string description; public bool isAbilityPick; public bool isRulePick; public int deckSizeLimit; public int totalValueLimit; public bool allowDuplicate; public bool promoteLimitByInitial; public List<OptionJson> options; }
         private class OptionJson { public string optionId; public string label; public List<EffectJson> effects; }
         private class EffectJson { public string effectType; public int targetDefId; public int amount; public int abilityId; public string relicName; }
         private class AbilityJson

@@ -1,4 +1,4 @@
-using System;
+﻿using System;
 using System.Collections.Generic;
 
 namespace TheLaw.Data
@@ -9,8 +9,8 @@ namespace TheLaw.Data
     /// </summary>
     public static class Mahjong
     {
-        /// <summary>麻将玩法标识（GameState.ActiveStyles）。</summary>
-        public const string StyleId = "mahjong";
+        /// <summary>麻将玩法标识（GameState.ActiveStyles）——单一来源见 StyleRegistry（2026-08-24 玩法注册表）。</summary>
+        public const string StyleId = StyleRegistry.Mahjong;
 
         /// <summary>麻将牌总数（一至九各两张 = 18）。</summary>
         public const int TotalTiles = 18;

@@ -10,16 +10,16 @@ MonoBehaviour:
   m_Enabled: 1
   m_EditorHideFlags: 0
   m_Script: {fileID: 11500000, guid: 0ced73b344c7e094ca6f7de7a57148cb, type: 3}
-  m_Name: Relic_ability_draw_extra
+  m_Name: Relic_ability_go_promote
   m_EditorClassIdentifier: 
-  _id: 276225473
-  displayName: "\u624B\u5FEB\u6709"
-  description: "\u884C\u52A8\u70B9\u4E0A\u9650 +1\uFF1B\u82B1\u8D39\u884C\u52A8\u70B9\u62BD\u724C\u65F6\u53EF\u4EE5\u989D\u5916\u62BD\u4E00\u5F20"
+  _id: 1185101511
+  displayName: "\u5047\u5B9A\u8FD9\u4E5F\u662F\u68CB\u5B50"
+  description: "\u884C\u52A8\u70B9\u4E0A\u9650 +1\uFF1B\u56F4\u68CB\u201C\u68CB\u5B50\u201D\u4E5F\u53EF\u4EE5\u88AB\u5347\u53D8"
   tags:
-  - basic
+  - go
   effects:
   - type: 0
     value: 1
-  - type: 1
+  - type: 12
     value: 1
   abilities: []

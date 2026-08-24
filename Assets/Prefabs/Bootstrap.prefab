@@ -82,10 +82,19 @@ MonoBehaviour:
   - {fileID: 11400000, guid: a769fb2bdc83b1a49ba8645f10853228, type: 2}
   _relicConfigs:
   - {fileID: 11400000, guid: c8b12ccab28b5ca409fc722020f853ea, type: 2}
+  - {fileID: 11400000, guid: 52a0dfb891bb4244c8e4341e71fbf1b0, type: 2}
   - {fileID: 11400000, guid: 812fa5557c980ed4696f860918873784, type: 2}
+  - {fileID: 11400000, guid: b16bb89b884a41f48864f09cc936f72a, type: 2}
   - {fileID: 11400000, guid: be34e1252769d694eb26fe455efefe33, type: 2}
   - {fileID: 11400000, guid: 70e633caad4a2d142a421e420b657b54, type: 2}
+  - {fileID: 11400000, guid: 694311d93671acb4498342d7ed9967fe, type: 2}
+  - {fileID: 11400000, guid: 835fe4afd9389f740b67dd071d20e164, type: 2}
+  - {fileID: 11400000, guid: 54ed4ac85e5c26e4195d2dab0144e2ba, type: 2}
+  - {fileID: 11400000, guid: 1d1e527b010ef6c45b3e8f07841b21fe, type: 2}
+  - {fileID: 11400000, guid: ea660569ed15a9c46829ce62e31845de, type: 2}
   - {fileID: 11400000, guid: afd4939f6852c58449226add0f7eea3c, type: 2}
+  - {fileID: 11400000, guid: 2eeaebd9e592e644fbc55deeb92272b1, type: 2}
+  - {fileID: 11400000, guid: 3bf04fd469505744dbcb0b20a6f0601b, type: 2}
   - {fileID: 11400000, guid: 47a029b14c1916443a4f9e894e03a57f, type: 2}
   - {fileID: 11400000, guid: b047e44ca096a1b42b2f5cfa4f213c1b, type: 2}
   _templateConfigs:

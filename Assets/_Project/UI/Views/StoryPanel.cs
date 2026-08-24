@@ -18,10 +18,10 @@ namespace TheLaw.UI
     /// 交互：任意点击/键盘任意键 = 下一句（打字中按下 = 立即显示整句）；
     ///       长按（按下持续约 0.8s）= 跳过整段剧情。
     /// 数据：Assets/Data/Configs/story_opening.json（运行时缺失 → LogWarning 并跳过剧情直接进流程）。
-    /// 立绘：Img_Character_L（Xeon 主位）/ Img_Character_R（测试员右位——待李毕拼图，代码按名 Find，缺失判空跳过）；
-    ///       cue.xeonDiff 切换 L 立绘 sprite（Addressables 按地址；美术未交付时缺失判空保留占位）。
+    /// 立绘：Img_Character_L（Xeon 主位）/ Img_Character_R（测试员右位）；出场渐入、未说话在场角色半透明（DOTween 缓动）；
+    ///       cue.xeonDiff 切换 L 立绘 sprite（Addressables 按地址；缺失保留占位）。
     /// 音效：cue.sfx → AudioRefs.SfxStory*（进句播；AudioManager 无 StopSFX——短音不显式停上一句）。
-    /// 背景：cue.bg=true 显示背景；黑屏阶段 Img_Bg 代码控 color 纯黑兜底。
+    /// 背景：Img_Bg 常显背景图（prefab 主菜单同款）；黑屏阶段由 Img_BlackOverlay 叠层盖住，cue.bg=true 时叠层淡出。
     /// </summary>
     public class StoryPanel : PanelBase
     {
@@ -33,15 +33,20 @@ namespace TheLaw.UI
         // ====== 可调参数（Inspector 可见——打字机速度常量可调）======
         [Header("开场剧情")]
         [SerializeField, Tooltip("逐字间隔（秒）——打字机速度常量")] private float _charInterval = 0.03f;
-        [SerializeField, Tooltip("长按跳过阈值（秒）")] private float _skipHoldSeconds = 0.8f;
+        [SerializeField, Tooltip("长按跳过阈值（秒）")] private float _skipHoldSeconds = 1.5f;
         [SerializeField, Tooltip("立绘上下抖动幅度（DOTween punch）")] private float _shakeStrength = 10f;
+        [SerializeField, Range(0f, 1f), Tooltip("未说话在场角色透明度（0.9 = 略降）")] private float _dimAlpha = 0.9f;
+        [SerializeField, Tooltip("未说话在场角色颜色（偏深灰）")] private Color _dimColor = new Color(0.75f, 0.75f, 0.75f, 1f);
+        [SerializeField, Tooltip("出场渐入/淡出时长（秒）")] private float _fadeDuration = 0.5f;
+        [SerializeField, Tooltip("剧情结束退出前缓慢黑屏时长（秒）")] private float _exitFadeSeconds = 1.0f;
+        [SerializeField, Range(0.98f, 1f), Tooltip("黑影缩放（0.98 = 微缩；亮相还原到 1）")] private float _silhouetteScale = 0.98f;
+        [SerializeField, Tooltip("黑影颜色（0.9 半透明黑——亮相时还原纯白）")] private Color _silhouetteColor = new Color(0f, 0f, 0f, 0.9f);
 
         // ====== 节点引用（按名字 Find——prefab 层级变动容错；缺失判空跳过）======
-        private Image _bgImage;       // Img_Bg（背景/黑屏——代码控 color 兜底）
         private TMP_Text _nameText;   // Txt_Name（说话人）
         private TMP_Text _contentText; // Txt_Content（对白——逐字打字机）
         private Image _charLeft;      // Img_Character_L（Xeon 主位）
-        private Image _charRight;     // Img_Character_R（测试员右位——李毕拼图，缺失判空跳过）
+        private Image _charRight;     // Img_Character_R（测试员右位）
 
         private List<StoryCue> _cues; // 当前局剧情
         private int _cueIndex;
@@ -51,6 +56,24 @@ namespace TheLaw.UI
         private Coroutine _playRoutine;
         private Coroutine _typeRoutine;
         private Tween _shakeTween;
+        private Tween _leftAlphaTween;
+        private Tween _rightAlphaTween;
+
+        // 舞台状态（角色在场/说话）——未说话半透明 + 出场渐入
+        private bool _xeonOnStage;
+        private bool _testerOnStage;
+        private bool _xeonSilhouette;   // Xeon 黑影态（纯黑+缩小；亮相时 DOTween 还原）
+        private bool _testerSilhouette;
+        private Tween _leftRevealTween;
+        private Tween _rightRevealTween;
+        private Coroutine _revealRoutineL; // 亮相兜底协程（DOTween 不推进时保证还原到纯白+缩放1）
+        private Coroutine _revealRoutineR;
+        private Coroutine _silhouetteRoutineL; // 黑影渐显协程（alpha 0 → 0.9）
+        private Coroutine _silhouetteRoutineR;
+
+        // 退出黑屏
+        private Image _exitFade;
+        private bool _exiting;
 
         // 输入/长按
         private bool _pressing;          // 当前有按下
@@ -75,7 +98,6 @@ namespace TheLaw.UI
 
         private void CacheRefs()
         {
-            _bgImage = FindDeep<Image>(transform, "Img_Bg");
             _nameText = FindDeep<TMP_Text>(transform, "Txt_Name");
             _contentText = FindDeep<TMP_Text>(transform, "Txt_Content");
             _charLeft = FindDeep<Image>(transform, "Img_Character_L");
@@ -83,6 +105,8 @@ namespace TheLaw.UI
             if (_charRight == null) Debug.Log("[StoryPanel] 未找到 Img_Character_R（李毕拼图后自动生效——缺失期间测试员句跳过右立绘）");
             if (_charLeft == null) Debug.LogWarning("[StoryPanel] 未找到 Img_Character_L——Xeon 立绘不可用");
             if (_contentText == null) Debug.LogWarning("[StoryPanel] 未找到 Txt_Content——对白无法显示");
+            // 判别日志：L/R 节点是否找到 = 加载的是真 prefab（true）还是代码兜底 Build（false）
+            Debug.Log($"[StoryPanel] 节点判定：L={_charLeft != null} R={_charRight != null} 子节点数={transform.childCount}");
         }
 
         // ====== 对外 API ======
@@ -107,6 +131,13 @@ namespace TheLaw.UI
             _skipAll = false;
             _awaitingNext = false;
             _pressing = false;
+            // 舞台复位：立绘全隐藏、黑影/缩放/颜色硬复位（每局播放干净起点）
+            _xeonOnStage = false;
+            _testerOnStage = false;
+            _xeonSilhouette = false;
+            _testerSilhouette = false;
+            _exiting = false;
+            ResetPortraits();
             if (_cues != null && _cues.Count > 0 && !_playing)
             {
                 _playRoutine = StartCoroutine(PlayRoutine());
@@ -127,6 +158,14 @@ namespace TheLaw.UI
             if (_playRoutine != null) { StopCoroutine(_playRoutine); _playRoutine = null; }
             if (_typeRoutine != null) { StopCoroutine(_typeRoutine); _typeRoutine = null; }
             if (_shakeTween != null && _shakeTween.IsActive()) { _shakeTween.Kill(); _shakeTween = null; }
+            if (_leftAlphaTween != null && _leftAlphaTween.IsActive()) { _leftAlphaTween.Kill(); _leftAlphaTween = null; }
+            if (_rightAlphaTween != null && _rightAlphaTween.IsActive()) { _rightAlphaTween.Kill(); _rightAlphaTween = null; }
+            if (_leftRevealTween != null && _leftRevealTween.IsActive()) { _leftRevealTween.Kill(); _leftRevealTween = null; }
+            if (_rightRevealTween != null && _rightRevealTween.IsActive()) { _rightRevealTween.Kill(); _rightRevealTween = null; }
+            if (_revealRoutineL != null) { StopCoroutine(_revealRoutineL); _revealRoutineL = null; }
+            if (_revealRoutineR != null) { StopCoroutine(_revealRoutineR); _revealRoutineR = null; }
+            if (_silhouetteRoutineL != null) { StopCoroutine(_silhouetteRoutineL); _silhouetteRoutineL = null; }
+            if (_silhouetteRoutineR != null) { StopCoroutine(_silhouetteRoutineR); _silhouetteRoutineR = null; }
         }
 
         // ====== 播放主流程 ======
@@ -152,20 +191,44 @@ namespace TheLaw.UI
                 }
                 if (_skipAll) break;
             }
+            // 正常播完：缓慢黑屏后退出（长按跳过不走黑屏）
+            if (!_skipAll && _exitFadeSeconds > 0f)
+            {
+                _exiting = true;
+                yield return StartCoroutine(ExitFadeRoutine());
+            }
             _playing = false;
             yield return null; // 等一帧：回调栈外销毁面板安全（Bootstrap 收尾）
             Finished?.Invoke();
         }
 
+        /// <summary>退出前缓慢黑屏：全屏黑 Image（临时创建，随面板销毁）alpha 0→1 缓入。</summary>
+        private System.Collections.IEnumerator ExitFadeRoutine()
+        {
+            if (_exitFade == null)
+            {
+                var go = new GameObject("Img_ExitFade", typeof(RectTransform), typeof(CanvasRenderer), typeof(Image));
+                go.transform.SetParent(transform, false);
+                go.transform.SetAsLastSibling(); // 最顶层
+                _exitFade = go.GetComponent<Image>();
+                _exitFade.color = new Color(0f, 0f, 0f, 0f);
+                _exitFade.raycastTarget = false;
+                Stretch(go.GetComponent<RectTransform>(), Vector2.zero, Vector2.one, Vector2.zero, Vector2.zero);
+            }
+            float t = 0f;
+            while (t < 1f)
+            {
+                t += Time.unscaledDeltaTime / Mathf.Max(0.001f, _exitFadeSeconds);
+                var c = _exitFade.color; c.a = Mathf.SmoothStep(0f, 1f, Mathf.Clamp01(t)); _exitFade.color = c;
+                yield return null;
+            }
+            var cf = _exitFade.color; cf.a = 1f; _exitFade.color = cf;
+        }
+
         /// <summary>进入一句：背景/说话人/立绘/差分/抖动/音效一次性应用（文本由打字机逐字上屏）。</summary>
         private void ApplyCue(StoryCue cue)
         {
-            // 背景：bg=true 显示背景；黑屏阶段 Img_Bg 纯黑（代码控 color 兜底——不依赖美术给黑图）
-            if (_bgImage != null)
-            {
-                _bgImage.gameObject.SetActive(true);
-                _bgImage.color = cue.bg ? Color.white : Color.black;
-            }
+            // 背景/黑屏完全交给 prefab 与场景转场（2026-08-24 李毕定：脚本不再生成叠层）
             if (_nameText != null) _nameText.text = cue.speaker ?? string.Empty;
             if (_contentText != null) _contentText.text = string.Empty;
 
@@ -210,29 +273,265 @@ namespace TheLaw.UI
 
         // ====== 立绘/差分/抖动 ======
 
-        /// <summary>按 cue 选左右立绘（Xeon=左主位；测试员=右位；旁白=隐藏两侧）；目标缺失判空跳过。返回当前激活立绘（供抖动）。</summary>
+        /// <summary>
+        /// 角色舞台状态（出场渐入 + 未说话半透明）：
+        /// - cue.showXeon/showTester → 对应角色入场（首次渐入，之后保持在场）
+        /// - 说话方全亮；另一在场角色半透明（DOTween 缓动）
+        /// - 旁白（无说话方）→ 在场角色全部半透明
+        /// - 两角色均未入场 → 两侧隐藏（黑屏阶段）
+        /// 返回当前说话立绘（供抖动）。
+        /// </summary>
         private void ApplyCharacter(StoryCue cue, out Image active)
         {
             active = null;
-            int side = ResolveSide(cue); // 0=旁白无立绘 / 1=左 Xeon / 2=右测试员
-            if (side == 0)
+            bool justRevealedL = false;
+            bool justRevealedR = false;
+
+            // 黑影（揭示前暗场登场）：纯黑 + 缩小（瞬时，不带动画；亮相时 DOTween 还原）
+            string sil = (cue.silhouette ?? string.Empty).ToLowerInvariant();
+            if (sil.Contains("xeon") && _charLeft != null)
             {
-                if (_charLeft != null) _charLeft.gameObject.SetActive(false);
-                if (_charRight != null) _charRight.gameObject.SetActive(false);
+                _xeonOnStage = true;
+                _xeonSilhouette = true;
+                _charLeft.gameObject.SetActive(true);
+                ApplySilhouette(_charLeft);
+            }
+            if ((sil.Contains("tester") || sil.Contains("test")) && _charRight != null)
+            {
+                _testerOnStage = true;
+                _testerSilhouette = true;
+                _charRight.gameObject.SetActive(true);
+                EnsureTesterSprite();
+                ApplySilhouette(_charRight);
+            }
+
+            // 亮相（showXeon/showTester）：黑影 → DOTween 还原（缩放 1 + 纯白）；非黑影首登场 → 渐入
+            if (cue.showXeon && _charLeft != null)
+            {
+                _xeonOnStage = true;
+                _charLeft.gameObject.SetActive(true);
+                if (_xeonSilhouette) { _xeonSilhouette = false; RevealChar(_charLeft, true); justRevealedL = true; }
+                else FadeChar(_charLeft, 1f, _fadeDuration);
+            }
+            if (cue.showTester && _charRight != null)
+            {
+                _testerOnStage = true;
+                _charRight.gameObject.SetActive(true);
+                EnsureTesterSprite();
+                if (_testerSilhouette) { _testerSilhouette = false; RevealChar(_charRight, false); justRevealedR = true; }
+                else FadeChar(_charRight, 1f, _fadeDuration);
+            }
+
+            if (!_xeonOnStage && !_testerOnStage)
+            {
+                HidePortraits();
                 return;
             }
-            bool tester = side == 2;
-            Image target = tester ? _charRight : _charLeft;
+            int speaking = ResolveSpeakingSide(cue);
+            if (speaking == 0)
+            {
+                // 旁白：在场且已亮相的角色半透明（黑影保持黑影；刚亮相这句不立刻调暗）
+                if (_xeonOnStage && _charLeft != null && !_xeonSilhouette && !justRevealedL) FadeChar(_charLeft, _dimAlpha, _fadeDuration);
+                if (_testerOnStage && _charRight != null && !_testerSilhouette && !justRevealedR) FadeChar(_charRight, _dimAlpha, _fadeDuration);
+                return;
+            }
+            var target = speaking == 2 ? _charRight : _charLeft;
             if (target == null)
             {
-                if (tester && !_missingRightLogged) { _missingRightLogged = true; Debug.LogWarning("[StoryPanel] Img_Character_R 缺失（李毕拼图未交付）——测试员句跳过右立绘"); }
-                if (!tester && !_missingLeftLogged) { _missingLeftLogged = true; Debug.LogWarning("[StoryPanel] Img_Character_L 缺失——Xeon 句跳过左立绘"); }
-                return; // 缺失判空跳过：保持现状，不隐藏另一侧
+                if (speaking == 2 && !_missingRightLogged) { _missingRightLogged = true; Debug.LogWarning("[StoryPanel] Img_Character_R 缺失——测试员句跳过右立绘"); }
+                if (speaking == 1 && !_missingLeftLogged) { _missingLeftLogged = true; Debug.LogWarning("[StoryPanel] Img_Character_L 缺失——Xeon 句跳过左立绘"); }
+                return;
             }
+            bool targetSilhouette = speaking == 2 ? _testerSilhouette : _xeonSilhouette;
+            bool firstSpeak = (speaking == 1 && !_xeonOnStage) || (speaking == 2 && !_testerOnStage);
+            if (speaking == 1) _xeonOnStage = true;
+            else _testerOnStage = true;
             target.gameObject.SetActive(true);
             active = target;
-            var other = tester ? _charLeft : _charRight;
-            if (other != null) other.gameObject.SetActive(false);
+            // 说话方亮起（带动画——从不说话→说话可见过渡）；黑影未亮相则保持黑影
+            if (!targetSilhouette) FadeChar(target, 1f, _fadeDuration);
+            var other = speaking == 2 ? _charLeft : _charRight;
+            if (other != null)
+            {
+                bool otherOnStage = speaking == 2 ? _xeonOnStage : _testerOnStage;
+                bool otherSilhouette = speaking == 2 ? _xeonSilhouette : _testerSilhouette;
+                if (otherOnStage && !otherSilhouette) FadeChar(other, _dimAlpha, _fadeDuration);
+                else if (!otherOnStage) other.gameObject.SetActive(false);
+            }
+        }
+
+        /// <summary>说话侧解析：显式 character/showTester/showXeon > speaker 推断（？？？在测试员入场后归右位）> 在场单人 > 缺省 Xeon。</summary>
+        private int ResolveSpeakingSide(StoryCue cue)
+        {
+            string type = (cue.type ?? string.Empty).ToLowerInvariant();
+            if (type.Contains("narration") || type.Contains("narrator") || type.Contains("旁白")) return 0; // 旁白无说话方
+            string sp = (cue.speaker ?? string.Empty).Trim();
+            if (sp == "？？？")
+            {
+                // ？？？= 测试员：黑影期不点亮任何人（Xeon 调暗、黑影保持暗）；测试员亮相后归右位
+                if (_testerOnStage) return _testerSilhouette ? 0 : 2;
+                if (_xeonOnStage) return 1;
+                return 0;
+            }
+            int side = ResolveSide(cue);
+            if (side != 0) return side;
+            if (_xeonOnStage && !_testerOnStage) return 1;
+            if (_testerOnStage && !_xeonOnStage) return 2;
+            return 1; // 双人在场且无信息——缺省 Xeon
+        }
+
+        private void HidePortraits()
+        {
+            if (_charLeft != null) _charLeft.gameObject.SetActive(false);
+            if (_charRight != null) _charRight.gameObject.SetActive(false);
+        }
+
+        /// <summary>硬复位立绘（面板重开起点）：隐藏 + 缩放 1 + 纯白。</summary>
+        private void ResetPortraits()
+        {
+            if (_charLeft != null)
+            {
+                KillSideTweens(_charLeft);
+                _charLeft.rectTransform.localScale = Vector3.one;
+                _charLeft.color = Color.white;
+                _charLeft.gameObject.SetActive(false);
+            }
+            if (_charRight != null)
+            {
+                KillSideTweens(_charRight);
+                _charRight.rectTransform.localScale = Vector3.one;
+                _charRight.color = Color.white;
+                _charRight.gameObject.SetActive(false);
+            }
+        }
+
+        /// <summary>黑影：深黑 + 略缩小 + 渐显（alpha 0 → 0.9，协程确定性动画）。</summary>
+        private void ApplySilhouette(Image img)
+        {
+            if (img == null) return;
+            KillSideTweens(img);
+            img.rectTransform.localScale = Vector3.one * _silhouetteScale;
+            var c0 = img.color;
+            c0.r = _silhouetteColor.r; c0.g = _silhouetteColor.g; c0.b = _silhouetteColor.b; c0.a = 0f;
+            img.color = c0;
+            Coroutine r = ReferenceEquals(img, _charLeft) ? _silhouetteRoutineL : _silhouetteRoutineR;
+            if (r != null) StopCoroutine(r);
+            r = StartCoroutine(SilhouetteFadeIn(img));
+            if (ReferenceEquals(img, _charLeft)) _silhouetteRoutineL = r; else _silhouetteRoutineR = r;
+        }
+
+        /// <summary>黑影渐显：alpha 0 → 黑影目标透明度（unscaled + SmoothStep）。</summary>
+        private System.Collections.IEnumerator SilhouetteFadeIn(Image img)
+        {
+            float targetA = _silhouetteColor.a;
+            float t = 0f;
+            while (t < 1f)
+            {
+                t += Time.unscaledDeltaTime / Mathf.Max(0.001f, _fadeDuration);
+                var c = img.color;
+                c.a = Mathf.SmoothStep(0f, targetA, Mathf.Clamp01(t));
+                img.color = c;
+                yield return null;
+            }
+            var cf = img.color; cf.a = targetA; img.color = cf;
+            if (ReferenceEquals(img, _charLeft)) _silhouetteRoutineL = null; else _silhouetteRoutineR = null;
+        }
+
+        /// <summary>
+        /// 亮相还原：缩放 → 1 + 颜色 → 纯白。
+        /// DOTween 缓动参与（用户要求）；并行协程兜底（DOTween 未初始化/不推进时保证还原——确定性）。
+        /// </summary>
+        private void RevealChar(Image img, bool left)
+        {
+            if (img == null) return;
+            KillSideTweens(img);
+            // 兜底协程（确定性动画，DOTween 死掉也能还原）
+            Coroutine c = left ? _revealRoutineL : _revealRoutineR;
+            if (c != null) { StopCoroutine(c); }
+            c = StartCoroutine(RevealRoutine(img, left));
+            if (left) _revealRoutineL = c; else _revealRoutineR = c;
+            // DOTween 缓动（与协程同向收敛；DOTween 可用时提供平滑）
+            var rt = img.rectTransform;
+            Vector3 fromS = rt.localScale;
+            Color fromC = img.color;
+            var ts = DOTween.To(() => fromS, v => rt.localScale = v, Vector3.one, _fadeDuration).SetEase(Ease.OutQuad).SetUpdate(true);
+            var tc = DOTween.To(() => fromC, v => img.color = v, Color.white, _fadeDuration).SetEase(Ease.OutQuad).SetUpdate(true);
+            var seq = DOTween.Sequence().Join(ts).Join(tc);
+            seq.OnComplete(() => { if (left) _leftRevealTween = null; else _rightRevealTween = null; });
+            if (left) _leftRevealTween = seq; else _rightRevealTween = seq;
+        }
+
+        /// <summary>亮相兜底：unscaled 时间 + SmoothStep 手动插值缩放/颜色到纯白+1（不依赖 DOTween 更新机制）。</summary>
+        private System.Collections.IEnumerator RevealRoutine(Image img, bool left)
+        {
+            var rt = img.rectTransform;
+            Vector3 fromS = rt.localScale;
+            Color fromC = img.color;
+            float t = 0f;
+            while (t < 1f)
+            {
+                t += Time.unscaledDeltaTime / Mathf.Max(0.001f, _fadeDuration);
+                float k = Mathf.SmoothStep(0f, 1f, Mathf.Clamp01(t));
+                rt.localScale = Vector3.Lerp(fromS, Vector3.one, k);
+                img.color = Color.Lerp(fromC, Color.white, k);
+                yield return null;
+            }
+            rt.localScale = Vector3.one;
+            img.color = Color.white;
+            if (left) _revealRoutineL = null; else _revealRoutineR = null;
+        }
+
+        /// <summary>杀某侧立绘的透明度/亮相 tween（黑影/重置前调用）。</summary>
+        private void KillSideTweens(Image img)
+        {
+            if (img == null) return;
+            if (ReferenceEquals(img, _charLeft))
+            {
+                if (_leftAlphaTween != null && _leftAlphaTween.IsActive()) { _leftAlphaTween.Kill(); _leftAlphaTween = null; }
+                if (_leftRevealTween != null && _leftRevealTween.IsActive()) { _leftRevealTween.Kill(); _leftRevealTween = null; }
+                if (_revealRoutineL != null) { StopCoroutine(_revealRoutineL); _revealRoutineL = null; }
+                if (_silhouetteRoutineL != null) { StopCoroutine(_silhouetteRoutineL); _silhouetteRoutineL = null; }
+            }
+            else if (ReferenceEquals(img, _charRight))
+            {
+                if (_rightAlphaTween != null && _rightAlphaTween.IsActive()) { _rightAlphaTween.Kill(); _rightAlphaTween = null; }
+                if (_rightRevealTween != null && _rightRevealTween.IsActive()) { _rightRevealTween.Kill(); _rightRevealTween = null; }
+                if (_revealRoutineR != null) { StopCoroutine(_revealRoutineR); _revealRoutineR = null; }
+                if (_silhouetteRoutineR != null) { StopCoroutine(_silhouetteRoutineR); _silhouetteRoutineR = null; }
+            }
+        }
+
+        /// <summary>立绘状态缓动：说话=纯白全亮；未说话=浅灰+_dimAlpha。颜色+alpha 一起动（core DOTween）。</summary>
+        private void FadeChar(Image img, float to, float duration)
+        {
+            if (img == null) return;
+            KillSideTweens(img); // 先停该侧全部状态动画（含亮相 tween/协程）——防亮相收尾写白覆盖调暗
+            Color target = to >= 0.999f
+                ? Color.white
+                : new Color(_dimColor.r, _dimColor.g, _dimColor.b, _dimAlpha);
+            Color from = img.color;
+            if (duration <= 0f || from == target)
+            {
+                img.color = target;
+                return;
+            }
+            Tween tw = DOTween.To(() => from, v => img.color = v, target, duration)
+                .SetEase(Ease.InOutQuad).SetUpdate(true).OnComplete(() =>
+                {
+                    if (ReferenceEquals(img, _charLeft)) _leftAlphaTween = null;
+                    else _rightAlphaTween = null;
+                });
+            if (ReferenceEquals(img, _charLeft)) _leftAlphaTween = tw; else _rightAlphaTween = tw;
+        }
+
+        /// <summary>测试员立绘兜底：prefab 未挂 sprite 时按 Addressables 地址加载（Tester_Default）。</summary>
+        private void EnsureTesterSprite()
+        {
+            if (_charRight == null || _charRight.sprite != null) return;
+            var s = LoadSpriteOrNull("Tester_Default");
+            if (s == null) s = LoadSpriteOrNull("Tester");
+            if (s != null) _charRight.sprite = s;
+            else Debug.LogWarning("[StoryPanel] Tester 立绘缺失（Addressables 无 Tester_Default）——右位保留占位");
         }
 
         /// <summary>角色侧位解析：显式 character/char/side > showTester/showXeon > speaker 推断 > type（旁白=0）> 缺省左主位。</summary>
@@ -244,8 +543,7 @@ namespace TheLaw.UI
                 if (c == "r" || c == "right" || c.Contains("测试") || c.Contains("tester") || c.Contains("test")) return 2;
                 if (c == "l" || c == "left" || c.Contains("xeon")) return 1;
             }
-            if (cue.showTester) return 2;
-            if (cue.showXeon) return 1;
+            // ⚠️ showTester/showXeon 是入场/亮相标记，不参与说话侧判定（曾导致 #8 Xeon 句被判成测试员说话）
             string sp = (cue.speaker ?? string.Empty).ToLowerInvariant();
             if (sp.Contains("测试") || sp.Contains("tester") || sp == "r") return 2;
             if (sp.Contains("xeon") || sp == "l") return 1;
@@ -281,6 +579,12 @@ namespace TheLaw.UI
             {
                 try
                 {
+                    // 先查地址存在（LoadResourceLocations 无效 key 返回空且不刷 InvalidKeyException）
+                    var locHandle = Addressables.LoadResourceLocationsAsync(addr, typeof(Sprite));
+                    locHandle.WaitForCompletion();
+                    int count = locHandle.Result == null ? 0 : locHandle.Result.Count;
+                    Addressables.Release(locHandle);
+                    if (count == 0) continue; // 地址不存在——试下一候选
                     var handle = Addressables.LoadAssetAsync<Sprite>(addr);
                     var sprite = handle.WaitForCompletion();
                     Addressables.Release(handle);
@@ -288,7 +592,7 @@ namespace TheLaw.UI
                 }
                 catch
                 {
-                    // 地址不存在——试下一候选
+                    // 异常——试下一候选
                 }
             }
             return null;
@@ -349,7 +653,7 @@ namespace TheLaw.UI
 
         private void Update()
         {
-            if (!_playing || _skipAll) return;
+            if (!_playing || _skipAll || _exiting) return;
             bool down = AnyPressDown();
             bool held = AnyPressHeld();
 
@@ -455,12 +759,15 @@ namespace TheLaw.UI
                     cue.text = GetString(o, "text", "dialogue", "content", "line", "txt") ?? string.Empty;
                     cue.speaker = GetString(o, "speaker", "name", "who") ?? string.Empty;
                     cue.character = GetString(o, "character", "char", "side") ?? string.Empty;
-                    cue.showXeon = GetBool(o, "showXeon", "xeon");
-                    cue.showTester = GetBool(o, "showTester", "tester");
-                    cue.xeonDiff = GetString(o, "xeonDiff", "diff", "expression", "pose", "portrait") ?? string.Empty;
-                    cue.shake = GetBool(o, "shake", "shaking");
-                    cue.sfx = GetString(o, "sfx", "sound", "audio") ?? string.Empty;
-                    cue.bg = GetBool(o, "bg", "showBg", "background");
+                    // ⚠️ cue 字段在子对象 "cue" 里（entry 根只有 type/text/speaker）——读错层级 = 全部失效（历史根因：立绘/bg/音效/差分全不生效）
+                    var cueObj = o["cue"] as JObject ?? o;
+                    cue.silhouette = GetString(cueObj, "silhouette", "shadow") ?? string.Empty;
+                    cue.showXeon = GetBool(cueObj, "showXeon", "xeon");
+                    cue.showTester = GetBool(cueObj, "showTester", "tester");
+                    cue.xeonDiff = GetString(cueObj, "xeonDiff", "diff", "expression", "pose", "portrait") ?? string.Empty;
+                    cue.shake = GetBool(cueObj, "shake", "shaking");
+                    cue.sfx = GetString(cueObj, "sfx", "sound", "audio") ?? string.Empty;
+                    cue.bg = GetBool(cueObj, "bg", "showBg", "background");
                     list.Add(cue);
                 }
                 if (list.Count == 0)
@@ -585,6 +892,8 @@ namespace TheLaw.UI
         public string speaker;
         /// <summary>显式立绘位置/角色（可选："L"/"R"/"Xeon"/"测试员"——优先于 speaker 推断）。</summary>
         public string character;
+        /// <summary>黑影登场标记（"xeon"/"tester"——揭示前纯黑+缩小，亮相时 DOTween 还原）。</summary>
+        public string silhouette;
         /// <summary>显式 Xeon（左主位）标记（另一个 agent 的解析工具字段）。</summary>
         public bool showXeon;
         /// <summary>显式测试员（右位）标记（另一个 agent 的解析工具字段）。</summary>

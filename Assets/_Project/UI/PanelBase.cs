@@ -18,7 +18,7 @@ namespace TheLaw.UI
 
         public virtual bool IsPausing => false; // 默认非暂停型；设置/确认等子类覆写 true
 
-        public void Show()
+        public virtual void Show()
         {
             bool wasActive = gameObject.activeSelf;
             gameObject.SetActive(true);
@@ -43,7 +43,7 @@ namespace TheLaw.UI
             }
         }
 
-        public void Hide()
+        public virtual void Hide()
         {
             bool wasActive = gameObject.activeSelf;
             OnHide();

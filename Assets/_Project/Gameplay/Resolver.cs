@@ -63,6 +63,15 @@ namespace TheLaw.Gameplay
             {
                 return;
             }
+            // ⚠️ 2026-08-24 能力「吃子」：玩家侧移动落点踩敌方棋子格 → 先直接击败（HandleDeath——无视承伤含护盾、killer=移动棋子：计分/牌去向正常走）再移动落账。
+            //（先击杀后移动——避免 HandleDeath 按 victim 位置移除与落子写入冲突；表现层收到 死亡→移动 顺序）
+            var devourTarget = (_state.HasRelicEffect(RelicEffectType.Devour) && piece.side == Side.Player)
+                ? _state.GetPieceAt(action.to)
+                : null;
+            if (devourTarget != null && devourTarget.side == Side.Enemy)
+            {
+                HandleDeath(devourTarget, piece);
+            }
             _state.Pieces.Remove(action.from);
             piece.position = action.to;
             _state.Pieces[action.to] = piece;
@@ -129,6 +138,11 @@ namespace TheLaw.Gameplay
                 // ⚠️ 2026-08-20 麻将：攻击命中墙体格（无棋子目标）——选了即破坏（整墙 + 填牌山点数 + 基础分 +1）
                 BreakMahjongWall(action.targetCell);
             }
+            else if (_state.ShockWalls.Contains(action.targetCell))
+            {
+                // ⚠️ 2026-08-24 能力「震击」：攻击命中震击墙（**不可破坏**——定案）→ 周围 8 格**所有棋子**（敌我双方——定案）受**固定 1** 伤害（定案；逐目标 DamageDealt——AOE 同款协议）
+                ResolveShockWallSplash(piece, action.targetCell, action.template.mode);
+            }
 
             // 附着结算（Attach/OnAttack：如十字额外伤害——范围额外结算）
             ResolveAttachOnAttack(piece, action.targetCell, action.template, elementHit ? 0 : damage);
@@ -155,6 +169,62 @@ namespace TheLaw.Gameplay
                 if (p != null && p.element == element) count++;
             }
             return count;
+        }
+
+        /// <summary>震击墙溅射（2026-08-24 能力「震击」）：目标墙格周围 8 邻格**所有棋子**（敌我双方）受固定 1 伤害——逐目标发 DamageDealt（AOE 协议：TargetId 独立）；墙不破坏。</summary>
+        private void ResolveShockWallSplash(PieceInstance attacker, Vector2Int wallCell, AttackMode mode)
+        {
+            for (int dx = -1; dx <= 1; dx++)
+            {
+                for (int dy = -1; dy <= 1; dy++)
+                {
+                    if (dx == 0 && dy == 0) continue; // 墙格自身不是目标
+                    var cell = wallCell + new Vector2Int(dx, dy);
+                    var victim = _state.GetPieceAt(cell);
+                    if (victim == null) continue;
+                    bool died = ModifyDurability(victim, -1, attacker); // 固定 1 伤害（定案）
+                    EventCenter.Instance.EventTrigger(GameEvent.DamageDealt, new DamageInfo
+                    {
+                        AttackerId = attacker.Id,
+                        TargetId = victim.Id,
+                        TargetCell = cell,
+                        Damage = 1,
+                        TargetDied = died,
+                        FriendlyFire = true, // 敌我双方都受（定案）
+                        AttackMode = mode,   // 攻击音分发同本次攻击模板（前端契约）
+                    });
+                }
+            }
+        }
+
+        /// <summary>震击墙生成（2026-08-24 能力「震击」：游戏开始时——非部署区[中间 4 行 y2-5]随机 2 格[空/无墙/无障碍]；不可破坏；并入 IsBlocked 阻挡移动/直射）。</summary>
+        public void SpawnShockWalls()
+        {
+            _state.ShockWalls.Clear();
+            if (!_state.HasRelicEffect(RelicEffectType.ShockWall)) return;
+            var candidates = new List<Vector2Int>();
+            for (int y = 2; y <= 5; y++) // 非部署区（我方 y0-1 / 敌方 y6-7 之外）
+            {
+                for (int x = 0; x < 8; x++)
+                {
+                    var cell = new Vector2Int(x, y);
+                    if (!_state.Pieces.ContainsKey(cell) && !_state.IsBlocked(cell))
+                    {
+                        candidates.Add(cell);
+                    }
+                }
+            }
+            int take = Mathf.Min(2, candidates.Count); // 防御：极端无空位 → 少于 2
+            for (int i = 0; i < take; i++)
+            {
+                int idx = RandomManager.Instance.Range(0, candidates.Count); // RandomManager——种子相关可复现
+                _state.ShockWalls.Add(candidates[idx]);
+                candidates.RemoveAt(idx);
+            }
+            if (take > 0)
+            {
+                EventCenter.Instance.EventTrigger(GameEvent.StateChanged, "shock-walls"); // 生成提示（前端表现）
+            }
         }
 
         /// <summary>
@@ -296,6 +366,16 @@ namespace TheLaw.Gameplay
                 && _state.DiceValue > 0 && PieceValue.SumValue(piece.GetProgram(_state)) == _state.DiceValue)
             {
                 AddMultiplier(1);
+            }
+            // ⚠️ 2026-08-24 能力「属性骰子」：部署"骰子对应属性"的棋子 → 倍率+1（6=任意属性触发——策划定案）
+            if (action.side == Side.Player && _state.HasRelicEffect(RelicEffectType.ElementMatchMultiplier)
+                && _state.DiceValue > 0 && piece.element != Element.None)
+            {
+                var mapped = ElementFromDice(_state.DiceValue);
+                if (mapped == Element.None || mapped == piece.element)
+                {
+                    AddMultiplier(1);
+                }
             }
             // ⚠️ 2026-08-24 能力「改良」：己方部署棋子时，棋子价值填入牌山（麻将玩法激活时才有能力——HasRelicEffect 判定）
             if (action.side == Side.Player && _state.HasRelicEffect(RelicEffectType.MahjongFillOnDeployPromote))
@@ -543,14 +623,21 @@ namespace TheLaw.Gameplay
         /// 麻将：数字填入牌山（破坏/摸切/敌方棋子被击败）。
         /// 牌山 ≤2：第 3 个填入时**先判定**（在移除之前）——3 个组成刻子/顺子 → 番数 +1、清空牌山；不组 → 移除最早（牌山回到 ≤2）。
         /// </summary>
-        public void PushMahjongScore(int value)
+        /// <summary>
+        /// 麻将：数字填入牌山（破坏/摸切/敌方棋子被击败/投掷——骰鼓）。
+        /// 牌山 ≤2：第 3 个填入时**先判定**（在移除之前）——3 个组成刻子/顺子 → 番数 +1、清空牌山；不组 → 移除最早（牌山回到 ≤2）。
+        /// 返回**本次填入是否构成刻/顺**（刚填入的值必在成组的 3 个中——能力「骨骰骨牌」回 AP 判定用；其余调用方忽略返回值）。
+        /// </summary>
+        public bool PushMahjongScore(int value)
         {
-            if (value <= 0) return;
+            if (value <= 0) return false;
             _state.MahjongScore.Add(value);
+            bool made = false;
             if (_state.MahjongScore.Count >= 3)
             {
                 if (Mahjong.IsTripletOrSequence(_state.MahjongScore))
                 {
+                    made = true;
                     _state.FanCount += 1;      // 刻子/顺子成形 → 番数 +1
                     // ⚠️ 2026-08-24 能力「宝牌」：组成刻子/顺子的数字含宝牌数字 → 番数额外 +1（本组共 +2）
                     if (_state.HasRelicEffect(RelicEffectType.Baopai) && _state.BaopaiNumber > 0
@@ -566,6 +653,7 @@ namespace TheLaw.Gameplay
                 }
             }
             EventCenter.Instance.EventTrigger(GameEvent.StateChanged, "mahjong-score"); // 牌山/番数变化（前端刷新）
+            return made;
         }
 
         /// <summary>
@@ -619,6 +707,12 @@ namespace TheLaw.Gameplay
             RecordMahjongDeathWithBaopai(deadCard); // 2026-08-24 宝牌判定并入（进弃牌区 → 宝牌得分）
             PushMahjongScore(wall.value);       // 破坏 → 填牌山点数
             AddBaseScore(1);                     // 破坏 → 基础得分 +1（2026-08-20 计分统一入口——顺带补发计分事件）
+            // ⚠️ 2026-08-24 能力「麻将筹码」：部署的麻将牌被破坏 → 获得 1 代币
+            if (_state.HasRelicEffect(RelicEffectType.TokenOnWallBreak))
+            {
+                _state.TokenCount += 1;
+                EventCenter.Instance.EventTrigger(GameEvent.StateChanged, "token");
+            }
             EventCenter.Instance.EventTrigger(GameEvent.StateChanged, "mahjong-wall");
         }
 
@@ -695,6 +789,7 @@ namespace TheLaw.Gameplay
             _state.DiceValue = RandomManager.Instance.Range(1, 7); // RandomManager——种子相关可复现
             AddBaseScore(_state.DiceValue); // 基础得分 + 骰子点数
             EventCenter.Instance.EventTrigger(GameEvent.StateChanged, "dice");
+            RollDiceBonus(_state.DiceValue); // 2026-08-24 能力池 P2：骰鼓/变换/老虎机（投掷联动）
         }
 
         /// <summary>投掷（自选点数版——2026-08-24 能力「出千」：前端 1-6 自选面板回调，BattleFlow 校验等待态后调用）。</summary>
@@ -704,6 +799,79 @@ namespace TheLaw.Gameplay
             _state.DiceValue = value;
             AddBaseScore(value); // 基础得分 + 骰子点数（口径同随机投掷）
             EventCenter.Instance.EventTrigger(GameEvent.StateChanged, "dice");
+            RollDiceBonus(value); // 2026-08-24 能力池 P2：骰鼓/变换/老虎机（投掷联动——自选同链）
+        }
+
+        /// <summary>
+        /// 投掷尾部能力联动（2026-08-24 能力池 P2 复合——随机/自选两链共用）：
+        /// 骨骰骨牌（点数填牌山；本次点数参与组成刻/顺 → 当回合 PlayerAP+1——加当前点数不回上限不钳制）；
+        /// 变换（场上及手牌所有棋子重刷属性）；老虎机（获得骰子点数代币）。
+        /// </summary>
+        private void RollDiceBonus(int value)
+        {
+            // 骨骰骨牌（麻将+骰子）
+            if (_state.HasRelicEffect(RelicEffectType.DiceToMahjongScore))
+            {
+                bool made = PushMahjongScore(value); // 点数填入牌山（返回是否本次构成刻/顺）
+                if (made)
+                {
+                    _state.PlayerAP += 1; // 当回合临时 +1 当前点数（策划定案：加点数非上限、不钳制——回合末自然清零）
+                    EventCenter.Instance.EventTrigger(GameEvent.ActionPointChanged, new ApInfo { Side = Side.Player, Current = _state.PlayerAP, Max = _state.PlayerAPMax });
+                }
+            }
+            // 变换（属性+骰子）
+            if (_state.HasRelicEffect(RelicEffectType.ElementRerollOnRoll))
+            {
+                RerollAllElements();
+            }
+            // 老虎机（骰子+代币）——投掷获得骰子点数代币
+            if (_state.HasRelicEffect(RelicEffectType.TokenOnRoll))
+            {
+                _state.TokenCount += value;
+                EventCenter.Instance.EventTrigger(GameEvent.StateChanged, "token");
+            }
+        }
+
+        /// <summary>全场+手牌属性重刷（2026-08-24 能力「变换」：投掷时所有棋子重刷随机属性——场上双方棋子 + 手牌棋子牌）。</summary>
+        private void RerollAllElements()
+        {
+            bool handChanged = false;
+            foreach (var piece in _state.Pieces.Values)
+            {
+                if (piece != null && piece.element != Element.None)
+                {
+                    piece.element = RandomElement();
+                }
+            }
+            for (int i = 0; i < _state.Hand.Count; i++)
+            {
+                var c = _state.Hand[i];
+                if (c.IsPiece && c.element != Element.None)
+                {
+                    c.element = RandomElement();
+                    _state.Hand[i] = c; // struct 索引写回
+                    handChanged = true;
+                }
+            }
+            EventCenter.Instance.EventTrigger(GameEvent.StateChanged, "element");
+            if (handChanged)
+            {
+                EventCenter.Instance.EventTrigger(GameEvent.HandChanged, _state.Hand);
+            }
+        }
+
+        /// <summary>骰子点数 → 属性映射（2026-08-24 能力「属性骰子」：1-金/2-木/3-水/4-火/5-土/6=任意（返回 None——任意属性触发））。</summary>
+        private static Element ElementFromDice(int diceValue)
+        {
+            switch (diceValue)
+            {
+                case 1: return Element.Gold;
+                case 2: return Element.Wood;
+                case 3: return Element.Water;
+                case 4: return Element.Fire;
+                case 5: return Element.Earth;
+                default: return Element.None; // 6 = 任意（部署任何属性棋子触发）
+            }
         }
 
         /// <summary>宝牌数字写入（2026-08-24 能力「宝牌」：前端 1-9 数字选择面板回调——校验 1-9 + 持有能力；0 拒绝）。</summary>
@@ -900,6 +1068,12 @@ namespace TheLaw.Gameplay
                 {
                     _state.TokenCount += 1; // 购买非初始棋子返还 1 代币
                 }
+            }
+            // ⚠️ 2026-08-24 能力「老虎机」：花费代币数 == 当前骰子点数 → 抽一张牌并丢弃一张到弃牌区（策划定案：数额精确匹配）
+            if (_state.HasRelicEffect(RelicEffectType.SlotDrawOnMatch) && cost == _state.DiceValue && _state.DiceValue > 0)
+            {
+                DrawCard(); // 抽一张（抽牌堆随机）
+                DropRandomCardToDiscard(); // 丢弃一张（手牌随机 → 弃牌区）
             }
             AddBaseScore(cost); // 基础得分 + 消耗代币数
             EventCenter.Instance.EventTrigger(GameEvent.StateChanged, "token");
@@ -1254,6 +1428,26 @@ namespace TheLaw.Gameplay
             {
                 AddBaseScore(changed); // 每有一个棋子属性发生变化 → 基础得分 +1
             }
+        }
+
+        /// <summary>手牌随机弃一张到弃牌区（2026-08-24 能力「老虎机」：抽一弃一——棋子牌进墓地+弃牌区[宝牌判定并入]、麻将牌进弃牌区死亡区；手牌空 = 无操作）。</summary>
+        private void DropRandomCardToDiscard()
+        {
+            if (_state.Hand.Count == 0) return;
+            int idx = RandomManager.Instance.Range(0, _state.Hand.Count); // RandomManager——种子相关可复现
+            var card = _state.Hand[idx];
+            if (card.IsPiece)
+            {
+                HandRemovePieceAt(idx); // 统一牌区入口（只删该索引）
+                _state.Graveyard.Add(card.defId);
+                RecordPieceDeathWithBaopai(card); // 弃牌区·棋子死亡（宝牌判定并入）
+            }
+            else if (card.IsMahjong)
+            {
+                HandRemoveMahjong(card.value); // 统一牌区入口（按点数）
+                RecordMahjongDeathWithBaopai(card); // 弃牌区·麻将死亡（宝牌判定并入）
+            }
+            EventCenter.Instance.EventTrigger(GameEvent.HandChanged, _state.Hand);
         }
 
         // ========== 事件/编辑/加牌效果（经 Resolver 落账——唯一写入口）==========

@@ -89,9 +89,9 @@ namespace TheLaw.Gameplay
                                 }
                                 if (isLastSegment)
                                 {
-                                    if (IsCellOccupied(state, cursor))
+                                    if (!CanLandOnCell(state, piece, cursor))
                                     {
-                                        continue; // 落点不可重叠（棋子）
+                                        continue; // 落点不可重叠（棋子）——「吃子」例外：玩家侧可踩敌方棋子格（移动后直接击败）
                                     }
                                     reachable.Add(cursor); // 落点
                                 }
@@ -110,16 +110,24 @@ namespace TheLaw.Gameplay
                 }
             }
             // 跳跃落点（2026-08-16）：相对棋子位置偏移（绝对方向——与攻击 points 同语义，不随 facing 旋转）；
-            // 与常规路径共存（落点并集）；跳跃只查落点合法性（界内 + 非占用 + 非障碍），不查中间路径
+            // 与常规路径共存（落点并集）；跳跃只查落点合法性（界内 + 非占用 + 非障碍——吃子例外同 CanLandOnCell），不查中间路径
             foreach (var offset in template.jumpOffsets)
             {
                 var cell = piece.position + offset;
-                if (IsCellPassable(state, cell))
+                if (IsInsideBoard(cell) && !state.IsBlocked(cell) && CanLandOnCell(state, piece, cell))
                 {
                     reachable.Add(cell);
                 }
             }
             return new List<Vector2Int>(reachable);
+        }
+
+        /// <summary>落点可否降落（2026-08-24 能力「吃子」例外）：空格可落；占用格仅玩家侧「吃子」激活时可踩**敌方棋子**格（移动后直接击败）。</summary>
+        private static bool CanLandOnCell(GameState state, PieceInstance piece, Vector2Int cell)
+        {
+            var occupant = state.GetPieceAt(cell);
+            if (occupant == null) return true;
+            return state.HasRelicEffect(RelicEffectType.Devour) && piece.side == Side.Player && occupant.side == Side.Enemy;
         }
 
         // ========== 攻击 ==========

@@ -108,6 +108,7 @@ namespace TheLaw.Gameplay
             // 先分离非初始牌，再创建 Placement UI；避免构筑结果在准备阶段短暂显示为满手牌。
             // StartPlayerTurn 仍保留幂等防御调用，首回合只负责自动抽 4 张。
             _resolver.SetupDrawPile();
+            _resolver.SpawnShockWalls(); // 2026-08-24 能力「震击」：游戏开始时非部署区随机生成 2 个不可破坏墙（持有能力时；内部判——摆位阶段可见）
             // ⚠️ 2026-08-24 战斗中续玩（临时方案）：开战快照 SL 槽——必须在**波次随机（HandleWaveAndPromotions）之前**保存
             // （GameState + RNG 独立槽位；Continue 战斗档加载后 StartBattle 重开 → 与首次完全一致[含首波随机阵容]）
             SaveManager.Instance.SaveBattleStart();
@@ -848,6 +849,14 @@ namespace TheLaw.Gameplay
                     }
                     break;
                 case AttackTemplate attack:
+                    // ⚠️ 2026-08-24 能力「吃子」：玩家侧执行**跳过攻击槽**（攻击行动不生效——移动吃子代替；纯攻击槽程序 = 纯跳过——策划定案）
+                    if (piece.side == Side.Player && _state.HasRelicEffect(RelicEffectType.Devour))
+                    {
+                        _resolver.Resolve(new SkipAction(piece.Id, SkipReason.NoAttack));
+                        _ctx.slotIndex++;
+                        AdvanceSlot();
+                        break;
+                    }
                     if (piece.side == Side.Player)
                     {
                         var playerAttackOptions = _intentResolver.GetAttackOptions(_state, piece, attack);

@@ -143,6 +143,10 @@ namespace TheLaw.Gameplay
         /// <summary>宝牌数字（1-9 选中；0=未选——获得能力后经前端数字选择面板写入；判定"数字对应价值的牌"）。</summary>
         public int BaopaiNumber { get; internal set; }
 
+        // ========== 能力「震击」（2026-08-24 能力池 P3——战斗级）==========
+        /// <summary>震击墙（2 个——开局非部署区随机生成，不可破坏；攻击命中 → 周围 8 格敌我双方受固定 1 伤害；并入 IsBlocked 阻挡）。</summary>
+        public HashSet<Vector2Int> ShockWalls { get; internal set; } = new HashSet<Vector2Int>();
+
         public List<RelicDef> Relics { get; internal set; } = new List<RelicDef>();
         /// <summary>能力事件三选一候选（2026-08-22：当前能力事件展示的 3 个候选——词条过滤随机抽取；事件进行中入档）。</summary>
         public List<RelicDef> AbilityCandidates { get; internal set; } = new List<RelicDef>();
@@ -255,7 +259,8 @@ namespace TheLaw.Gameplay
         /// 棋盘格是否障碍（2026-08-20 统一入口：普通障碍 Obstacles ∪ 麻将墙体 MahjongWalls——决策记录_牌数据结构与玩法语义）。
         /// 移动阻挡 + 直射阻挡共用；以后新增障碍源 = 在此加一行，查询点收拢。
         /// </summary>
-        public bool IsBlocked(Vector2Int cell) => Obstacles.Contains(cell) || (MahjongWalls != null && MahjongWalls.ContainsKey(cell));
+        public bool IsBlocked(Vector2Int cell) => Obstacles.Contains(cell) || (MahjongWalls != null && MahjongWalls.ContainsKey(cell))
+            || (ShockWalls != null && ShockWalls.Contains(cell)); // 2026-08-24 能力「震击」墙：并入统一障碍判定（阻挡移动/直射）
 
         public PieceInstance GetPiece(int pieceId) => PiecesById.TryGetValue(pieceId, out var p) ? p : null;
 
@@ -412,6 +417,7 @@ namespace TheLaw.Gameplay
             PresentationTimeouts.Clear(); // 诊断随整局重置（2026-08-21——新局新诊断）
             FanCount = 0;
             MahjongWalls.Clear();
+            ShockWalls.Clear();       // 2026-08-24 能力「震击」：墙随整局重置（战斗级——ResetForBattle 同清）
             ActiveStyles.Clear(); // 玩法激活随整局重置（跨关累积——ResetForBattle 不清）
             BaopaiNumber = 0;     // 2026-08-24 能力「宝牌」：数字随整局重置（0=未选；整局级——ResetForBattle 保留）
             EditedCardQualifyId = 0; // 2026-08-23：E5 资格随整局重置
@@ -476,6 +482,7 @@ namespace TheLaw.Gameplay
             MahjongScore.Clear();
             FanCount = 0;
             MahjongWalls.Clear();
+            ShockWalls.Clear(); // 2026-08-24 能力「震击」：墙战斗级（新战斗重新生成）
         }
 
         // ========== ISnapshot（经 DTO——Vector2Int/PieceDef 引用不可直接序列化）==========
@@ -541,6 +548,7 @@ namespace TheLaw.Gameplay
                 NodeStates = new List<NodeState>(NodeStates),
                 ReplayLog = ReplayLog,
                 Obstacles = new List<Vector2Int>(Obstacles),
+                ShockWalls = new List<Vector2Int>(ShockWalls), // 2026-08-24 能力「震击」墙（战斗级——读档续战一致）
             };
             foreach (var piece in PiecesById.Values)
             {
@@ -651,6 +659,7 @@ namespace TheLaw.Gameplay
             NodeStates = dto.NodeStates ?? new List<NodeState>();
             ReplayLog = dto.ReplayLog ?? new List<ConcreteAction>();
             Obstacles = dto.Obstacles != null ? new HashSet<Vector2Int>(dto.Obstacles) : new HashSet<Vector2Int>();
+            ShockWalls = dto.ShockWalls != null ? new HashSet<Vector2Int>(dto.ShockWalls) : new HashSet<Vector2Int>(); // 2026-08-24 能力「震击」（旧档缺省空）
             Pieces.Clear();
             PiecesById.Clear();
             if (dto.Pieces != null)
@@ -762,6 +771,7 @@ namespace TheLaw.Gameplay
         public List<NodeState> NodeStates;
         public List<ConcreteAction> ReplayLog;
         public List<Vector2Int> Obstacles;
+        public List<Vector2Int> ShockWalls; // 2026-08-24 能力「震击」墙（战斗级）
         public List<PieceDto> Pieces = new List<PieceDto>();
     }
 

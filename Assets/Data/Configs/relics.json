@@ -263,6 +263,125 @@
           "value": 1
         }
       ]
+    },
+    {
+      "relicName": "ability_bones_tiles",
+      "displayName": "骨骰骨牌",
+      "description": "每次投掷骰子时，骰子对应的点数也会增加到牌山。若骰子点数的数字参与凑成刻子或顺子时，行动点＋1",
+      "tags": [
+        "mahjong",
+        "dice"
+      ],
+      "effects": [
+        {
+          "effectType": "DiceToMahjongScore",
+          "value": 1
+        }
+      ]
+    },
+    {
+      "relicName": "ability_mahjong_chips",
+      "displayName": "麻将筹码",
+      "description": "每次部署的麻将牌被破坏时获得1代币，代币也可以购买弃牌区的麻将牌",
+      "tags": [
+        "mahjong",
+        "token"
+      ],
+      "effects": [
+        {
+          "effectType": "TokenOnWallBreak",
+          "value": 1
+        }
+      ]
+    },
+    {
+      "relicName": "ability_transform",
+      "displayName": "变换",
+      "description": "行动点＋1。每次投掷骰子时，场上以及手牌所有棋子将重刷其对应的属性",
+      "tags": [
+        "element",
+        "dice"
+      ],
+      "effects": [
+        {
+          "effectType": "APBonus",
+          "value": 1
+        },
+        {
+          "effectType": "ElementRerollOnRoll",
+          "value": 1
+        }
+      ]
+    },
+    {
+      "relicName": "ability_element_dice",
+      "displayName": "属性骰子",
+      "description": "骰子按照 1-金 2-木 3-水 4-火 5-土 6-任意 的对照关系，每次部署“骰子对应属性”的棋子，倍率＋1",
+      "tags": [
+        "element",
+        "dice"
+      ],
+      "effects": [
+        {
+          "effectType": "ElementMatchMultiplier",
+          "value": 1
+        }
+      ]
+    },
+    {
+      "relicName": "ability_slot_machine",
+      "displayName": "老虎机",
+      "description": "每次投掷骰子时，获得骰子点数代币。花费骰子点数的代币时，抽一张牌并丢弃一张牌到弃牌区",
+      "tags": [
+        "dice",
+        "token"
+      ],
+      "effects": [
+        {
+          "effectType": "TokenOnRoll",
+          "value": 1
+        },
+        {
+          "effectType": "SlotDrawOnMatch",
+          "value": 1
+        }
+      ]
+    },
+    {
+      "relicName": "ability_shock_wall",
+      "displayName": "震击",
+      "description": "行动点上限 +1；游戏开始时在非部署区随机生成两个无法被破坏的墙体，当我方棋子攻击墙体时，会对墙体周围8格造成一次伤害",
+      "tags": [
+        "basic"
+      ],
+      "effects": [
+        {
+          "effectType": "APBonus",
+          "value": 1
+        },
+        {
+          "effectType": "ShockWall",
+          "value": 1
+        }
+      ]
+    },
+    {
+      "relicName": "ability_devour",
+      "displayName": "吃子",
+      "description": "行动点上限 +1；我方的棋子执行行动时将跳过攻击行动，移动行动的落点可以选择敌方棋子所在格，并在移动后将目标直接击败",
+      "tags": [
+        "basic"
+      ],
+      "effects": [
+        {
+          "effectType": "APBonus",
+          "value": 1
+        },
+        {
+          "effectType": "Devour",
+          "value": 1
+        }
+      ]
     }
   ]
 }

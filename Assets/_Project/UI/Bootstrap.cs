@@ -104,9 +104,13 @@ namespace TheLaw.UI
             // ③a 行动经济 buff 前端同步桥（订阅现有回合/表现事件补发 BuffsChanged——不新增后端接口）
             ActionEconomyBuffSync.EnsureSubscribed(_gameState);
             // ③a2 新手教程管理器（UI 层：观察事件 → 角色说话面板 + 遮罩高亮；零后端改动）
-            var tutorialGo = new GameObject("TutorialManager");
-            _tutorialManager = tutorialGo.AddComponent<TutorialManager>();
-            _tutorialManager.Init(_uiManager);
+            // ⚠️ 2026-08-25：受 Tutorials.Enabled 总开关控制——关闭时不创建（防 TutorialPanel 资源未注册时 Awake 崩溃；测试可临时关）
+            if (TheLaw.Core.Tutorials.Enabled)
+            {
+                var tutorialGo = new GameObject("TutorialManager");
+                _tutorialManager = tutorialGo.AddComponent<TutorialManager>();
+                _tutorialManager.Init(_uiManager);
+            }
             // ④ 注册存档快照
             RegisterSnapshots();
             // ⚠️ 2026-08-23 修复：移除启动自动 LoadAll——它会使"开始新游戏"继承旧档未复位字段（示例：AP 上限、随机种子）
@@ -145,6 +149,7 @@ namespace TheLaw.UI
             // 普通类（去单例化——显式创建）
             _uiManager = new UIManager();
             _tutorialSystem = new TutorialSystem();
+            _tutorialSystem.LoadTutorials(); // 2026-08-25：教程记录独立教程加载（tutorial.json——仿 settings.json，不随存档）
             _progressSystem = new ProgressSystem();
         }
 
@@ -206,7 +211,7 @@ namespace TheLaw.UI
         private void CreateSessionFlow()
         {
             _editorSession = new EditorSession(_gameState, _resolver);
-            _eventNodeSystem = new EventNodeSystem(_gameState, _resolver);
+            _eventNodeSystem = new EventNodeSystem(_gameState, _resolver, _tutorialSystem); // 2026-08-25 教程契约：事件打开触发点（TryShow 跨局去重）
             _towerFlow = new TowerFlow(_gameState, _eventNodeSystem, _battleFlowFactory, GetMapConfig());
             RefreshSessionPanelRefs();
         }
@@ -254,7 +259,7 @@ namespace TheLaw.UI
             var saveManager = SaveManager.Instance;
             saveManager.RegisterSnapshot(_gameState);
             saveManager.RegisterSnapshot(RandomManager.Instance);
-            saveManager.RegisterSnapshot(_tutorialSystem);
+            // ⚠️ 2026-08-25：教程记录不再注册主档快照——独立 tutorial.json（仿 settings.json：设备级状态、变更立即保存、启动单独加载）
             saveManager.RegisterSnapshot(_progressSystem);
         }
 

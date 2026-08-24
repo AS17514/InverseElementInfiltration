@@ -1,4 +1,4 @@
-﻿namespace TheLaw.Data
+namespace TheLaw.Data
 {
     /// <summary>
     /// 游戏事件枚举（事件名 = 枚举，不会拼错——"UI 不加门面层"决策）。
@@ -27,6 +27,7 @@
         ExtraActionGranted,    // 免费行动资格授予（携带棋子 Id——UI 显示"免费行动"标记）
         BuffsChanged,          // 棋子 buff 变化（携带棋子 Id——UI 刷新该棋子的 buff 标记；查询 BuffDisplay.GetBuffs）
         HintRequested,         // 通用变亮/提示通道（2026-08-23：携带 HintPayload——kind 决定渲染器与样式、targetId 定位对象；显示真值查后端状态容器）
+        TutorialRequested,    // 教程展示请求（2026-08-25：TutorialSystem.TryShow 审核[跨局持久去重]通过后发——携带教程序列 id；前端 TutorialManager 监听播放）
 
         // ---- UI → 规则层（玩家输入/表现完成）----
         PlayerCellSelected,    // ⚠️ 2026-08-23 标注：**死声明**——玩家选格实际走 `BattleFlow.OnPlayerCellSelected` 直调（与 OnPlayerRequest* 同模式）；保留标注，待清理决策

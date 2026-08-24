@@ -12,12 +12,14 @@ namespace TheLaw.Gameplay
     {
         private readonly GameState _state;
         private readonly Resolver _resolver;
+        private readonly TutorialSystem _tutorialSystem; // 2026-08-25 教程契约：事件打开触发点（TryShow 跨局去重 → TutorialRequested）
         private string _consumedEventId; // 已消费选项的事件 id（每个 OpenEvent 只允许一次选项消费——2026-08-12 防重复点选双落账）
 
-        public EventNodeSystem(GameState state, Resolver resolver)
+        public EventNodeSystem(GameState state, Resolver resolver, TutorialSystem tutorialSystem)
         {
             _state = state;
             _resolver = resolver;
+            _tutorialSystem = tutorialSystem;
         }
 
         /// <summary>
@@ -55,6 +57,7 @@ namespace TheLaw.Gameplay
             if (ev != null && ev.isAbilityPick)
             {
                 _resolver.DrawAbilityCandidates();
+                if (_tutorialSystem != null) _tutorialSystem.TryShow("event_intro"); // 2026-08-25 教程契约：能力事件 → 教程序列（跨局去重由 TryShow 内部判；直接传 id 不经映射）
                 return; // 能力事件不走普通 EventOpened/选项流（前端按 AbilityCandidatesDrawn 显示三选一）
             }
             // 玩法事件（2026-08-24 玩法选择机制）：打开即从未激活玩法抽 2 候选（二选一，不可刷新）——不显示固定选项
@@ -64,7 +67,20 @@ namespace TheLaw.Gameplay
                 return; // 玩法事件不走普通 EventOpened/选项流（前端按 RuleCandidatesDrawn 显示二选一）
             }
             // 通知 UI：事件关打开（携带当前事件 id——UI 据此打开事件界面）
+            TryShowTutorial(ev != null ? ev.name : null); // 2026-08-25 教程契约：按事件 id 映射教程序列（edit_standard→edit_intro / deck_standard→deck_intro；其余无）
             EventCenter.Instance.EventTrigger(GameEvent.EventOpened, _state.CurrentEventId);
+        }
+
+        /// <summary>教程触发点（2026-08-25 契约）：普通事件流打开（EventOpened 前）→ 按事件 id 映射教程序列 → TryShow（跨局持久去重 → TutorialRequested 事件→前端播放）。</summary>
+        private void TryShowTutorial(string eventId)
+        {
+            if (_tutorialSystem == null || string.IsNullOrEmpty(eventId)) return;
+            switch (eventId)
+            {
+                case "edit_standard": _tutorialSystem.TryShow("edit_intro"); break;  // 编辑事件
+                case "deck_standard": _tutorialSystem.TryShow("deck_intro"); break;  // 构筑事件
+                // 能力事件（ability_pick）走 isAbilityPick 分支独立触发（上方）——此处不重复
+            }
         }
 
         /// <summary>

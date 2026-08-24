@@ -15,11 +15,11 @@ MonoBehaviour:
   _id: 306405466
   templateKey: Effect-4
   template:
-    rid: 4463436102609141770
+    rid: 7823914186279223311
   references:
     version: 2
     RefIds:
-    - rid: 4463436102609141770
+    - rid: 7823914186279223311
       type: {class: EffectTemplate, ns: TheLaw.Data, asm: Data}
       data:
         id: 4

@@ -31,6 +31,7 @@ MonoBehaviour:
     available: 1
     effects: []
   isAbilityPick: 0
+  isRulePick: 0
   deckSizeLimit: 0
   totalValueLimit: 0
   allowDuplicate: 0

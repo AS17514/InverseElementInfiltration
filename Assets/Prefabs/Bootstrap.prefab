@@ -72,12 +72,14 @@ MonoBehaviour:
   - {fileID: 11400000, guid: 978f6bf0fe64b064081191e1ef696429, type: 2}
   - {fileID: 11400000, guid: 87170fb17f3ecd041a61cc15cb689814, type: 2}
   - {fileID: 11400000, guid: 4e90f84222d58d040bbf3137f39834e4, type: 2}
+  - {fileID: 11400000, guid: b611c1deacdf21a45a35ae44f8dc96c1, type: 2}
   _eventConfigs:
   - {fileID: 11400000, guid: 6c3b76b188ccb494eaabb51770645f7b, type: 2}
   - {fileID: 11400000, guid: 84f5400f76a44a947ac25abdabeb0c0d, type: 2}
   - {fileID: 11400000, guid: 274e1f828718821479ab66033f1fbb4c, type: 2}
   - {fileID: 11400000, guid: 51331f4bda6c3534181b735907630fa9, type: 2}
   - {fileID: 11400000, guid: f8b36a95405b66c43a740be0cdb44197, type: 2}
+  - {fileID: 11400000, guid: a769fb2bdc83b1a49ba8645f10853228, type: 2}
   _relicConfigs:
   - {fileID: 11400000, guid: c8b12ccab28b5ca409fc722020f853ea, type: 2}
   - {fileID: 11400000, guid: 812fa5557c980ed4696f860918873784, type: 2}

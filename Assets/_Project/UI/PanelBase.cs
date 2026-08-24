@@ -20,9 +20,6 @@ namespace TheLaw.UI
 
         public virtual void Show()
         {
-            // 过渡缓出恢复：旧面板可能被 PanelTransition 淡出（alpha→0）——重新显示时复位
-            var cg = GetComponent<CanvasGroup>();
-            if (cg != null) cg.alpha = 1f;
             bool wasActive = gameObject.activeSelf;
             gameObject.SetActive(true);
             EnsureBgClick(); // 点击背景（Img_Bg 压暗层）关闭——非全屏面板通用协议

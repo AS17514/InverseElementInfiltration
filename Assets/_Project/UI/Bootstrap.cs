@@ -525,19 +525,24 @@ namespace TheLaw.UI
             _finalizing = true;
             _sessionGeneration++; // 立即废弃局内异步面板回调
             yield return null; // 等一帧：当前事件回调栈必然已退出（Unity 单线程，帧末栈空）
-            DestroyBattleController();
-            DisposeSessionFlow(); // 整局级"离开销毁"（2026-08-13：注销监听 + 置空——含战斗实例销毁）
-            SaveManager.Instance.ArchiveHistory(); // 局终归档（2026-08-13：Reset 前——存局终完整状态含回放，排查可回溯；保留 N 份超量清理）
-            _gameState.ResetForNewRun();
-            SaveManager.Instance.SaveAll();
-            // 2026-08-13：局结束销毁会话面板（P4 断链补全——替代隐藏；新局懒加载重建，防跨局残留）
-            DestroySessionPanels();
-            // 结算面板不在 UIManager 栈（BattlePanel/EventPanel 直接 Show）——ShowPanel 不影响它；
-            // 失败路径：MainMenu 显示在结算面板下层，玩家确认后结算关闭露出 MainMenu
-            PanelTransition.ShowWithLoading(_uiManager, "MainMenu");
-            AudioManager.Instance.PlayBGM(TheLaw.Core.AudioRefs.BgmMenu);
-            _finalizing = false; // 复位——下一局收尾可用
-            Debug.Log("[Bootstrap] 返回主菜单（收尾链完成）");
+            // 全程覆盖：先压 loading（淡入盖住当前画面）→ 遮挡就绪后清理+回主菜单（任何时刻不露出面板切换/裸场景）
+            PanelTransition.Begin(_uiManager, () =>
+            {
+                DestroyBattleController();
+                DisposeSessionFlow(); // 整局级"离开销毁"（2026-08-13：注销监听 + 置空——含战斗实例销毁）
+                SaveManager.Instance.ArchiveHistory(); // 局终归档（2026-08-13：Reset 前——存局终完整状态含回放，排查可回溯；保留 N 份超量清理）
+                _gameState.ResetForNewRun();
+                SaveManager.Instance.SaveAll();
+                // 2026-08-13：局结束销毁会话面板（P4 断链补全——替代隐藏；新局懒加载重建，防跨局残留）
+                DestroySessionPanels();
+                // 结算面板不在 UIManager 栈（BattlePanel/EventPanel 直接 Show）——ShowPanel 不影响它；
+                // 失败路径：MainMenu 显示在结算面板下层，玩家确认后结算关闭露出 MainMenu
+                _uiManager.ShowPanel("MainMenu");
+                PanelTransition.End(_uiManager); // 主菜单已显示——弹栈淡出
+                AudioManager.Instance.PlayBGM(TheLaw.Core.AudioRefs.BgmMenu);
+                _finalizing = false; // 复位——下一局收尾可用
+                Debug.Log("[Bootstrap] 返回主菜单（收尾链完成）");
+            });
         }
 
         // ========== 退出确认（2026-08-23：保存进度返回主菜单，不清档——Continue 可继续）==========
@@ -579,14 +584,19 @@ namespace TheLaw.UI
             _finalizing = true;
             _sessionGeneration++; // 立即废弃局内异步面板回调
             yield return null; // 等一帧：当前事件回调栈必然已退出
-            DestroyBattleController();
-            DisposeSessionFlow(); // 整局级"离开销毁"（注销监听 + 置空——含战斗实例销毁）
-            SaveManager.Instance.SaveAll(); // 保存当前进度（不清档——保留给 Continue）
-            DestroySessionPanels();
-            PanelTransition.ShowWithLoading(_uiManager, "MainMenu");
-            AudioManager.Instance.PlayBGM(TheLaw.Core.AudioRefs.BgmMenu);
-            _finalizing = false;
-            Debug.Log("[Bootstrap] 已保存进度并返回主界面（可继续游戏）");
+            // 全程覆盖：先压 loading → 遮挡就绪后保存+回主菜单（任何时刻不露出面板切换/裸场景）
+            PanelTransition.Begin(_uiManager, () =>
+            {
+                DestroyBattleController();
+                DisposeSessionFlow(); // 整局级"离开销毁"（注销监听 + 置空——含战斗实例销毁）
+                SaveManager.Instance.SaveAll(); // 保存当前进度（不清档——保留给 Continue）
+                DestroySessionPanels();
+                _uiManager.ShowPanel("MainMenu");
+                PanelTransition.End(_uiManager); // 主菜单已显示——弹栈淡出
+                AudioManager.Instance.PlayBGM(TheLaw.Core.AudioRefs.BgmMenu);
+                _finalizing = false;
+                Debug.Log("[Bootstrap] 已保存进度并返回主界面（可继续游戏）");
+            });
         }
 
         /// <summary>
@@ -701,7 +711,7 @@ namespace TheLaw.UI
                 }
                 SaveManager.Instance.LoadBattleStart(); // SL 槽缺失 → 保持主档（主档可能即开战检查点状态——仍可 StartBattle 重开）
                 _towerFlow.StartBattleAtCurrentFloor(); // 创建 BattleFlow + StartBattle（内部 ResetForBattle + 重存 SL）
-                _uiManager.HidePanel("MainMenu");
+                // 主菜单不提前隐藏——Battle 过渡（ShowWithLoading）盖住后由 ShowPanel 隐藏（零裸场景）
                 return true;
             }
             // 编辑中断：EditingDefs 非空 → 直接重开编辑面板（EditorSession 重建；Undo 历史随实例丢失——可接受）
@@ -713,8 +723,8 @@ namespace TheLaw.UI
                     defId = d;
                     break;
                 }
-                _uiManager.HidePanel("MainMenu");
-                OpenPieceEditor(defId);
+                // 主菜单不提前隐藏——过渡 Begin 盖住后由 ShowPanel("PieceEdit") 隐藏（零裸场景）
+                PanelTransition.Begin(_uiManager, () => OpenPieceEditor(defId));
                 return true;
             }
             var evId = _gameState.CurrentEventId;
@@ -723,19 +733,22 @@ namespace TheLaw.UI
                 return false; // 无进行中事件（战斗中/未开始）
             }
             var ev = ConfigTable.FindByName<EventDefinition>(evId);
-            if (ev != null && ev.isAbilityPick)
+            // 主菜单不提前隐藏——过渡 Begin 盖住后由 ShowPanel("EventPanel") 隐藏（零裸场景）
+            PanelTransition.Begin(_uiManager, () =>
             {
-                // 能力事件：候选已入档——懒加载完成后主动回填（不依赖历史广播）
-                _pendingEventId = null;
-                AudioManager.Instance.PlayBGM(TheLaw.Core.AudioRefs.BgmEvent);
-                OpenEventPanel();
-            }
-            else
-            {
-                // 普通事件：复用 EventOpened 路径（Bootstrap 缓存 id + 懒加载面板主动推数据）
-                EventCenter.Instance.EventTrigger(GameEvent.EventOpened, evId);
-            }
-            _uiManager.HidePanel("MainMenu");
+                if (ev != null && ev.isAbilityPick)
+                {
+                    // 能力事件：候选已入档——懒加载完成后主动回填（不依赖历史广播）
+                    _pendingEventId = null;
+                    AudioManager.Instance.PlayBGM(TheLaw.Core.AudioRefs.BgmEvent);
+                    OpenEventPanel();
+                }
+                else
+                {
+                    // 普通事件：复用 EventOpened 路径（Bootstrap 缓存 id + 懒加载面板主动推数据）
+                    EventCenter.Instance.EventTrigger(GameEvent.EventOpened, evId);
+                }
+            });
             return true;
         }
 
@@ -743,7 +756,7 @@ namespace TheLaw.UI
         private void StartNewGameWithOpeningStory()
         {
             if (_storyPlaying) return; // 防重（连点）
-            _uiManager.HidePanel("MainMenu");
+            // 不先隐藏主菜单——StoryPanel 加载完成后再隐藏（避免加载间隙露出场景；主菜单→剧情无 loading）
             StartCoroutine(PlayOpeningStoryThenStartNewGame());
         }
 
@@ -767,7 +780,13 @@ namespace TheLaw.UI
             }
             _storyPanel.Finished += OnOpeningStoryFinished;
             _storyPlaying = true;
+            // 2026-08-25 运镜过渡：先显示剧情（不播）→ 主菜单缓出 + 背景运镜到剧情位（可跳过）→ 隐藏主菜单 → 剧情开播
+            _storyPanel.DeferPlayback();
             _uiManager.ShowPanel("StoryPanel");
+            var menuPanel = _uiManager.GetPanel("MainMenu") as PanelBase;
+            yield return StartCoroutine(StoryTransition.Play(menuPanel != null ? menuPanel.transform : null, _storyPanel.transform));
+            _uiManager.HidePanel("MainMenu");
+            _storyPanel.StartPlayback();
             Debug.Log("[Bootstrap] 开场剧情播放开始");
         }
 
@@ -775,11 +794,20 @@ namespace TheLaw.UI
         private void OnOpeningStoryFinished()
         {
             _storyPlaying = false;
-            if (_storyPanel == null) return;
-            _uiManager.HidePanel("StoryPanel");
-            DestroyImmediate(_storyPanel.gameObject);
-            _storyPanel = null;
-            StartNewGame();
+            if (_storyPanel == null)
+            {
+                StartNewGame();
+                return;
+            }
+            // 剧情→首事件全程覆盖：先压 loading（淡入盖住剧情画面）→ 遮挡就绪后隐藏剧情并推进新局；
+            // 事件面板显示时 ShowWithLoading 走 busy 分支自动 End（loading 弹栈淡出）
+            PanelTransition.Begin(_uiManager, () =>
+            {
+                _uiManager.HidePanel("StoryPanel");
+                DestroyImmediate(_storyPanel.gameObject);
+                _storyPanel = null;
+                StartNewGame();
+            });
         }
 
         private void StartNewGame()
@@ -926,8 +954,8 @@ namespace TheLaw.UI
                 _editCandidatePanel?.Show();
                 return;
             }
-            _uiManager.HidePanel("EditCandidatePanel");
-            OpenPieceEditor(defId);
+            // 不提前隐藏编辑候选面板——过渡 Begin 盖住后由 ShowPanel("PieceEdit") 隐藏（零裸场景）
+            PanelTransition.Begin(_uiManager, () => OpenPieceEditor(defId));
         }
 
         /// <summary>打开棋子编辑面板（事件关模式——候选卡点击确认后进入）。</summary>

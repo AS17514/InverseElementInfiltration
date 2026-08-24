@@ -539,6 +539,7 @@ namespace TheLaw.UI
                 var view = PieceViewFactory.CreatePieceView(piece.Id, piece.DefId, piece.side, piece.position,
                     piece.side == Side.Player ? PieceViewFactory.TintFor(piece.DefId) : PieceViewFactory.TintFor(piece.DefId + 1));
                 _pieceViews.Register(piece.Id, view);
+                if (piece.element != Element.None) ApplyElementOutline(piece.Id); // 五行：开局/续战同步静态描边
             }
             if (_state.PromoteAnnouncements != null)
             {
@@ -1038,6 +1039,15 @@ namespace TheLaw.UI
             return outline;
         }
 
+        /// <summary>五行（2026-08-25）：棋子带元素 → 静态描边（复用升变预告描边组件，五色不闪烁）。</summary>
+        void ApplyElementOutline(int pieceId)
+        {
+            var piece = _state != null ? _state.GetPiece(pieceId) : null;
+            if (piece == null || piece.element == Element.None) return;
+            var outline = FindPromotionView(pieceId);
+            if (outline != null) outline.SetElementColor(ElementColors.ColorOf(piece.element));
+        }
+
         /// <summary>buff 变化（护盾/免费行动/临时能力）：目标是当前选中棋子 → 刷新信息面板（Txt_Other buff 区实时更新）。</summary>
         void OnBuffsChanged(object data)
         {
@@ -1489,6 +1499,7 @@ namespace TheLaw.UI
             }
             if (_pendingPromotionWarnings.TryGetValue(info.PieceId, out var pendingWarning))
                 CacheOrApplyPromotionWarning(pendingWarning);
+            ApplyElementOutline(info.PieceId); // 五行：部署即静态描边（玩家/敌方统一）
             AudioManager.Instance.PlaySFX(AudioRefs.SfxDeploy); // 部署音效（占位）
             yield return new WaitForSeconds(DeployWait);
         }
@@ -2582,6 +2593,18 @@ namespace TheLaw.UI
                     var view = card.GetComponent<HandCardView>();
                     if (view == null) view = card.AddComponent<HandCardView>();
                     view.Bind(data);
+                }
+                // 五行（2026-08-25）：手牌外描边——element != None → 对应颜色（复用/新建统一处理）
+                var cardOutline = card.GetComponent<UnityEngine.UI.Outline>();
+                if (handCard.element != Element.None)
+                {
+                    if (cardOutline == null) cardOutline = card.AddComponent<UnityEngine.UI.Outline>();
+                    cardOutline.effectColor = ElementColors.ColorOf(handCard.element);
+                    cardOutline.effectDistance = new Vector2(2.5f, -2.5f);
+                }
+                else if (cardOutline != null)
+                {
+                    Destroy(cardOutline);
                 }
             }
             // 销毁未复用的旧卡（已移除的）

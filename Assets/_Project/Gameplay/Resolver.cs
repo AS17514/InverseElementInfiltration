@@ -832,7 +832,8 @@ namespace TheLaw.Gameplay
             }
         }
 
-        /// <summary>全场+手牌属性重刷（2026-08-24 能力「变换」：投掷时所有棋子重刷随机属性——场上双方棋子 + 手牌棋子牌）。</summary>
+        /// <summary>全场+手牌属性重刷（2026-08-24 能力「变换」：投掷时所有棋子重刷随机属性——场上双方棋子 + 手牌棋子牌）。
+        /// ⚠️ 2026-08-25：属性被外力改写 → **逐棋发 BuffsChanged**（前端属性描边/色表刷新契约——复用现有事件，零新枚举）。</summary>
         private void RerollAllElements()
         {
             bool handChanged = false;
@@ -841,6 +842,7 @@ namespace TheLaw.Gameplay
                 if (piece != null && piece.element != Element.None)
                 {
                     piece.element = RandomElement();
+                    EventCenter.Instance.EventTrigger(GameEvent.BuffsChanged, piece.Id); // 2026-08-25：属性变化 → 前端刷新描边/色表
                 }
             }
             for (int i = 0; i < _state.Hand.Count; i++)
@@ -1444,7 +1446,8 @@ namespace TheLaw.Gameplay
             }
         }
 
-        /// <summary>全场己方棋子属性统一（2026-08-24 能力「提纯」：部署/升变时——所有己方棋子属性 = 操作棋子属性；每有一个棋子属性变化 → 基础得分 +1）。</summary>
+        /// <summary>全场己方棋子属性统一（2026-08-24 能力「提纯」：部署/升变时——所有己方棋子属性 = 操作棋子属性；每有一个棋子属性变化 → 基础得分 +1）。
+        /// ⚠️ 2026-08-25：属性被外力改写 → **逐棋发 BuffsChanged**（前端属性描边/色表刷新契约——复用现有事件，零新枚举）。</summary>
         private void RefineAllPieceElements(Element target)
         {
             if (target == Element.None) return;
@@ -1456,6 +1459,7 @@ namespace TheLaw.Gameplay
                 {
                     piece.element = target;
                     changed++;
+                    EventCenter.Instance.EventTrigger(GameEvent.BuffsChanged, piece.Id); // 2026-08-25：属性变化 → 前端刷新描边/色表
                 }
             }
             if (changed > 0)

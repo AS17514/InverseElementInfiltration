@@ -20,6 +20,9 @@ namespace TheLaw.UI
 
         public virtual void Show()
         {
+            // 过渡缓出恢复：旧面板可能被 PanelTransition 淡出（alpha→0）——重新显示时复位
+            var cg = GetComponent<CanvasGroup>();
+            if (cg != null) cg.alpha = 1f;
             bool wasActive = gameObject.activeSelf;
             gameObject.SetActive(true);
             EnsureBgClick(); // 点击背景（Img_Bg 压暗层）关闭——非全屏面板通用协议
@@ -195,7 +198,20 @@ namespace TheLaw.UI
         public static void CreateAsync<T>(System.Action<T> onReady) where T : PanelBase
         {
             var address = typeof(T).Name;
-            var handle = Addressables.LoadAssetAsync<GameObject>(address);
+            AsyncOperationHandle<GameObject> handle;
+            try
+            {
+                handle = Addressables.LoadAssetAsync<GameObject>(address);
+            }
+            catch (System.Exception e)
+            {
+                // ⚠️ 2026-08-26：Addressables 键缺失会**同步**抛 InvalidKeyException（不走 Completed 失败分支）——
+                // 不接住会炸掉 Bootstrap.Awake 的整条协程链（实例：DeckLibrary 地址与类名不匹配 → 启动即卡死）。
+                // 回退纯代码创建（面板无 prefab 布局时由面板内部兜底/报缺失）。
+                Debug.LogWarning($"[PanelBase] Addressables 键缺失 {address}（{e.GetType().Name}）——回退纯代码创建");
+                onReady?.Invoke(Create<T>());
+                return;
+            }
             handle.Completed += op =>
             {
                 T panel;

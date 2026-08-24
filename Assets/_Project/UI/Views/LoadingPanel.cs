@@ -7,9 +7,10 @@ using UnityEngine;
 namespace TheLaw.UI
 {
     /// <summary>
-    /// 加载过渡面板（overlay 压栈——面板切换过渡用）：全屏半透明遮罩 + "Loading" 文字。
-    /// 淡入淡出（DOTween CanvasGroup——根节点运行时补挂 CanvasGroup，不改 prefab）；
-    /// 文字点号循环：Loading → Loading . → Loading . . → Loading . . .（WaitForSecondsRealtime——不受暂停/时间缩放影响）。
+    /// 加载过渡面板（overlay 压栈——面板切换过渡用）。
+    /// 背景 = prefab 原图（不透明灰底——原背景色正好，不叠加任何颜色层）；
+    /// 淡入淡出用根节点 CanvasGroup（运行时补挂，不改 prefab）。
+    /// 文字点号循环：Loading → Loading . → Loading . . → Loading . . .（WaitForSecondsRealtime）。
     /// Hide 覆写为异步淡出后再 SetActive(false)（PanelBase.Hide 已 virtual 化）。
     /// </summary>
     public class LoadingPanel : PanelBase

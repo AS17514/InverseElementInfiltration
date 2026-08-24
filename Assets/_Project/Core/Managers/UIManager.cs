@@ -23,6 +23,7 @@ namespace TheLaw.Core
         /// <summary>按 key 取面板（伪 null 防御——已销毁返回 null）。面板切换过渡（PanelTransition 等 LoadingPanel 渐入事件）用。</summary>
         public IPanel GetPanel(string key)
         {
+            if (string.IsNullOrEmpty(key)) return null; // 防御：空键查字典抛 ArgumentNullException
             if (_panels.TryGetValue(key, out var panel) && (UnityEngine.Object)panel != null)
             {
                 return panel;

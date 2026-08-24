@@ -43,8 +43,9 @@ namespace TheLaw.UI
 
             _busy = true;
 
-            // ① 压栈 loading（LoadingPanel.Show 负责渐入）
+            // ① 压栈 loading（LoadingPanel.Show 负责黑底快进 + 灰层淡入）
             ui.PushOverlay(LoadingKey);
+            FadeOutCurrent(ui); // 上一个面板缓出（与黑底/灰层交叉淡出——切换时旧面板不瞬间消失）
             var lp = ui.GetPanel(LoadingKey) as LoadingPanel;
             bool switched = false;
             Action handler = null;
@@ -81,6 +82,20 @@ namespace TheLaw.UI
 
             // 兜底：渐入完成事件丢失（tween 被外部清理等）——超时强制切换，防 loading 卡死
             DOVirtual.DelayedCall(FadeInSeconds + SwitchDelaySeconds + 1f, DoSwitch);
+        }
+
+        /// <summary>旧面板缓出：当前切换型面板 CanvasGroup alpha 1→0（0.2s，与 loading 淡入交叉）。
+        /// 下次 Show 时 PanelBase.Show 复位 alpha=1。</summary>
+        private static void FadeOutCurrent(UIManager ui)
+        {
+            if (ui == null || string.IsNullOrEmpty(ui.CurrentKey)) return; // 无当前面板（如剧情→首事件）——无可缓出
+            var cur = ui.GetPanel(ui.CurrentKey);
+            if (cur == null) return;
+            var mb = cur as MonoBehaviour;
+            if (mb == null || mb.gameObject == null) return;
+            var cg = mb.GetComponent<CanvasGroup>();
+            if (cg == null) cg = mb.gameObject.AddComponent<CanvasGroup>();
+            DOTween.To(() => cg.alpha, v => cg.alpha = v, 0f, 0.2f);
         }
     }
 }

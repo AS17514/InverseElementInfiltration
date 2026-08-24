@@ -5,6 +5,7 @@ using TheLaw.Data;
 using TheLaw.Gameplay;
 using UnityEngine;
 using UnityEngine.AddressableAssets;
+using UnityEngine.UI;
 
 namespace TheLaw.UI
 {
@@ -66,6 +67,8 @@ namespace TheLaw.UI
         private ConfirmPanel _confirmPanel; // 通用确认弹窗（常驻——退出确认等场景复用）
         private StoryPanel _storyPanel; // 开场剧情面板（新游戏先播；播完销毁进新局）
         private bool _storyPlaying; // 剧情播放中（防重）
+        private TutorialManager _tutorialManager; // 新手教程管理器（观察事件 → 角色说话 + 遮罩高亮）
+        private GameObject _bootBlackOverlay; // 冷启动黑屏（盖住其他面板异步加载；开场动画接管后销毁）
 
         private void Awake()
         {
@@ -81,6 +84,7 @@ namespace TheLaw.UI
             }
             _instance = this;
             DontDestroyOnLoad(gameObject); // 常驻（存档/管理器生命周期跟随进程）
+            CreateBootBlackOverlay(); // 第一帧即黑屏——盖住后续所有面板异步加载过程
             // ① 按依赖顺序创建常驻管理器
             CreateManagers();
             // ② 加载配置（TODO: Addressables）
@@ -99,6 +103,10 @@ namespace TheLaw.UI
             CreateGameplay();
             // ③a 行动经济 buff 前端同步桥（订阅现有回合/表现事件补发 BuffsChanged——不新增后端接口）
             ActionEconomyBuffSync.EnsureSubscribed(_gameState);
+            // ③a2 新手教程管理器（UI 层：观察事件 → 角色说话面板 + 遮罩高亮；零后端改动）
+            var tutorialGo = new GameObject("TutorialManager");
+            _tutorialManager = tutorialGo.AddComponent<TutorialManager>();
+            _tutorialManager.Init(_uiManager);
             // ④ 注册存档快照
             RegisterSnapshots();
             // ⚠️ 2026-08-23 修复：移除启动自动 LoadAll——它会使"开始新游戏"继承旧档未复位字段（示例：AP 上限、随机种子）
@@ -113,6 +121,8 @@ namespace TheLaw.UI
             StartCoroutine(CreateItemGettingPanel());
             // ⑤a4 设置面板常驻创建（overlay——主菜单/战斗中入口复用；IsPausing 暂停型）
             StartCoroutine(CreateSettingsPanel());
+            // ⑤a4b 牌库面板常驻创建（overlay——2026-08-25：牌库浏览 + 代币购买选牌复用）
+            StartCoroutine(CreateDeckLibraryPanel());
             // ⑤a5 加载过渡面板常驻创建（overlay——面板切换过渡压栈；Key="Loading"）
             StartCoroutine(CreateLoadingPanel());
             // ⑤b 开局初始化（新局状态——含基础牌组手牌填充，ResetForNewRun 内完成）
@@ -367,6 +377,8 @@ namespace TheLaw.UI
                 Debug.LogWarning("[Bootstrap] 收到 AbilityCandidatesDrawn 但当前事件不是能力事件——忽略");
                 return;
             }
+            // 2026-08-25 bug 修复：能力事件不发 EventOpened——BGM 切换在此补（首事件即切事件 BGM，不等第二个事件）
+            AudioManager.Instance.PlayBGM(TheLaw.Core.AudioRefs.BgmEvent);
             OpenEventPanel();
         }
 
@@ -391,6 +403,8 @@ namespace TheLaw.UI
                 Debug.LogWarning("[Bootstrap] 收到 RuleCandidatesDrawn 但当前事件不是玩法事件——忽略");
                 return;
             }
+            // 2026-08-25 bug 修复：玩法事件不发 EventOpened——BGM 切换在此补（与能力事件同）
+            AudioManager.Instance.PlayBGM(TheLaw.Core.AudioRefs.BgmEvent);
             OpenEventPanel();
         }
 
@@ -610,6 +624,7 @@ namespace TheLaw.UI
             if (_directToBattle)
             {
                 // 测试模式：主场景直进战斗（测试流程已迁移进 Main 场景，不再跨场景加载）
+                DestroyBootBlackOverlay(); // 不经过主菜单——黑屏在此移交
                 StartCoroutine(EnterBattleTest());
             }
             else
@@ -769,6 +784,7 @@ namespace TheLaw.UI
             DisposeSessionFlow(); // 整局级"离开销毁"（2026-08-13：重开路径清理——旧局规则层实例注销监听）
             DestroySessionPanels(); // 局结束销毁会话面板（P4 断链补全——替代隐藏，防跨局残留）
             _gameState.ResetForNewRun(); // 基础牌组填手牌（协作者实现）；敌方由波次调度产出（数据集 floor1 回合 1/4/7）
+            if (_tutorialManager != null) _tutorialManager.OnNewRun(); // 新手教程：标记新局（首次事件/编辑/构筑/战斗可触发）
             CreateSessionFlow(); // 整局级"进入创建"（2026-08-13：每局新建 EditorSession/EventNodeSystem/TowerFlow）
             // 首波部署会在 StartBattle 的 Placement 事件后同步进入表现等待；先确保 BattlePanel 已加载，
             // 使 BattleController 能在同一调用栈内订阅部署事件，避免首组表现丢失后回执超时。
@@ -1040,6 +1056,17 @@ namespace TheLaw.UI
             });
         }
 
+        /// <summary>牌库面板常驻创建（overlay——抽牌区/弃牌区浏览 + 代币购买选牌；IsPausing 暂停型）。</summary>
+        private System.Collections.IEnumerator CreateDeckLibraryPanel()
+        {
+            yield return LoadPanelAsync<DeckLibraryPanel>(panel =>
+            {
+                _uiManager.RegisterPanel(panel);
+                panel.Init(_uiManager);
+                panel.gameObject.SetActive(false); // 常驻隐藏（购买按钮/牌库按钮 PushOverlay 显示）
+            });
+        }
+
         /// <summary>确认面板常驻创建（通用确认 overlay——2026-08-13：编辑撤回全部等场景；IsPausing 暂停型）。</summary>
         private System.Collections.IEnumerator CreateConfirmPanel()
         {
@@ -1086,8 +1113,42 @@ namespace TheLaw.UI
             panel.OnSettingsClicked += () => { _uiManager.PushOverlay("Settings"); }; // 设置面板 overlay（主菜单之上，暂停型）
             panel.OnQuitClicked += Application.Quit;
             _uiManager.ShowPanel("MainMenu");
+            DestroyBootBlackOverlay(); // 主菜单已接管黑屏（开场动画起始即全黑，无闪烁交接）
             Debug.Log("[Bootstrap] 主菜单已显示");
             });
+        }
+
+        // ========== 冷启动黑屏（2026-08-26：盖住其他面板异步加载过程）==========
+
+        private void CreateBootBlackOverlay()
+        {
+            var go = new GameObject("BootBlackOverlay");
+            var canvas = go.AddComponent<Canvas>();
+            canvas.renderMode = RenderMode.ScreenSpaceOverlay; // 无需相机——恒在一切 UI 之上
+            var scaler = go.AddComponent<CanvasScaler>();
+            scaler.uiScaleMode = CanvasScaler.ScaleMode.ScaleWithScreenSize;
+            scaler.referenceResolution = new Vector2(1920f, 1080f);
+            go.AddComponent<GraphicRaycaster>();
+            var imgGo = new GameObject("Black", typeof(RectTransform));
+            imgGo.transform.SetParent(go.transform, false);
+            var img = imgGo.AddComponent<Image>();
+            img.color = Color.black;
+            img.raycastTarget = false; // 不挡点击（动画期拦截由 MainMenu 阻射线层负责）
+            var rt = imgGo.GetComponent<RectTransform>();
+            rt.anchorMin = Vector2.zero;
+            rt.anchorMax = Vector2.one;
+            rt.offsetMin = Vector2.zero;
+            rt.offsetMax = Vector2.zero;
+            _bootBlackOverlay = go;
+        }
+
+        private void DestroyBootBlackOverlay()
+        {
+            if (_bootBlackOverlay != null)
+            {
+                Destroy(_bootBlackOverlay);
+                _bootBlackOverlay = null;
+            }
         }
 
         // ========== 生命周期（存档时机）==========

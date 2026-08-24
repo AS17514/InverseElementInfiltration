@@ -20,19 +20,19 @@ namespace TheLaw.UI
         public event Action OnSettingsClicked;
         public event Action OnQuitClicked;
 
-        // ====== 冷启动开场动画（2026-08-26 用户定案）======
-        // 时序（总 ~7.7s）：BGM 3s 渐入 → 标题渐入 + 闪两下 → 背景 808080 缓亮 + 按钮同步渐入。
-        // 交互：动画期间按钮禁点 + 全屏透明阻射线层；任意键/鼠标点击跳过 = 直落终态（BGM 满音量）。
+        // ====== 冷启动开场动画（2026-08-26 用户定案 v2）======
+        // 时序（总 ~7.5s，相邻阶段 0.5s 重叠）：主标题渐入 → 副标题渐入 → 背景缓亮 + 按钮组渐入。
+        // 交互：动画期间全屏透明阻射线层（点击/任意键 = 跳过直落终态）；按钮始终可用态（透明度走 CanvasGroup）。
         // 范围：仅冷启动首次进主菜单播放；返回主菜单（战斗/事件退出）不播。
         private bool _introDone;       // 已播标记（冷启动一次）
         private bool _introRunning;    // 动画进行中（输入跳过判定）
         private Coroutine _introRoutine;
         private Image _imgBg;          // 背景图（纯黑 → prefab 现值 ≈ #808080 缓亮）
         private Color _bgTargetColor = new Color(0.5f, 0.5f, 0.5f, 1f); // 终态（Awake 时取 prefab 现值）
-        private CanvasGroup _titleGroup; // 标题（Txt_Title）
-        private CanvasGroup _menuGroup;  // 按钮组（Grp_MenuOptions）
-        private Image _introBlocker;     // 全屏透明阻射线层（动画期防点击）
-        private readonly List<Button> _introButtons = new List<Button>();
+        private CanvasGroup _titleGroup;    // 主标题（Txt_Title）
+        private CanvasGroup _subtitleGroup; // 副标题（Txt_Subtitle）
+        private CanvasGroup _menuGroup;     // 按钮组（Grp_MenuOptions——prefab 已挂 CanvasGroup）
+        private Image _introBlocker;        // 全屏透明阻射线层（动画期防点击）
 
         private void Awake()
         {
@@ -112,74 +112,51 @@ namespace TheLaw.UI
                 if (_titleGroup == null) _titleGroup = title.gameObject.AddComponent<CanvasGroup>();
             }
 
+            var subtitle = FindDeep<TMP_Text>(transform, "Txt_Subtitle");
+            if (subtitle != null)
+            {
+                _subtitleGroup = subtitle.GetComponent<CanvasGroup>();
+                if (_subtitleGroup == null) _subtitleGroup = subtitle.gameObject.AddComponent<CanvasGroup>();
+            }
+
             var menuRoot = FindChild(transform, "Grp_MenuOptions") ?? transform; // 代码兜底路径无 Grp_——退化为整面板
             _menuGroup = menuRoot.GetComponent<CanvasGroup>();
             if (_menuGroup == null) _menuGroup = menuRoot.gameObject.AddComponent<CanvasGroup>();
-
-            foreach (var b in GetComponentsInChildren<Button>(true))
-            {
-                if (b.name == "Btn_NewGame" || b.name == "Btn_ContinueGame" || b.name == "Btn_Settings" || b.name == "Btn_QuitGame")
-                {
-                    _introButtons.Add(b);
-                }
-            }
         }
 
         private IEnumerator PlayIntro()
         {
             _introRunning = true;
-            // 起始纯黑：背景黑 + 标题/按钮透明 + 禁点
+            // 起始纯黑：背景黑 + 标题/副标题/按钮组透明
             if (_imgBg != null) _imgBg.color = Color.black;
             if (_titleGroup != null) _titleGroup.alpha = 0f;
+            if (_subtitleGroup != null) _subtitleGroup.alpha = 0f;
             if (_menuGroup != null) _menuGroup.alpha = 0f;
-            SetButtonsInteractable(false);
-            CreateBlocker();
+            CreateBlocker(); // 动画期阻射线（按钮保持可用态——点击 = 跳过）
 
-            yield return new WaitForSecondsRealtime(0.8f); // 黑屏静默（BGM 3s 渐入进行中）
+            yield return new WaitForSecondsRealtime(0.5f); // 黑屏静默（BGM 3s 渐入进行中）
             if (!_introRunning) yield break;
 
-            // 标题渐入（1.2s）
-            if (_titleGroup != null)
-            {
-                yield return StartCoroutine(FadeGroup(_titleGroup, 0f, 1f, 1.2f));
-            }
-            else
-            {
-                yield return new WaitForSecondsRealtime(1.2f);
-            }
+            // ① 主标题渐入（2s）
+            if (_titleGroup != null) StartCoroutine(FadeGroup(_titleGroup, 0f, 1f, 2f));
+            // ② 副标题：1.5s 后起（与标题重叠 0.5s），渐入 2s
+            yield return new WaitForSecondsRealtime(1.5f);
             if (!_introRunning) yield break;
-
-            yield return new WaitForSecondsRealtime(0.2f);
+            if (_subtitleGroup != null) StartCoroutine(FadeGroup(_subtitleGroup, 0f, 1f, 2f));
+            // ③ 背景缓亮（4.5s）：3.0s 后起（与副标题重叠 0.5s）
+            yield return new WaitForSecondsRealtime(1.5f);
             if (!_introRunning) yield break;
-
-            // 闪两下：每下 0.3s 暗 + 0.3s 亮（最终常亮）
-            if (_titleGroup != null)
-            {
-                for (int i = 0; i < 2; i++)
-                {
-                    yield return StartCoroutine(FadeGroup(_titleGroup, 1f, 0.15f, 0.3f));
-                    yield return StartCoroutine(FadeGroup(_titleGroup, 0.15f, 1f, 0.3f));
-                }
-            }
+            var bgRoutine = _imgBg != null ? StartCoroutine(LerpColor(_imgBg, Color.black, _bgTargetColor, 4.5f)) : null;
+            // ④ 按钮组渐入（3.5s）：背景起 0.5s 后（与背景同步重叠）
+            yield return new WaitForSecondsRealtime(0.5f);
             if (!_introRunning) yield break;
-
-            yield return new WaitForSecondsRealtime(0.3f);
-            if (!_introRunning) yield break;
-
-            // 背景缓亮（4s）+ 按钮渐入（3s，晚 0.7s 起）——同步
-            var bgRoutine = _imgBg != null ? StartCoroutine(LerpColor(_imgBg, Color.black, _bgTargetColor, 4f)) : null;
-            if (_menuGroup != null)
-            {
-                yield return new WaitForSecondsRealtime(0.7f);
-                if (!_introRunning) yield break;
-                yield return StartCoroutine(FadeGroup(_menuGroup, 0f, 1f, 3f));
-            }
-            if (bgRoutine != null) yield return bgRoutine;
+            if (_menuGroup != null) StartCoroutine(FadeGroup(_menuGroup, 0f, 1f, 3.5f));
+            if (bgRoutine != null) yield return bgRoutine; // 等背景完成（t≈7.5s）
 
             FinishIntro();
         }
 
-        /// <summary>跳过动画：直落终态（背景 808080、标题/按钮可见、BGM 满音量、按钮可点）。</summary>
+        /// <summary>跳过动画：直落终态（背景 808080、标题/副标题/按钮可见、BGM 满音量、可点）。</summary>
         private void SkipIntro()
         {
             if (!_introRunning) return;
@@ -191,6 +168,7 @@ namespace TheLaw.UI
             }
             if (_imgBg != null) _imgBg.color = _bgTargetColor;
             if (_titleGroup != null) _titleGroup.alpha = 1f;
+            if (_subtitleGroup != null) _subtitleGroup.alpha = 1f;
             if (_menuGroup != null) _menuGroup.alpha = 1f;
             FinishIntro();
             AudioManager.Instance.CompleteBGMCrossfade(); // BGM 直落满音量（不等 3s 渐入）
@@ -200,15 +178,6 @@ namespace TheLaw.UI
         {
             _introRunning = false;
             RemoveBlocker();
-            SetButtonsInteractable(true);
-        }
-
-        private void SetButtonsInteractable(bool on)
-        {
-            foreach (var b in _introButtons)
-            {
-                if (b != null) b.interactable = on;
-            }
         }
 
         private void CreateBlocker()

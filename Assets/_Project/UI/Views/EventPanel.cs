@@ -197,8 +197,9 @@ namespace TheLaw.UI
             }
             _isAbilityPick = false;
             if (_exitBtn != null) _exitBtn.interactable = true; // 普通事件恢复退出按钮（能力模式已禁用——不能直接完成绕过选择）
-            if (_title != null) _title.text = string.IsNullOrEmpty(_currentEvent.title) ? "未知事件" : _currentEvent.title; // 中文兜底（防资产名泄漏）
-            if (_desc != null) _desc.text = Describe(_currentEvent);
+            // 2026-08-25：事件小文本覆盖（EventTexts——docx 来源；未登记事件回退定义原文本）
+            if (_title != null) _title.text = EventTexts.TitleFor(_currentEventId, _currentEvent);
+            if (_desc != null) _desc.text = EventTexts.DescFor(_currentEventId, _currentEvent);
             ApplyEventArt(ArtForEvent(_currentEvent)); // CG 按事件类型切换（编辑→event_edit；其他→默认）
             BuildOptions(); // 选项就位后内部刷新布局（时序正确——模板未就绪时由 BuildOptionsWhenReady 补刷）
             bool wasVisible = gameObject.activeSelf;
@@ -396,7 +397,7 @@ namespace TheLaw.UI
             _isRulePick = true;
             _ruleSelectionLocked = false;
             if (_title != null) _title.text = string.IsNullOrEmpty(ev.title) ? "未知事件" : ev.title; // 中文兜底（防资产名泄漏）
-            if (_desc != null) _desc.text = Describe(_currentEvent);
+            if (_desc != null) _desc.text = EventTexts.DescFor(_currentEventId, _currentEvent);
             if (_exitBtn != null) _exitBtn.interactable = false; // 玩法模式禁用退出（不能"直接完成"绕过玩法选择）
             ApplyEventArt(ArtForEvent(ev)); // 玩法事件 CG（event_mode）
             BuildRuleOptions(); // 候选就位后内部刷新布局（时序正确）
@@ -491,8 +492,9 @@ namespace TheLaw.UI
             _abilitySelectionLocked = false;
             _isRulePick = false;
             _ruleSelectionLocked = false;
-            if (_title != null) _title.text = string.IsNullOrEmpty(ev.title) ? "未知事件" : ev.title; // 中文兜底（防资产名泄漏）
-            if (_desc != null) _desc.text = DescribeAbility();
+            // 2026-08-25：事件小文本覆盖 + 刷新次数动态注入（docx 斜体 <i> 由 EventTexts 提供）
+            if (_title != null) _title.text = EventTexts.TitleFor(eventId, ev);
+            if (_desc != null) _desc.text = EventTexts.DescFor(eventId, ev, AbilityRefreshTotal());
             ApplyEventArt(ArtForEvent(ev)); // 能力事件 CG（event_ability）
             if (_exitBtn != null) _exitBtn.interactable = false; // 能力模式禁用退出（不能"直接完成"绕过能力选择）
             BuildAbilityOptions(); // 候选就位后内部刷新布局（时序正确）
@@ -502,14 +504,13 @@ namespace TheLaw.UI
             if (!wasVisible) UiSfx.Play();
         }
 
-        /// <summary>能力描述：事件描述 + 操作提示；候选清单不移入文本区（2026-08-23：与按钮区重复渲染导致叠加——见 docs/能力事件显示-修复参考_20260823.md）。</summary>
-        string DescribeAbility()
+        /// <summary>能力候选剩余刷新总数（描述"刷新次数：N"动态注入——N = 全部候选剩余刷新之和）。</summary>
+        int AbilityRefreshTotal()
         {
-            var sb = new System.Text.StringBuilder(Describe(_currentEvent));
-            sb.AppendLine();
-            sb.AppendLine();
-            sb.Append("长按选项按钮刷新事件（刷新次数）");
-            return sb.ToString();
+            if (_gameState == null || _gameState.AbilityRefreshLeft == null) return 0;
+            int sum = 0;
+            foreach (var n in _gameState.AbilityRefreshLeft) sum += n;
+            return sum;
         }
 
         /// <summary>

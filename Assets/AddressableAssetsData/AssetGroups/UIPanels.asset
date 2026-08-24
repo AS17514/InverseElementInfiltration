@@ -77,6 +77,11 @@ MonoBehaviour:
     m_ReadOnly: 0
     m_SerializedLabels: []
     FlaggedDuringContentUpdateRestriction: 0
+  - m_GUID: a0c1a2406283ed6418aeebf4ce2a5b02
+    m_Address: DeckLibrary
+    m_ReadOnly: 0
+    m_SerializedLabels: []
+    FlaggedDuringContentUpdateRestriction: 0
   - m_GUID: a4c6d20acbc7860479ac44fc12e5fccf
     m_Address: TipPanel
     m_ReadOnly: 0

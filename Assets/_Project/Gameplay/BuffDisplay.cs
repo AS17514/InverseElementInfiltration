@@ -8,6 +8,7 @@ namespace TheLaw.Gameplay
     /// 各机制数据源不动（护盾=shieldCount / 免费资格=FreeExecutes / 临时能力=tempAbilities），
     /// 本类是唯一"知道各机制在哪查"的聚合点。
     /// 加新机制 = ① 此处加一个检查块 ② 变化点发 BuffsChanged 事件 ③ 配置表加条目。
+    /// （2026-08-24 行动经济：② 由 UI 层 ActionEconomyBuffSync 补发——后端变化点不动。）
     /// </summary>
     public static class BuffDisplay
     {
@@ -25,6 +26,15 @@ namespace TheLaw.Gameplay
             if (state.FreeExecutes.Contains(piece.Id))
             {
                 list.Add(new BuffInfo { key = "free_execute", remaining = 1 });
+            }
+
+            // 行动经济（2026-08-24：ActionEconomy 激活且己方棋子——执行不耗 AP + 每棋子每回合一次；
+            // 数据源 state.ActionEconomyActed 随回合重置；已行动 → 态 B，否则 → 态 A）
+            if (state.ActionEconomyActive && piece.side == Side.Player)
+            {
+                list.Add(state.ActionEconomyActed.Contains(piece.Id)
+                    ? new BuffInfo { key = "action_economy_acted", remaining = -1 }
+                    : new BuffInfo { key = "action_economy", remaining = -1 });
             }
 
             // 临时能力（数据源：piece.tempAbilities——逐个注册；显示名配置表未覆盖时 UI 回退 key）

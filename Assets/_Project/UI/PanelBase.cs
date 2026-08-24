@@ -20,10 +20,13 @@ namespace TheLaw.UI
 
         public void Show()
         {
+            bool wasActive = gameObject.activeSelf;
             gameObject.SetActive(true);
             EnsureBgClick(); // 点击背景（Img_Bg 压暗层）关闭——非全屏面板通用协议
             RefreshLayout(); // 2026-08-23：进入面板全量刷新布局（动态内容重建后防错乱——一劳永逸）
             OnShow();
+            // 面板打开碰撞音（2026-08-24 音频挂点方案）：仅"隐藏→显示"播——PopOverlay 恢复已显示下层时幂等不重复
+            if (!wasActive) UiSfx.Play();
         }
 
         /// <summary>全量刷新本面板布局：ForceUpdateCanvases + 重建全部 LayoutGroup/ContentSizeFitter（动态添加/重建子节点后调用）。</summary>
@@ -42,8 +45,10 @@ namespace TheLaw.UI
 
         public void Hide()
         {
+            bool wasActive = gameObject.activeSelf;
             OnHide();
             gameObject.SetActive(false);
+            if (wasActive) UiSfx.Play(); // 面板关闭碰撞音（2026-08-24 音频挂点方案）
         }
 
         protected virtual void OnShow() { }

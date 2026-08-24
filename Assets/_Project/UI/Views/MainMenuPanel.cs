@@ -48,7 +48,7 @@ namespace TheLaw.UI
                 return;
             }
             btn.onClick.RemoveAllListeners(); // 防重复绑定（面板重建）
-            btn.onClick.AddListener(() => { Debug.Log($"[MainMenu] 点击 {buttonName}"); handler?.Invoke(); });
+            btn.onClick.AddListener(() => { UiSfx.Play(); Debug.Log($"[MainMenu] 点击 {buttonName}"); handler?.Invoke(); });
             Debug.Log($"[MainMenu] 绑定按钮 {buttonName}");
         }
 

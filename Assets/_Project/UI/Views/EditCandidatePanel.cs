@@ -111,6 +111,7 @@ namespace TheLaw.UI
         internal void ClickCandidate(int defId)
         {
             if (_locked || _state == null) return;
+            UiSfx.Play(); // 编辑候选三选一确认碰撞音（2026-08-24 音频挂点方案）
             _locked = true;
             foreach (var card in _cards) if (card != null) card.gameObject.SetActive(false);
             OnCandidateConfirmed?.Invoke(defId);

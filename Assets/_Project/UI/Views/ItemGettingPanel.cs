@@ -94,6 +94,7 @@ namespace TheLaw.UI
 
         void OnConfirmClicked()
         {
+            UiSfx.Play(); // 遗物获得确认碰撞音（2026-08-24 音频挂点方案；面板出现音由 PanelBase.Show 覆盖）
             if (_pendingRelics.Count > 0)
             {
                 // 队列还有下一个遗物——直接切换内容（Overlay 保持显示，不 Pop 再 Push 避免闪跳）

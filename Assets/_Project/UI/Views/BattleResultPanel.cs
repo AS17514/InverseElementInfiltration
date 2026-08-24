@@ -110,6 +110,8 @@ namespace TheLaw.UI
             if (_hasResult) return; // 防重（规则层 GameOver 幂等已兜底——防御性）
             // ⚠️ 快照时机：收到信号立即读（BackToMainMenu 延后 1 帧 Reset——确认时再读会丢数据）
             _victory = winner == Side.Player;
+            // 玩家判负（失败结算表现）→ 死亡提示音（2026-08-24 挂点：docs/前端待办.md「音频挂点方案」SfxDeathUi）
+            if (!_victory) AudioManager.Instance.PlaySFX(AudioRefs.SfxDeathUi);
             _playerScore = _state.PlayerScore;
             _enemyScore = _state.EnemyScore;
             _waveScores = new List<int>(_state.WaveScores);

@@ -15,11 +15,11 @@ MonoBehaviour:
   _id: 1014122116
   templateKey: Attack-16
   template:
-    rid: 7823914186279223429
+    rid: 7823914186279223453
   references:
     version: 2
     RefIds:
-    - rid: 7823914186279223429
+    - rid: 7823914186279223453
       type: {class: AttackTemplate, ns: TheLaw.Data, asm: Data}
       data:
         id: 16
@@ -30,10 +30,10 @@ MonoBehaviour:
         friendlyFire: 1
         shape: 0
         points:
-        - {x: 0, y: -1}
-        - {x: 1, y: -1}
-        - {x: 0, y: -2}
-        - {x: -1, y: -1}
+        - {x: 0, y: 1}
+        - {x: 1, y: 1}
+        - {x: 0, y: 2}
+        - {x: -1, y: 1}
         - {x: -1, y: 0}
         - {x: 1, y: 0}
         rangeSteps: []

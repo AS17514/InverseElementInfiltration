@@ -131,5 +131,22 @@ namespace TheLaw.UI
                     return "未知";
             }
         }
+
+        // ====== 玩法（StyleRegistry id → 玩家可读名）======
+
+        public static string OfStyle(string styleId)
+        {
+            switch (styleId)
+            {
+                case StyleRegistry.Mahjong: return "麻将";
+                case StyleRegistry.Element: return "属性";
+                case StyleRegistry.Dice: return "骰子";
+                case StyleRegistry.Go: return "围棋";
+                case StyleRegistry.Token: return "代币";
+                default:
+                    Debug.LogWarning($"[DisplayNames] 未知玩法 {styleId}");
+                    return styleId; // 回退 id（新玩法未登记时仍可见，不空白）
+            }
+        }
     }
 }

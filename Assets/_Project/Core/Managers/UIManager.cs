@@ -17,6 +17,20 @@ namespace TheLaw.Core
         private readonly Stack<string> _overlayStack = new Stack<string>(); // 覆盖层栈（结算/弹窗）
         private string _current; // 当前显示的切换型面板（null=无）
 
+        /// <summary>当前切换型面板 key（null=无——启动前/隐藏后）。面板切换过渡（PanelTransition）依赖。</summary>
+        public string CurrentKey => _current;
+
+        /// <summary>按 key 取面板（伪 null 防御——已销毁返回 null）。面板切换过渡（PanelTransition 等 LoadingPanel 渐入事件）用。</summary>
+        public IPanel GetPanel(string key)
+        {
+            if (_panels.TryGetValue(key, out var panel) && (UnityEngine.Object)panel != null)
+            {
+                return panel;
+            }
+            _panels.Remove(key);
+            return null;
+        }
+
         /// <summary>注册面板（UI 层面板构造时主动调用；同 key 覆盖旧引用——会话面板随会话重建）。</summary>
         public void RegisterPanel(IPanel panel)
         {
@@ -93,7 +107,7 @@ namespace TheLaw.Core
         /// 覆盖型弹栈：隐藏 overlay 面板 → 恢复 pop 时刻的 _current（幂等 Show + 置顶）。
         /// ⚠️ overlay 不改变 _current——Pop 只需 Hide overlay + 恢复下层显示；不依赖 push 快照（失败路径下层=已销毁 Battle，靠 _current 现值兜底）。
         /// </summary>
-        public void PopOverlay()
+        public void PopOverlay(bool restoreCurrent = true)
         {
             if (_overlayStack.Count == 0)
             {
@@ -109,6 +123,10 @@ namespace TheLaw.Core
             else
             {
                 _panels.Remove(overlayKey);
+            }
+            if (!restoreCurrent)
+            {
+                return; // 过渡弹栈（loading）：目标面板已显示，跳过恢复——恢复会重复 OnShow/RefreshLayout，遮挡渐出时露出面板刷新过程
             }
             // 恢复下层（pop 时刻的 _current——FinalizeRun 已把失败路径 _current 改写为 MainMenu）
             if (_current != null && _panels.TryGetValue(_current, out var cur) && (UnityEngine.Object)cur != null)

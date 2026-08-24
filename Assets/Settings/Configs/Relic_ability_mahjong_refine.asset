@@ -1,0 +1,27 @@
+%YAML 1.1
+%TAG !u! tag:unity3d.com,2011:
+--- !u!114 &11400000
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 0}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: 0ced73b344c7e094ca6f7de7a57148cb, type: 3}
+  m_Name: Relic_ability_mahjong_refine
+  m_EditorClassIdentifier: 
+  _id: 1798559080
+  displayName: "\u6539\u826F"
+  description: "\u884C\u52A8\u70B9\u4E0A\u9650 +1\uFF1B\u5DF1\u65B9\u90E8\u7F72\u6216\u5347\u53D8\u68CB\u5B50\u65F6\uFF0C\u90A3\u4E2A\u68CB\u5B50\u7684\u4EF7\u503C\u4E5F\u4F1A\u586B\u5165\u724C\u5C71\u3002\u201C\u548C\u724C\u201D\u65F6\uFF0C\u57FA\u7840\u5F97\u5206+\u201C\u96C0\u5934\u201D\u7684\u4EF7\u503C\u6570\uFF08\u5982\u679C\u6709\u591A\u4E2A\u5219\u6309\u6700\u9AD8\u7684\u4EF7\u503C\u7B97\uFF09"
+  tags:
+  - mahjong
+  effects:
+  - type: 0
+    value: 1
+  - type: 6
+    value: 1
+  - type: 7
+    value: 1
+  abilities: []

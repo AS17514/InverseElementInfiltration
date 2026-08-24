@@ -89,9 +89,9 @@ namespace TheLaw.Gameplay
                                 }
                                 if (isLastSegment)
                                 {
-                                    if (IsCellOccupied(state, cursor))
+                                    if (!CanLandOnCell(state, piece, cursor))
                                     {
-                                        continue; // 落点不可重叠（棋子）
+                                        continue; // 落点不可重叠（棋子）——「吃子」例外：玩家侧可踩敌方棋子格（移动后直接击败）
                                     }
                                     reachable.Add(cursor); // 落点
                                 }
@@ -109,17 +109,25 @@ namespace TheLaw.Gameplay
                     }
                 }
             }
-            // 跳跃落点（2026-08-16）：相对棋子位置偏移（绝对方向——与攻击 points 同语义，不随 facing 旋转）；
-            // 与常规路径共存（落点并集）；跳跃只查落点合法性（界内 + 非占用 + 非障碍），不查中间路径
+            // 跳跃落点（2026-08-16）：相对棋子位置偏移；2026-08-24 修复：与 points 同改**按 facing 旋转**（配置以"棋子朝 Up"为基准——前方=+dy）
+            // 与常规路径共存（落点并集）；跳跃只查落点合法性（界内 + 非占用 + 非障碍——吃子例外同 CanLandOnCell），不查中间路径
             foreach (var offset in template.jumpOffsets)
             {
-                var cell = piece.position + offset;
-                if (IsCellPassable(state, cell))
+                var cell = piece.position + RotateVector(offset, piece.facing); // 2026-08-24：按 facing 旋转（历史：绝对坐标致"前方跳跃"方向错误）
+                if (IsInsideBoard(cell) && !state.IsBlocked(cell) && CanLandOnCell(state, piece, cell))
                 {
                     reachable.Add(cell);
                 }
             }
             return new List<Vector2Int>(reachable);
+        }
+
+        /// <summary>落点可否降落（2026-08-24 能力「吃子」例外）：空格可落；占用格仅玩家侧「吃子」激活时可踩**敌方棋子**格（移动后直接击败）。</summary>
+        private static bool CanLandOnCell(GameState state, PieceInstance piece, Vector2Int cell)
+        {
+            var occupant = state.GetPieceAt(cell);
+            if (occupant == null) return true;
+            return state.HasRelicEffect(RelicEffectType.Devour) && piece.side == Side.Player && occupant.side == Side.Enemy;
         }
 
         // ========== 攻击 ==========
@@ -139,13 +147,14 @@ namespace TheLaw.Gameplay
         /// </summary>
         public List<Vector2Int> GetAttackableCells(GameState state, PieceInstance piece, AttackTemplate template)
         {
-            // 抛射/法术：自由点选攻击点（相对棋子锚点偏移，无视障碍对点攻击）
+            // 抛射/法术：自由点选攻击点（相对棋子**朝向**偏移——2026-08-24 修复：points 改为按 facing 旋转（同 directions 范式），
+            // 配置以"棋子朝 Up"为基准填点（前方=+dy）；敌方 facing Down 自动 180° 旋转朝向我方——对称自洽；无视障碍对点攻击）
             if ((template.mode == AttackMode.Arcing || template.mode == AttackMode.Spell) && template.points.Count > 0)
             {
                 var pointCells = new List<Vector2Int>();
                 foreach (var offset in template.points)
                 {
-                    var cell = piece.position + offset;
+                    var cell = piece.position + RotateVector(offset, piece.facing); // 2026-08-24：按 facing 旋转（历史：绝对坐标致玩家炮手方向错误）
                     if (IsInsideBoard(cell))
                     {
                         pointCells.Add(cell);
@@ -161,7 +170,9 @@ namespace TheLaw.Gameplay
             // 近战群攻：范围内全部不截断；被动射程修正逐方向作用
             if (template.rangeSteps.Count > 0)
             {
-                int rangeMod = GetPassiveModifier(state, piece, PassiveTarget.AttackRange);
+                // ⚠️ 2026-08-24 能力「强劲」：直射专属射程修正（仅 DirectFire + 玩家侧——与通用 AttackRange 并存叠加）
+                int rangeMod = GetPassiveModifier(state, piece, PassiveTarget.AttackRange)
+                    + ((template.mode == AttackMode.DirectFire && piece.side == Side.Player) ? state.DirectFireRangeBonus : 0);
                 foreach (var step in template.rangeSteps)
                 {
                     int maxR = 0;
@@ -188,7 +199,8 @@ namespace TheLaw.Gameplay
                 return result;
             }
 
-            int range = template.range + GetPassiveModifier(state, piece, PassiveTarget.AttackRange);
+            int range = template.range + GetPassiveModifier(state, piece, PassiveTarget.AttackRange)
+                + ((template.mode == AttackMode.DirectFire && piece.side == Side.Player) ? state.DirectFireRangeBonus : 0); // 2026-08-24 能力「强劲」：直射专属（仅玩家侧）
             for (int dir = 1; dir <= (int)Direction.DownRight; dir <<= 1)
             {
                 if ((template.directions & (Direction)dir) == 0)

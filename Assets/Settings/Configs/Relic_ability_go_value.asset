@@ -1,0 +1,23 @@
+%YAML 1.1
+%TAG !u! tag:unity3d.com,2011:
+--- !u!114 &11400000
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 0}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: 0ced73b344c7e094ca6f7de7a57148cb, type: 3}
+  m_Name: Relic_ability_go_value
+  m_EditorClassIdentifier: 
+  _id: 1713788222
+  displayName: "\u5347\u503C"
+  description: "\u6BCF\u6B21\u90E8\u7F72\u56F4\u68CB\u201C\u68CB\u5B50\u201D\u540E\uFF0C\u5176\u4EF7\u503C\uFF0B1\uFF08\u9002\u7528\u4E8E\u573A\u4E0A\u6240\u6709\u5DF2\u90E8\u7F72\u68CB\u5B50\uFF09"
+  tags:
+  - go
+  effects:
+  - type: 11
+    value: 1
+  abilities: []

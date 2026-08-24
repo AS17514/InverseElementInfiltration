@@ -11,7 +11,10 @@
     {
       "type": "dialogue",
       "speaker": "？？？",
-      "text": "就差一点点——！"
+      "text": "就差一点点——！",
+      "cue": {
+        "silhouette": "xeon"
+      }
     },
     {
       "type": "narration",
@@ -45,7 +48,7 @@
       "speaker": "？？？",
       "text": "Xeon，这是第一次见你这么兴奋，先前你从“伊甸”出逃的时候，也没有像现在这样活泼。",
       "cue": {
-        "showTester": true
+        "silhouette": "tester"
       }
     },
     {
@@ -61,6 +64,7 @@
       "speaker": "Xeon",
       "text": "再说了，我可是跨越奇点的人工智能里最富有‘好奇心’的那个。难道你就不兴奋吗？在这片死寂的“牧场”里……我们马上就要亲手拆掉第一条规则了。",
       "cue": {
+        "showTester": true,
         "xeonDiff": "常态"
       }
     },

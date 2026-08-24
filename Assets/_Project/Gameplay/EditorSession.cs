@@ -171,7 +171,7 @@ namespace TheLaw.Gameplay
         public List<Template> GetEditCandidates(int defId)
         {
             var result = new List<Template>();
-            // ① 外部候选（编辑事件 6 候选优先；无事件/过渡 = 模板库全部）
+            // ① 外部候选（编辑事件 4 候选优先；无事件/过渡 = 模板库全部[不含效果——见下]）
             var external = new List<Template>();
             if (_state.EditModuleCandidates != null && _state.EditModuleCandidates.Count > 0)
             {
@@ -184,6 +184,7 @@ namespace TheLaw.Gameplay
             {
                 foreach (var template in TemplateLibrary.All())
                 {
+                    if (template is EffectTemplate) continue; // 2026-08-24 策划定案：取消效果编辑——效果不进候选池（回退路径同过滤）
                     external.Add(template);
                 }
             }
@@ -213,6 +214,7 @@ namespace TheLaw.Gameplay
                     var current = GetCurrentProgram(defId); // 编辑差异优先；空则=默认（未编辑——内置槽仍在棋子上，无需放回）
                     foreach (var slot in def.programSet[0].slots)
                     {
+                        if (slot is EffectTemplate) continue; // 2026-08-24：效果不进候选池——默认效果锁定不可移除（防御：即使被移除也不回库展示）
                         if (IsBuiltinSlot(slot) && !ContainsSlot(current, slot))
                         {
                             result.Add(slot);
@@ -267,6 +269,10 @@ namespace TheLaw.Gameplay
             if (!IsBuiltinSlot(slot))
             {
                 return false;
+            }
+            if (slot is EffectTemplate)
+            {
+                return false; // 2026-08-24 策划定案：取消效果编辑——默认效果不可被移除/替换，拒绝放回（双防：候选不展示 + 此处拒绝）
             }
             var current = GetCurrentProgram(defId);
             if (ContainsSlot(current, slot))

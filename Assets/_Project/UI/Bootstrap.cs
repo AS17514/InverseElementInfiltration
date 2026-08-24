@@ -113,6 +113,8 @@ namespace TheLaw.UI
             StartCoroutine(CreateItemGettingPanel());
             // ⑤a4 设置面板常驻创建（overlay——主菜单/战斗中入口复用；IsPausing 暂停型）
             StartCoroutine(CreateSettingsPanel());
+            // ⑤a5 加载过渡面板常驻创建（overlay——面板切换过渡压栈；Key="Loading"）
+            StartCoroutine(CreateLoadingPanel());
             // ⑤b 开局初始化（新局状态——含基础牌组手牌填充，ResetForNewRun 内完成）
             _gameState.ResetForNewRun();
             // ⑥ 进主菜单（TODO: UI 层面板）
@@ -260,11 +262,14 @@ namespace TheLaw.UI
             EventCenter.Instance.AddEventListener(GameEvent.EditCandidatesDrawn, OnEditCandidatesDrawn);
             // 能力事件（2026-08-23）：不发 EventOpened——Bootstrap 负责首发唤醒（面板懒加载后主动回填候选）
             EventCenter.Instance.AddEventListener(GameEvent.AbilityCandidatesDrawn, OnAbilityCandidatesDrawn);
+            // 玩法事件（2026-08-25）：不发 EventOpened——Bootstrap 负责首发唤醒（面板懒加载后主动回填候选）
+            EventCenter.Instance.AddEventListener(GameEvent.RuleCandidatesDrawn, OnRuleCandidatesDrawn);
             // 战斗开始：TowerFlow 开战（Phase→Placement）→ 创建战斗控制器
             EventCenter.Instance.AddEventListener(GameEvent.PhaseChanged, OnPhaseChanged);
             // 存档对接后端（2026-08-23）：关键节点落档——事件打开/能力候选/开战检查点（退出与 Continue 依赖）
             EventCenter.Instance.AddEventListener(GameEvent.EventOpened, OnEventOpenedForSave);
             EventCenter.Instance.AddEventListener(GameEvent.AbilityCandidatesDrawn, OnAbilityCandidatesForSave);
+            EventCenter.Instance.AddEventListener(GameEvent.RuleCandidatesDrawn, OnRuleCandidatesForSave);
             EventCenter.Instance.AddEventListener(GameEvent.PhaseChanged, OnPhaseChangedForSave);
         }
 
@@ -277,9 +282,11 @@ namespace TheLaw.UI
             EventCenter.Instance.RemoveEventListener(GameEvent.EventOpened, OnEventOpened);
             EventCenter.Instance.RemoveEventListener(GameEvent.EditCandidatesDrawn, OnEditCandidatesDrawn);
             EventCenter.Instance.RemoveEventListener(GameEvent.AbilityCandidatesDrawn, OnAbilityCandidatesDrawn);
+            EventCenter.Instance.RemoveEventListener(GameEvent.RuleCandidatesDrawn, OnRuleCandidatesDrawn);
             EventCenter.Instance.RemoveEventListener(GameEvent.PhaseChanged, OnPhaseChanged);
             EventCenter.Instance.RemoveEventListener(GameEvent.EventOpened, OnEventOpenedForSave);
             EventCenter.Instance.RemoveEventListener(GameEvent.AbilityCandidatesDrawn, OnAbilityCandidatesForSave);
+            EventCenter.Instance.RemoveEventListener(GameEvent.RuleCandidatesDrawn, OnRuleCandidatesForSave);
             EventCenter.Instance.RemoveEventListener(GameEvent.PhaseChanged, OnPhaseChangedForSave);
             ActionEconomyBuffSync.Shutdown(); // 行动经济 buff 同步桥退订（与 EnsureSubscribed 对称）
         }
@@ -364,6 +371,35 @@ namespace TheLaw.UI
         }
 
         /// <summary>
+        /// 玩法事件候选广播（2026-08-25）：玩法事件不发 EventOpened——此处理首发唤醒：
+        /// 面板未创建 → 懒加载（LoadEventPanel 完成后 ShowRuleEventFromState 主动回填）；
+        /// 面板已存在 → ShowPanel + 面板自身监听重建选项区。
+        /// </summary>
+        private void OnRuleCandidatesDrawn(object data)
+        {
+            if (_gameState == null) return;
+            if (_gameState.RuleCandidates == null || _gameState.RuleCandidates.Count == 0)
+            {
+                Debug.LogWarning("[Bootstrap] 收到 RuleCandidatesDrawn 但候选为空");
+                return;
+            }
+            var ev = string.IsNullOrEmpty(_gameState.CurrentEventId)
+                ? null
+                : ConfigTable.FindByName<EventDefinition>(_gameState.CurrentEventId);
+            if (ev == null || !ev.isRulePick)
+            {
+                Debug.LogWarning("[Bootstrap] 收到 RuleCandidatesDrawn 但当前事件不是玩法事件——忽略");
+                return;
+            }
+            OpenEventPanel();
+        }
+
+        void OnRuleCandidatesForSave(object data)
+        {
+            SaveManager.Instance.SaveAll(); // 玩法候选抽取后落档（读档可直接回填候选）
+        }
+
+        /// <summary>
         /// 公共懒加载：CreateAsync → WaitUntil → onReady（大审查 R2：5 个面板加载协程合并——模式统一、防漂移）。
         /// ⚠️ 2026-08-12 in-flight 锁：加载期间字段仍为 null——第二次请求会再启动加载（双实例双监听）；
         /// 按类型记录"加载中"，重复请求直接忽略（5 个面板统一受益）。
@@ -403,7 +439,7 @@ namespace TheLaw.UI
             else
             {
                 // 面板已存在：其自身监听 EventOpened 处理（Bootstrap 不再主动推——防双消费双推进）
-                _uiManager.ShowPanel("EventPanel");
+                PanelTransition.ShowWithLoading(_uiManager, "EventPanel");
             }
         }
 
@@ -417,12 +453,12 @@ namespace TheLaw.UI
                 panel.OnSettingsClicked += () => _uiManager.PushOverlay("Settings"); // 事件关设置入口
                 panel.OnExitClicked += ConfirmExitToMenu; // 事件关退出 → 确认弹窗（保存返回主菜单）
                 // 主动推首次事件数据（面板注册晚于事件广播——否则显示预制文本/选项无响应）
-                // 能力事件优先：首发/读档时 AbilityCandidatesDrawn 已错过——从 GameState 回填（不能依赖历史广播）
-                if (!panel.ShowAbilityEventFromState())
+                // 能力/玩法事件优先：首发/读档时对应广播已错过——从 GameState 回填（不能依赖历史广播）
+                if (!panel.ShowAbilityEventFromState() && !panel.ShowRuleEventFromState())
                 {
                     panel.ShowEvent(_pendingEventId); // 普通事件路径
                 }
-                _uiManager.ShowPanel("EventPanel");
+                PanelTransition.ShowWithLoading(_uiManager, "EventPanel");
                 Debug.Log($"[Bootstrap] 事件面板已显示（event={_pendingEventId ?? _gameState?.CurrentEventId}）");
             }, sessionBound: true);
         }
@@ -479,7 +515,7 @@ namespace TheLaw.UI
             DestroySessionPanels();
             // 结算面板不在 UIManager 栈（BattlePanel/EventPanel 直接 Show）——ShowPanel 不影响它；
             // 失败路径：MainMenu 显示在结算面板下层，玩家确认后结算关闭露出 MainMenu
-            _uiManager.ShowPanel("MainMenu");
+            PanelTransition.ShowWithLoading(_uiManager, "MainMenu");
             AudioManager.Instance.PlayBGM(TheLaw.Core.AudioRefs.BgmMenu);
             _finalizing = false; // 复位——下一局收尾可用
             Debug.Log("[Bootstrap] 返回主菜单（收尾链完成）");
@@ -528,7 +564,7 @@ namespace TheLaw.UI
             DisposeSessionFlow(); // 整局级"离开销毁"（注销监听 + 置空——含战斗实例销毁）
             SaveManager.Instance.SaveAll(); // 保存当前进度（不清档——保留给 Continue）
             DestroySessionPanels();
-            _uiManager.ShowPanel("MainMenu");
+            PanelTransition.ShowWithLoading(_uiManager, "MainMenu");
             AudioManager.Instance.PlayBGM(TheLaw.Core.AudioRefs.BgmMenu);
             _finalizing = false;
             Debug.Log("[Bootstrap] 已保存进度并返回主界面（可继续游戏）");
@@ -578,7 +614,7 @@ namespace TheLaw.UI
             }
             else
             {
-                AudioManager.Instance.PlayBGM(TheLaw.Core.AudioRefs.BgmMenu); // 主菜单 BGM（占位）
+                AudioManager.Instance.PlayBGM(TheLaw.Core.AudioRefs.BgmMenu, 3f); // 主菜单 BGM（冷启动开场动画 3s 渐入；返回主菜单走默认 0.8s）
                 StartCoroutine(LoadMainMenu());
             }
         }
@@ -621,7 +657,7 @@ namespace TheLaw.UI
                 return;
             }
             // 战斗/其他阶段：后端暂无续玩 API——留在主菜单，存档保留
-            _uiManager.ShowPanel("MainMenu");
+            PanelTransition.ShowWithLoading(_uiManager, "MainMenu");
             Debug.LogWarning("[Bootstrap] 存档处于战斗等阶段——后端暂不支持该阶段续玩（待办：BattleFlow.ResumeBattle），已保留存档");
         }
 
@@ -640,7 +676,7 @@ namespace TheLaw.UI
                     // 终局档（防御——存档恰落 GameOver→收尾窗口）：不可读档——清档回主菜单
                     _gameState.ResetForNewRun();
                     SaveManager.Instance.SaveAll();
-                    _uiManager.ShowPanel("MainMenu");
+                    PanelTransition.ShowWithLoading(_uiManager, "MainMenu");
                     return true;
                 }
                 SaveManager.Instance.LoadBattleStart(); // SL 槽缺失 → 保持主档（主档可能即开战检查点状态——仍可 StartBattle 重开）
@@ -844,7 +880,7 @@ namespace TheLaw.UI
             }
             else
             {
-                _uiManager.ShowPanel("EditCandidatePanel");
+                PanelTransition.ShowWithLoading(_uiManager, "EditCandidatePanel");
             }
         }
 
@@ -856,7 +892,7 @@ namespace TheLaw.UI
                 _uiManager.RegisterPanel(panel);
                 panel.Init(_gameState);
                 panel.OnCandidateConfirmed += OnEditCandidateConfirmed;
-                _uiManager.ShowPanel("EditCandidatePanel");
+                PanelTransition.ShowWithLoading(_uiManager, "EditCandidatePanel");
                 Debug.Log("[Bootstrap] 编辑候选面板已显示");
             }, sessionBound: true);
         }
@@ -883,7 +919,7 @@ namespace TheLaw.UI
             else
             {
                 _pieceEditPanel.SetEditableDefId(editableDefId);
-                _uiManager.ShowPanel("PieceEdit");
+                PanelTransition.ShowWithLoading(_uiManager, "PieceEdit");
             }
         }
 
@@ -991,6 +1027,16 @@ namespace TheLaw.UI
                 _uiManager.RegisterPanel(panel);
                 panel.Init(_uiManager);
                 panel.gameObject.SetActive(false); // 常驻隐藏（主菜单按钮 PushOverlay 显示）
+            });
+        }
+
+        /// <summary>加载过渡面板常驻创建（overlay——面板切换过渡压栈；Key="Loading"，2026-08-25 LoadingPanel 接入）。</summary>
+        private System.Collections.IEnumerator CreateLoadingPanel()
+        {
+            yield return LoadPanelAsync<LoadingPanel>(panel =>
+            {
+                _uiManager.RegisterPanel(panel);
+                panel.gameObject.SetActive(false); // 常驻隐藏（PanelTransition 过渡时 PushOverlay）
             });
         }
 

@@ -26,6 +26,15 @@
           "weight": 1
         }
       ]
+    },
+    {
+      "poolName": "rule_pool",
+      "entries": [
+        {
+          "eventId": "rule_pick",
+          "weight": 1
+        }
+      ]
     }
   ],
   "events": [
@@ -110,6 +119,13 @@
           ]
         }
       ]
+    },
+    {
+      "eventId": "rule_pick",
+      "title": "规则改写",
+      "description": "这片区域的规则正在改写，选择将要生效的玩法（已激活的玩法不会再出现；本次未选的玩法之后仍可能再次出现）",
+      "isRulePick": true,
+      "options": []
     }
   ]
 }

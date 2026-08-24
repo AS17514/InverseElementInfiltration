@@ -26,8 +26,8 @@
     },
     {
       "relicName": "ability_draw_extra",
-      "displayName": "过目不忘",
-      "description": "行动点上限 +1；可以额外抽取一张牌",
+      "displayName": "手快有",
+      "description": "行动点上限 +1；花费行动点抽牌时可以额外抽一张",
       "tags": [
         "basic"
       ],
@@ -44,8 +44,8 @@
     },
     {
       "relicName": "ability_promote_copy",
-      "displayName": "军备复制",
-      "description": "行动点上限 +1；花费行动点升变棋子时，若升变棋子为“部署”棋子，可以将其复制一张加入手牌",
+      "displayName": "再利用",
+      "description": "行动点上限 +1；花费行动点升变棋子时，若升变的棋子为“部署”棋子，则可以将那个棋子的一张复制加入手牌",
       "tags": [
         "basic"
       ],
@@ -62,8 +62,8 @@
     },
     {
       "relicName": "ability_action_economy",
-      "displayName": "士气高昂",
-      "description": "执行棋子行动不消耗行动点，但棋子每回合只能行动一次",
+      "displayName": "高效指挥",
+      "description": "执行棋子的行动不消耗行动点，你场上的所有棋子一回合只能行动一次",
       "tags": [
         "basic"
       ],
@@ -76,7 +76,7 @@
     },
     {
       "relicName": "ability_deploy_row",
-      "displayName": "战线推进",
+      "displayName": "领土扩张",
       "description": "行动点上限 +1；己方的部署区增加一行",
       "tags": [
         "basic"
@@ -94,8 +94,8 @@
     },
     {
       "relicName": "ability_edited_strike",
-      "displayName": "抽牌即战",
-      "description": "行动点上限 +1；若抽取到被编辑过的棋子，则可以将其立即部署，并执行一次行动",
+      "displayName": "编辑：极速",
+      "description": "行动点上限 +1；使用行动点抽牌时，若抽到被编辑过的棋子，则可以将其立即“部署”/“升变”，并可以立即执行一次行动",
       "tags": [
         "basic"
       ],
@@ -107,6 +107,312 @@
         {
           "effectType": "DrawEditedImmediate",
           "value": 1
+        }
+      ]
+    },
+    {
+      "relicName": "ability_mahjong_refine",
+      "displayName": "改良",
+      "description": "行动点上限 +1；己方部署或升变棋子时，那个棋子的价值也会填入牌山。“和牌”时，基础得分+“雀头”的价值数（如果有多个则按最高的价值算）",
+      "tags": [
+        "mahjong"
+      ],
+      "effects": [
+        {
+          "effectType": "APBonus",
+          "value": 1
+        },
+        {
+          "effectType": "MahjongFillOnDeployPromote",
+          "value": 1
+        },
+        {
+          "effectType": "HuBaseScoreBonus",
+          "value": 1
+        }
+      ]
+    },
+    {
+      "relicName": "ability_baopai",
+      "displayName": "宝牌",
+      "description": "游戏开始时，选择一个1—9的数字，本局游戏中那个数字对应价值的牌将被视为“宝牌”。“宝牌”进入弃牌区时基础得分＋其价值数，参与凑成刻子或顺子时番数额外＋1",
+      "tags": [
+        "mahjong"
+      ],
+      "effects": [
+        {
+          "effectType": "Baopai",
+          "value": 1
+        }
+      ]
+    },
+    {
+      "relicName": "ability_element_refine",
+      "displayName": "提纯",
+      "description": "我方所有手牌的属性将在每回合开始时变为其相生的属性。部署或升变棋子时，我方所有棋子的属性将变为部署或升变的棋子的属性，且每有一个棋子的属性发生变化，基础得分＋1",
+      "tags": [
+        "element"
+      ],
+      "effects": [
+        {
+          "effectType": "ElementRefine",
+          "value": 1
+        }
+      ]
+    },
+    {
+      "relicName": "ability_go_speed",
+      "displayName": "速攻",
+      "description": "行动点上限 +1；每回合能部署两次围棋“棋子”",
+      "tags": [
+        "go"
+      ],
+      "effects": [
+        {
+          "effectType": "APBonus",
+          "value": 1
+        },
+        {
+          "effectType": "GoDeployExtra",
+          "value": 1
+        }
+      ]
+    },
+    {
+      "relicName": "ability_go_value",
+      "displayName": "升值",
+      "description": "每次部署围棋“棋子”后，其价值＋1（适用于场上所有已部署棋子）",
+      "tags": [
+        "go"
+      ],
+      "effects": [
+        {
+          "effectType": "GoValueUp",
+          "value": 1
+        }
+      ]
+    },
+    {
+      "relicName": "ability_go_promote",
+      "displayName": "假定这也是棋子",
+      "description": "行动点上限 +1；围棋“棋子”也可以被升变",
+      "tags": [
+        "go"
+      ],
+      "effects": [
+        {
+          "effectType": "APBonus",
+          "value": 1
+        },
+        {
+          "effectType": "GoPromote",
+          "value": 1
+        }
+      ]
+    },
+    {
+      "relicName": "ability_dice_rig",
+      "displayName": "出千",
+      "description": "行动点上限 +1；投掷骰子的点数可以自选",
+      "tags": [
+        "dice"
+      ],
+      "effects": [
+        {
+          "effectType": "APBonus",
+          "value": 1
+        },
+        {
+          "effectType": "DiceRig",
+          "value": 1
+        }
+      ]
+    },
+    {
+      "relicName": "ability_token_kill",
+      "displayName": "开源",
+      "description": "行动点上限 +1；每次击败对方的棋子时获得1代币",
+      "tags": [
+        "token"
+      ],
+      "effects": [
+        {
+          "effectType": "APBonus",
+          "value": 1
+        },
+        {
+          "effectType": "TokenOnKill",
+          "value": 1
+        }
+      ]
+    },
+    {
+      "relicName": "ability_token_spend",
+      "displayName": "节流",
+      "description": "行动点上限 +1；每次消耗代币时倍率+1，若购买非初始棋子，获得1代币",
+      "tags": [
+        "token"
+      ],
+      "effects": [
+        {
+          "effectType": "APBonus",
+          "value": 1
+        },
+        {
+          "effectType": "TokenSpendMultiplier",
+          "value": 1
+        }
+      ]
+    },
+    {
+      "relicName": "ability_bones_tiles",
+      "displayName": "骨骰骨牌",
+      "description": "每次投掷骰子时，骰子对应的点数也会增加到牌山。若骰子点数的数字参与凑成刻子或顺子时，行动点＋1",
+      "tags": [
+        "mahjong",
+        "dice"
+      ],
+      "effects": [
+        {
+          "effectType": "DiceToMahjongScore",
+          "value": 1
+        }
+      ]
+    },
+    {
+      "relicName": "ability_mahjong_chips",
+      "displayName": "麻将筹码",
+      "description": "每次部署的麻将牌被破坏时获得1代币，代币也可以购买弃牌区的麻将牌",
+      "tags": [
+        "mahjong",
+        "token"
+      ],
+      "effects": [
+        {
+          "effectType": "TokenOnWallBreak",
+          "value": 1
+        }
+      ]
+    },
+    {
+      "relicName": "ability_transform",
+      "displayName": "变换",
+      "description": "行动点＋1。每次投掷骰子时，场上以及手牌所有棋子将重刷其对应的属性",
+      "tags": [
+        "element",
+        "dice"
+      ],
+      "effects": [
+        {
+          "effectType": "APBonus",
+          "value": 1
+        },
+        {
+          "effectType": "ElementRerollOnRoll",
+          "value": 1
+        }
+      ]
+    },
+    {
+      "relicName": "ability_element_dice",
+      "displayName": "属性骰子",
+      "description": "骰子按照 1-金 2-木 3-水 4-火 5-土 6-任意 的对照关系，每次部署“骰子对应属性”的棋子，倍率＋1",
+      "tags": [
+        "element",
+        "dice"
+      ],
+      "effects": [
+        {
+          "effectType": "ElementMatchMultiplier",
+          "value": 1
+        }
+      ]
+    },
+    {
+      "relicName": "ability_slot_machine",
+      "displayName": "老虎机",
+      "description": "每次投掷骰子时，获得骰子点数代币。花费骰子点数的代币时，抽一张牌并丢弃一张牌到弃牌区",
+      "tags": [
+        "dice",
+        "token"
+      ],
+      "effects": [
+        {
+          "effectType": "TokenOnRoll",
+          "value": 1
+        },
+        {
+          "effectType": "SlotDrawOnMatch",
+          "value": 1
+        }
+      ]
+    },
+    {
+      "relicName": "ability_shock_wall",
+      "displayName": "震击",
+      "description": "行动点上限 +1；游戏开始时在非部署区随机生成两个无法被破坏的墙体，当我方棋子攻击墙体时，会对墙体周围8格造成一次伤害",
+      "tags": [
+        "basic"
+      ],
+      "effects": [
+        {
+          "effectType": "APBonus",
+          "value": 1
+        },
+        {
+          "effectType": "ShockWall",
+          "value": 1
+        }
+      ]
+    },
+    {
+      "relicName": "ability_devour",
+      "displayName": "吃子",
+      "description": "行动点上限 +1；我方的棋子执行行动时将跳过攻击行动，移动行动的落点可以选择敌方棋子所在格，并在移动后将目标直接击败",
+      "tags": [
+        "basic"
+      ],
+      "effects": [
+        {
+          "effectType": "APBonus",
+          "value": 1
+        },
+        {
+          "effectType": "Devour",
+          "value": 1
+        }
+      ]
+    },
+    {
+      "relicName": "ability_strong",
+      "displayName": "强劲",
+      "description": "行动点上限 +1；我方棋子的直射距离+1",
+      "tags": [
+        "basic"
+      ],
+      "effects": [
+        {
+          "effectType": "APBonus",
+          "value": 1
+        },
+        {
+          "effectType": "DirectFireRange",
+          "value": 1
+        }
+      ]
+    },
+    {
+      "relicName": "ability_go_buy",
+      "displayName": "买子",
+      "description": "可以固定花费2代币购买一次围棋“棋子”",
+      "tags": [
+        "go",
+        "token"
+      ],
+      "effects": [
+        {
+          "effectType": "TokenBuyGo",
+          "value": 2
         }
       ]
     }

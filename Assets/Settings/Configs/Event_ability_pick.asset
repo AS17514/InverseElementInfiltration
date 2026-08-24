@@ -17,6 +17,7 @@ MonoBehaviour:
   description: "\u65C5\u9014\u4E2D\u4F60\u9047\u5230\u4E86\u4E00\u6BB5\u5947\u9047\uFF0C\u9009\u62E9\u4E00\u4EFD\u52A9\u529B"
   options: []
   isAbilityPick: 1
+  isRulePick: 0
   deckSizeLimit: 0
   totalValueLimit: 0
   allowDuplicate: 0

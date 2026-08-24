@@ -52,7 +52,15 @@ namespace TheLaw.Gameplay
         private bool _enemyTurnEndPending;   // 敌方回合结束待定——本阶段表现全部播完才切回玩家回合（动画优先）
         private bool _hadEnemyPresentation;  // 本轮敌方回合是否有表现（有→表现完即切；无→等阶段展示信号）
         private bool _deployedThisRound;     // 本轮波次是否部署（部署动画挂起点）
-        private bool _pendingAutoPromote;    // 自动预告挂起（2026-08-19：本波第 1 回合结束后预告离中心最近 2 棋子，第 3 回合随机升变）
+        // 旧 promotions 延迟挂载批次（2026-08-24 时序修复：预告周期锚定下一波部署回合 s——s-2 挂载、s-1 升变、s 部署）。
+        // ⚠️ 瞬态（不入档）：当前无关卡使用旧机制；若在「部署后、预告前」存档窗口读档会丢失本批次——启用旧机制时需补存档字段。
+        private class PendingPromoBatch
+        {
+            public int announceTurn; // 预告挂载回合（TurnCount）
+            public List<PieceInstance> pieces = new List<PieceInstance>(); // 已部署棋子（与 promotions 下标对应）
+            public List<WavePromotion> promos = new List<WavePromotion>();
+        }
+        private readonly List<PendingPromoBatch> _pendingPromoBatches = new List<PendingPromoBatch>();
         private int _enemyBudget; // 敌方回合行动次数预算（逐步决策——每步一个行动；2026-08-13 替代请求队列）
         private readonly HashSet<int> _actedEnemyPieces = new HashSet<int>(); // 本回合已行动的敌方棋子（① 排除——防 requests[0] 固定重复执行）
 
@@ -108,6 +116,7 @@ namespace TheLaw.Gameplay
             // 先分离非初始牌，再创建 Placement UI；避免构筑结果在准备阶段短暂显示为满手牌。
             // StartPlayerTurn 仍保留幂等防御调用，首回合只负责自动抽 4 张。
             _resolver.SetupDrawPile();
+            _resolver.SpawnShockWalls(); // 2026-08-24 能力「震击」：游戏开始时非部署区随机生成 2 个不可破坏墙（持有能力时；内部判——摆位阶段可见）
             // ⚠️ 2026-08-24 战斗中续玩（临时方案）：开战快照 SL 槽——必须在**波次随机（HandleWaveAndPromotions）之前**保存
             // （GameState + RNG 独立槽位；Continue 战斗档加载后 StartBattle 重开 → 与首次完全一致[含首波随机阵容]）
             SaveManager.Instance.SaveBattleStart();
@@ -130,9 +139,10 @@ namespace TheLaw.Gameplay
             _enemyTurnEndPending = false;
             _hadEnemyPresentation = false;
             _deployedThisRound = false;
-            _pendingAutoPromote = false; // 新字段必须进重置清单——防跨局残留（预告挂起未消费）
+            _pendingPromoBatches.Clear(); // 延迟挂载批次（新字段必须进重置清单——防跨局残留）
             _enemyBudget = 0; // 敌方行动预算（新字段必须进重置清单——防跨局残留）
             _actedEnemyPieces.Clear(); // 已行动棋子集合（新字段必须进重置清单——防跨局残留）
+            _diceRigPending = false; // 2026-08-24 能力「出千」自选瞬态（新字段必须进重置清单）
         }
 
         private void OnPlacementFinished(object data)
@@ -171,13 +181,16 @@ namespace TheLaw.Gameplay
             _state.PlayerAP = _state.PlayerAPMax;
             _state.ActionEconomyActed.Clear(); // 2026-08-22 行动经济：新回合重置已行动集（buff 回态 A）
             _state.GoDeployCount = 0;          // 2026-08-24 围棋：每回合限部署 1 次（回合开始重置）
+            _state.GoExtraDeploys = 0;     // 2026-08-24 能力「买子」：购买次数当回合有效——回合开始清（作废未用次数）
             _state.DiceMovePending = false;    // 2026-08-24 骰子：点数移动 buff **不跨回合**（新回合清）
             _state.DiceMoveSteps = 0;
-            if (_state.IsStyleActive("token"))
+            _diceRigPending = false;           // 2026-08-24 能力「出千」：自选瞬态不跨回合（未选则作废）
+            if (_state.IsStyleActive(StyleRegistry.Token))
             {
                 _state.TokenCount += 1;        // 2026-08-24 代币：每回合开始 +1（初始 0；不跨战斗）
                 EventCenter.Instance.EventTrigger(GameEvent.StateChanged, "token");
             }
+            _resolver.RefineHandElements();    // 2026-08-24 能力「提纯」：手牌属性回合开始变相生（激活时内部判）
             ChangePhase(BattlePhase.PlayerTurn);
             _floorRules.OnTurnStart(_state, _resolver);
             _relicSystem.OnTurnStart();
@@ -199,7 +212,7 @@ namespace TheLaw.Gameplay
         {
             _state.EnemyAP = _state.EnemyAPMax;
             ChangePhase(BattlePhase.EnemyTurn);
-            HandleWaveAndPromotions(); // 波次调度 + 升变预告（本波开始预告下一波）
+            HandleWaveAndPromotions(); // 波次调度 + 升变预告（2026-08-24：预告周期锚定下一波部署回合 s——预告 s-2 / 升变 s-1 / 部署 s）
             ResolveEnemyTurn();
         }
 
@@ -260,12 +273,6 @@ namespace TheLaw.Gameplay
             CheckVictory(false);
             if (_state.Phase != BattlePhase.GameOver)
             {
-                // 自动预告（2026-08-19）：本波第 1 回合结束后（敌方执行完行动）——离中心最近 2 个敌方棋子获升变预告
-                if (_pendingAutoPromote)
-                {
-                    _pendingAutoPromote = false;
-                    AnnounceAutoPromotions();
-                }
                 // 动画优先：敌方回合展示到本阶段表现全部播完（含波次部署/AI 行动动画）再切回玩家回合
                 _enemyTurnEndPending = true;
                 // ⚠️ 2026-08-12：_hadEnemyPresentation 不在此采样（串行化后采样时表现已完成、_waitingPresentation 已清，
@@ -276,8 +283,9 @@ namespace TheLaw.Gameplay
         }
 
         /// <summary>
-        /// 自动预告（2026-08-19）：敌方场上离棋盘中心 (3.5,3.5) 最近的两个棋子获升变预告——
-        /// countdown=2（第 2 回合递减→1、第 3 回合递减→0 升变）；newDefId=0 表示升变时从升变类棋子随机（RandomManager）。
+        /// 自动预告（2026-08-19 引入；2026-08-24 时序修复）：敌方场上离棋盘中心 (3.5,3.5) 最近的两个棋子获升变预告——
+        /// countdown=1（下一敌方回合递减→0 升变）；预告在 s-2 回合挂载、s-1 回合升变（s = 本波 autoPromote 锚定的下一波部署回合，
+        /// 由 HandleWaveAndPromotions 前瞻触发）。newDefId=0 表示升变时从升变类棋子随机（RandomManager）。
         /// </summary>
         private void AnnounceAutoPromotions()
         {
@@ -298,11 +306,32 @@ namespace TheLaw.Gameplay
                 {
                     pieceId = piece.Id,
                     newDefId = 0,   // 升变时随机（RandomManager——种子相关可复现）
-                    countdown = 2,  // 本波第 3 回合开始升变
+                    countdown = 1,  // 下一敌方回合（部署回合 s-1）升变
                 };
                 _state.PromoteAnnouncements.Add(ann);
                 EventCenter.Instance.EventTrigger(GameEvent.PromoteAnnounced, ann);
                 EventCenter.Instance.EventTrigger(GameEvent.BuffsChanged, piece.Id); // 升变预告挂载 → buff 变化（2026-08-23：预告走 buff 显示，玩家可在 buff 区查看）
+            }
+        }
+
+        /// <summary>旧 promotions 挂载（2026-08-24）：对指定已部署棋子按 countdown 挂载升变预告并照发 PromoteAnnounced/BuffsChanged；目标已不在场（延迟窗口内阵亡/升变）则跳过。</summary>
+        private void MountPromotions(List<PieceInstance> wavePieces, List<WavePromotion> promos, int countdown)
+        {
+            foreach (var promo in promos)
+            {
+                if (promo.pieceIndexInWave < 0 || promo.pieceIndexInWave >= wavePieces.Count)
+                {
+                    continue;
+                }
+                var target = wavePieces[promo.pieceIndexInWave];
+                var alive = target != null ? _state.GetPiece(target.Id) : null;
+                if (alive == null || alive.side != Side.Enemy)
+                {
+                    continue;
+                }
+                _state.PromoteAnnouncements.Add(new PromoteAnnouncement { pieceId = target.Id, newDefId = promo.toDefId, countdown = countdown });
+                EventCenter.Instance.EventTrigger(GameEvent.PromoteAnnounced, new PromoteAnnouncement { pieceId = target.Id, newDefId = promo.toDefId, countdown = countdown });
+                EventCenter.Instance.EventTrigger(GameEvent.BuffsChanged, target.Id); // 升变预告挂载 → buff 变化（2026-08-23 同口径）
             }
         }
 
@@ -398,6 +427,7 @@ namespace TheLaw.Gameplay
         public void OnPlayerRequestDiceMove(DiceMoveRequest request) => ProcessRequest(request, Side.Player);
         public void OnPlayerRequestDeployGo(DeployGoRequest request) => ProcessRequest(request, Side.Player);
         public void OnPlayerRequestBuyToken(BuyTokenRequest request) => ProcessRequest(request, Side.Player);
+        public void OnPlayerRequestBuyGo(BuyGoRequest request) => ProcessRequest(request, Side.Player); // 2026-08-24 能力「买子」
 
         private void ProcessRequest(Request request, Side side)
         {
@@ -458,7 +488,7 @@ namespace TheLaw.Gameplay
                         if (deployValid)
                         {
                             // ⚠️ 2026-08-24 代币玩法：购买的"初始棋子"复制可**不耗 AP** 部署（口述定稿——C5；IsDeployAllowed 已放行）
-                            bool freeDeploy = side == Side.Player && _state.IsStyleActive("token")
+                            bool freeDeploy = side == Side.Player && _state.IsStyleActive(StyleRegistry.Token)
                                 && deployDef != null && _state.GetEffectiveType(deployDef.Id) == PieceType.Initial;
                             var deployAction = new DeployAction(deploy.pieceDefId, side, deploy.cell) { cardInstanceId = deploy.cardInstanceId }; // 2026-08-21：精确消费实例 id
                             _resolver.Resolve(deployAction);
@@ -475,9 +505,11 @@ namespace TheLaw.Gameplay
                         var promoteDef = ConfigTable.Find<PieceDef>(promote.newDefId);
                         // 升变规则（放宽）：任意【非升变】棋子 + 手牌有【升变牌】→ 可升变（无映射限制）
                         // ⚠️ 2026-08-15：类型 = 价值档位推导（升变 = 7+ 档；编辑跨档后判定随之变化）
-                        // ⚠️ 2026-08-24：围棋棋子不可升变（口述定稿——promotionConfigId=0 且 IsGo 拒绝）
-                        bool promoteValid = piece != null && !piece.IsGo && piece.side == side
-                            && _state.GetEffectiveType(piece.DefId) != PieceType.Promoted
+                        // ⚠️ 2026-08-24：围棋棋子默认不可升变（IsGo 拒绝）；能力「假定」激活 → 放行（用手牌升变牌，升变为该牌棋子）
+                        bool goPromoteAllowed = piece != null && piece.IsGo && _state.HasRelicEffect(RelicEffectType.GoPromote);
+                        bool promoteValid = piece != null && (goPromoteAllowed || (!piece.IsGo
+                            && _state.GetEffectiveType(piece.DefId) != PieceType.Promoted))
+                            && piece.side == side
                             && promoteDef != null && _state.GetEffectiveType(promoteDef.Id) == PieceType.Promoted
                             && HasPieceInHand(promote.newDefId);
                         if (promoteValid)
@@ -498,7 +530,7 @@ namespace TheLaw.Gameplay
                             if (_state.GetPiece(execute.pieceId).IsGo) { break; } // 2026-08-24 围棋不可行动（含骰子移动重定向——均拒绝）
                             // ⚠️ 2026-08-24 骰子玩法：全场"点数直线移动"buff——点某棋子执行时重定向
                             // （不进入普通执行/扣 AP 逻辑；执行点数步直线移动后取消全场 buff）
-                            if (side == Side.Player && _state.IsStyleActive("dice") && _state.DiceMovePending)
+                            if (side == Side.Player && _state.IsStyleActive(StyleRegistry.Dice) && _state.DiceMovePending)
                             {
                                 TryStartDiceMove(execute.pieceId, side);
                                 break; // 骰子移动处理——不继续普通执行
@@ -590,32 +622,49 @@ namespace TheLaw.Gameplay
                     // ========== 2026-08-24 新玩法（骰子/围棋/代币——设计定稿；仅玩家侧）==========
                     case RollDiceRequest:
                         // 骰子·投掷（执行类行动 1 AP）：随机 1~6 → 点数 + 基础分
-                        if (side == Side.Player && _state.IsStyleActive("dice"))
+                        // ⚠️ 2026-08-24 能力「出千」：投掷点数可自选——挂起自选瞬态（前端弹 1-6 选择 → OnDiceNumberSelected 落账；不跨回合）
+                        if (side == Side.Player && _state.IsStyleActive(StyleRegistry.Dice))
                         {
-                            _resolver.RollDice();
+                            if (_state.HasRelicEffect(RelicEffectType.DiceRig))
+                            {
+                                _diceRigPending = true;
+                                EventCenter.Instance.EventTrigger(GameEvent.StateChanged, "dice-rig-select");
+                            }
+                            else
+                            {
+                                _resolver.RollDice();
+                            }
                             DeductActionPoint(request.free, side);
                         }
                         break;
                     case DiceMoveRequest:
                         // 骰子·点数直线移动启动（不耗 AP——消耗点数；挂全场 buff；AP=0 豁免见 IsExemptFromApCost）
-                        if (side == Side.Player && _state.IsStyleActive("dice"))
+                        if (side == Side.Player && _state.IsStyleActive(StyleRegistry.Dice))
                         {
                             _resolver.StartDiceMove(); // 点数>0 才成功（内部校验）
                         }
                         break;
                     case DeployGoRequest dg:
-                        // 围棋·部署"棋子牌"（不耗 AP、每回合限 1 次、任意**空**格[非占用/非障碍/非墙体]；AP=0 豁免）
-                        if (side == Side.Player && _state.IsStyleActive("go")
-                            && _state.GoDeployCount < 1 && !_state.Pieces.ContainsKey(dg.cell) && !_state.IsBlocked(dg.cell))
+                        // 围棋·部署"棋子牌"（不耗 AP、每回合容量内[免费限次+买子]、任意**空**格[非占用/非障碍/非墙体]；AP=0 豁免）
+                        if (side == Side.Player && _state.IsStyleActive(StyleRegistry.Go)
+                            && _state.GoDeployCount < _state.GoDeployCapacity()
+                            && !_state.Pieces.ContainsKey(dg.cell) && !_state.IsBlocked(dg.cell))
                         {
                             _resolver.DeployGoPiece(dg.cell); // 内部含围杀检查
                         }
                         break;
                     case BuyTokenRequest bt:
                         // 代币·购买（不耗 AP——消耗代币；选弃牌区牌 → 复制入手牌；AP=0 豁免）
-                        if (side == Side.Player && _state.IsStyleActive("token"))
+                        if (side == Side.Player && _state.IsStyleActive(StyleRegistry.Token))
                         {
                             _resolver.BuyFromDiscard(bt.discardIndex);
+                        }
+                        break;
+                    case BuyGoRequest:
+                        // 围棋·买子（2026-08-24 能力「买子」：固定费用代币 → 一次部署次数[当回合]；不耗 AP；费用/余额校验在 Resolver；AP=0 豁免）
+                        if (side == Side.Player && _state.IsStyleActive(StyleRegistry.Go) && _state.IsStyleActive(StyleRegistry.Token))
+                        {
+                            _resolver.BuyGoDeploy();
                         }
                         break;
                 }
@@ -642,11 +691,11 @@ namespace TheLaw.Gameplay
 
         /// <summary>成本预检豁免集（2026-08-23 决策记录_回合结束手动化与AP豁免集——单一收口）。
         /// ⚠️ 未来新增"免费/无需 AP"的行动类型时，在此登记（连同前端契约一起）——避免散落各处忘加。
-        /// 2026-08-24 登记：围棋部署/代币购买/骰子移动启动（新玩法免费类——不耗 AP）。</summary>
+        /// 2026-08-24 登记：围棋部署/代币购买/骰子移动启动/买子（新玩法免费类——不耗 AP）。</summary>
         private bool IsExemptFromApCost(Request request, bool requestFree, bool qualifiedUse)
         {
             if (requestFree || qualifiedUse) return true;
-            return request is DeployGoRequest || request is BuyTokenRequest || request is DiceMoveRequest;
+            return request is DeployGoRequest || request is BuyTokenRequest || request is DiceMoveRequest || request is BuyGoRequest; // 2026-08-24 买子
         }
 
         private void DeductActionPoint(bool free, Side side)
@@ -833,6 +882,14 @@ namespace TheLaw.Gameplay
                     }
                     break;
                 case AttackTemplate attack:
+                    // ⚠️ 2026-08-24 能力「吃子」：玩家侧执行**跳过攻击槽**（攻击行动不生效——移动吃子代替；纯攻击槽程序 = 纯跳过——策划定案）
+                    if (piece.side == Side.Player && _state.HasRelicEffect(RelicEffectType.Devour))
+                    {
+                        _resolver.Resolve(new SkipAction(piece.Id, SkipReason.NoAttack));
+                        _ctx.slotIndex++;
+                        AdvanceSlot();
+                        break;
+                    }
                     if (piece.side == Side.Player)
                     {
                         var playerAttackOptions = _intentResolver.GetAttackOptions(_state, piece, attack);
@@ -980,6 +1037,16 @@ namespace TheLaw.Gameplay
 
         private int _waitingDiceMovePieceId = -1; // 骰子移动"选方向"等待（-1=未等待）
         private Side _waitingDiceMoveSide;
+        /// <summary>能力「出千」自选等待（2026-08-24：投掷请求挂起——弹 1-6 自选；不跨回合——回合开始清；瞬态不入档）。</summary>
+        private bool _diceRigPending;
+
+        /// <summary>出千自选结果（2026-08-24 前端回调：投掷自选面板选数后调用——校验 1-6 + 等待态 + 玩家回合；落账同普通投掷）。</summary>
+        public void OnDiceNumberSelected(int value)
+        {
+            if (!_diceRigPending || _state.Phase != BattlePhase.PlayerTurn) return;
+            _diceRigPending = false;
+            _resolver.RollDiceChosen(value); // 内部校验 1-6 并落账
+        }
 
         /// <summary>骰子移动启动（ExecuteRequest 重定向进入）：进入方向选择（上/下/左/右——点数步直线）。</summary>
         private void TryStartDiceMove(int pieceId, Side side)
@@ -1153,9 +1220,13 @@ namespace TheLaw.Gameplay
 
         private void HandleWaveAndPromotions()
         {
-            // 升变预告倒计时（波次 N 开始预告波次 N+1）。
-            // 【语义确认 2026-08-13】按"每次 HandleWaveAndPromotions（每敌方回合）"递减——countdown=1 的预告
-            // 在下一敌方回合即升变（比"下波部署时升变"提前数回合）。该语义已确认保持现状（按实现），暂不改。
+            // 升变预告倒计时（每敌方回合递减；countdown=1 → 本回合挂载、下一敌方回合升变）。
+            // ⚠️ 2026-08-24 时序修复（策划定稿：预告 s-2 / 升变 s-1 / 部署 s——相对部署回合 s）：
+            // 旧 promotions 与本波 autoPromote 的预告周期统一锚定"下一波部署回合 s"：
+            //   - 预告：s-2 回合挂载（PromoteAnnouncement 挂载 + PromoteAnnounced/BuffsChanged）——旧机制延迟挂载（挂起批次）、autoPromote 前瞻触发；
+            //   - 升变：s-1 回合执行（countdown=1 下一敌方回合递减到 0）；
+            //   - 部署：s 回合。
+            // 末波（无后继波）：autoPromote 周期跳过；旧 promotions 保持原 countdown=1（部署当回合挂载、下一敌方回合升变）。
             foreach (var ann in new List<PromoteAnnouncement>(_state.PromoteAnnouncements))
             {
                 ann.countdown--;
@@ -1177,6 +1248,31 @@ namespace TheLaw.Gameplay
                             _resolver.Resolve(new PromoteAction(ann.pieceId, targetDefId));
                         }
                     }
+                }
+            }
+
+            // 旧 promotions 延迟挂载批次（2026-08-24）：预告回合到点才挂载（目标棋子已上场）——countdown=1 → 下一敌方回合（s-1）升变
+            for (int i = _pendingPromoBatches.Count - 1; i >= 0; i--)
+            {
+                var batch = _pendingPromoBatches[i];
+                if (batch.announceTurn <= _state.TurnCount)
+                {
+                    _pendingPromoBatches.RemoveAt(i);
+                    if (batch.announceTurn == _state.TurnCount)
+                    {
+                        MountPromotions(batch.pieces, batch.promos, 1);
+                    }
+                }
+            }
+
+            // autoPromote 前瞻（2026-08-24 时序修复）：autoPromote 波的预告周期锚定下一波部署回合 s——
+            // s-2 回合（TurnCount == s-3）预告离中心最近 2 个敌方棋子（countdown=1 → s-1 升变）；末波无后继波 → 跳过
+            for (int wi = 0; wi + 1 < _floor.waveDefs.Count; wi++)
+            {
+                if (_floor.waveDefs[wi].autoPromote
+                    && _floor.waveDefs[wi + 1].startTurn - 3 == _state.TurnCount)
+                {
+                    AnnounceAutoPromotions();
                 }
             }
 
@@ -1252,31 +1348,27 @@ namespace TheLaw.Gameplay
                     break;
                 }
                 _deployedThisRound = true;
-                // 自动预告模式（2026-08-19）：本波第 1 回合结束后预告离中心最近 2 个敌方棋子（EndEnemyTurn 触发）——此处仅挂起
-                if (wave.autoPromote)
+                // 旧 promotions 机制（2026-08-24 时序修复）：预告周期锚定下一波部署回合 s——
+                // 间隔≥3 → 挂起批次到 s-2 回合挂载（目标棋子已上场）；间隔=2 → 部署当回合即 s-2，countdown=1 直接命中；
+                // 末波无后继波 → 保持原 countdown=1（部署当回合挂载、下一敌方回合升变）。autoPromote 模式互斥跳过。
+                if (!wave.autoPromote && wave.promotions.Count > 0)
                 {
-                    _pendingAutoPromote = true;
-                }
-                // 本波开始 → 预告下一波升变（配置的升变棋子——旧机制；autoPromote 自动预告模式时互斥跳过）
-                if (!wave.autoPromote)
-                {
-                    foreach (var promo in wave.promotions)
+                    int nextStartTurn = _deployedWaveIndex + 1 < _floor.waveDefs.Count
+                        ? _floor.waveDefs[_deployedWaveIndex + 1].startTurn
+                        : -1;
+                    if (nextStartTurn > 0 && nextStartTurn - 3 > _state.TurnCount)
                     {
-                        if (promo.pieceIndexInWave >= 0 && promo.pieceIndexInWave < deployedThisWave.Count)
+                        _pendingPromoBatches.Add(new PendingPromoBatch
                         {
-                            var target = deployedThisWave[promo.pieceIndexInWave];
-                            if (target != null)
-                            {
-                                _state.PromoteAnnouncements.Add(new PromoteAnnouncement
-                                {
-                                    pieceId = target.Id,
-                                    newDefId = promo.toDefId,
-                                    countdown = 1, // 下一波次升变
-                                });
-                                EventCenter.Instance.EventTrigger(GameEvent.PromoteAnnounced, new PromoteAnnouncement { pieceId = target.Id, newDefId = promo.toDefId, countdown = 1 });
-                                EventCenter.Instance.EventTrigger(GameEvent.BuffsChanged, target.Id); // 升变预告挂载 → buff 变化（2026-08-23 同 autoPromote 口径）
-                            }
-                        }
+                            announceTurn = nextStartTurn - 3,
+                            pieces = new List<PieceInstance>(deployedThisWave),
+                            promos = new List<WavePromotion>(wave.promotions),
+                        });
+                    }
+                    else
+                    {
+                        int countdown = nextStartTurn > 0 ? Mathf.Max(1, nextStartTurn - wave.startTurn - 1) : 1;
+                        MountPromotions(deployedThisWave, wave.promotions, countdown);
                     }
                 }
                 _state.WaveScores.Add(0);
@@ -1367,7 +1459,7 @@ namespace TheLaw.Gameplay
             if (phase == BattlePhase.PlayerTurn && _state.GetEffectiveType(def.Id) != PieceType.Deployable)
             {
                 // ⚠️ 2026-08-24 代币玩法：购买的"初始棋子"复制可在战斗中部署（免费——口述定稿）
-                if (!(_state.IsStyleActive("token") && _state.GetEffectiveType(def.Id) == PieceType.Initial))
+                if (!(_state.IsStyleActive(StyleRegistry.Token) && _state.GetEffectiveType(def.Id) == PieceType.Initial))
                 {
                     return false; // 部署阶段只能放部署棋子（升变棋子靠升变操作上场）
                 }
@@ -1426,7 +1518,7 @@ namespace TheLaw.Gameplay
         /// 触发：无玩家目标可打时，打掉堵路的红围棋（防玩家用红围棋封死敌方行动路径）；玩家目标优先。</summary>
         private Vector2Int? FindBlockedByGo(PieceInstance piece)
         {
-            if (!_state.IsStyleActive("go")) return null;
+            if (!_state.IsStyleActive(StyleRegistry.Go)) return null;
             var program = piece.GetProgram(_state);
             if (program == null) return null;
             foreach (var slot in program)

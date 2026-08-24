@@ -1,0 +1,23 @@
+%YAML 1.1
+%TAG !u! tag:unity3d.com,2011:
+--- !u!114 &11400000
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 0}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: 0ced73b344c7e094ca6f7de7a57148cb, type: 3}
+  m_Name: Relic_ability_element_refine
+  m_EditorClassIdentifier: 
+  _id: 444816786
+  displayName: "\u63D0\u7EAF"
+  description: "\u6211\u65B9\u6240\u6709\u624B\u724C\u7684\u5C5E\u6027\u5C06\u5728\u6BCF\u56DE\u5408\u5F00\u59CB\u65F6\u53D8\u4E3A\u5176\u76F8\u751F\u7684\u5C5E\u6027\u3002\u90E8\u7F72\u6216\u5347\u53D8\u68CB\u5B50\u65F6\uFF0C\u6211\u65B9\u6240\u6709\u68CB\u5B50\u7684\u5C5E\u6027\u5C06\u53D8\u4E3A\u90E8\u7F72\u6216\u5347\u53D8\u7684\u68CB\u5B50\u7684\u5C5E\u6027\uFF0C\u4E14\u6BCF\u6709\u4E00\u4E2A\u68CB\u5B50\u7684\u5C5E\u6027\u53D1\u751F\u53D8\u5316\uFF0C\u57FA\u7840\u5F97\u5206\uFF0B1"
+  tags:
+  - element
+  effects:
+  - type: 9
+    value: 1
+  abilities: []

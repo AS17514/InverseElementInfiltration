@@ -30,112 +30,7 @@ namespace TheLaw.UI
         IntentResolver _intentResolver;
         BattlePanel _panel;
 
-        // ========== 回合进度条（2026-08-12：进度条 + 波次节点）==========
-        private FloorConfig _floor; // 当前层配置（波次数据源）
-        private List<WaveDef> _waveDefs = new List<WaveDef>();
-        private GameObject _waveNodeTemplate; // Tag_WaveNode prefab（Addressables）
-        private readonly List<GameObject> _waveNodes = new List<GameObject>(); // 已创建的节点实例
-        private int _lastTurnCount = -1; // Update 轮询：TurnCount++（敌方回合逻辑结束）→ 游标右移+节点亮黄（该点无阶段切换事件可挂）
-
-        /// <summary>回合进度：游标 = 敌方回合结束次数/TurnCount 总量（末波 startTurn-1+endCountdown-1）。
-        /// 开局=0（第一回合=准备+敌方，第一次敌方回合结束才走第一格）；节点 startTurn/总量 与游标同刻对齐。</summary>
-        void RefreshTurnProgress()
-        {
-            if (_panel == null) return;
-            if (_floor == null)
-            {
-                // 从 GameState.CurrentFloor 拿层配置（无需 Init 注入）
-                foreach (var map in ConfigTable.All<MapConfig>())
-                {
-                    if (map.floors != null && _state.CurrentFloor >= 0 && _state.CurrentFloor < map.floors.Count)
-                    {
-                        _floor = map.floors[_state.CurrentFloor];
-                        break;
-                    }
-                }
-                if (_floor != null)
-                {
-                    _waveDefs = _floor.waveDefs ?? new List<WaveDef>();
-                    BuildWaveNodes();
-                }
-            }
-            if (_floor == null) return;
-            // 总量 = 敌方回合结束次数 = 末波 startTurn - 1 + endCountdown - 1
-            //   → 归零回合 TurnCount = startTurn+endCountdown-2 = 总量，TurnCount/总量 恰为 1.0 满条
-            int totalTurns = 0;
-            if (_waveDefs.Count > 0)
-            {
-                var last = _waveDefs[_waveDefs.Count - 1];
-                totalTurns = Mathf.Max(1, last.startTurn - 1 + Mathf.Max(0, last.endCountdown) - 1);
-            }
-            if (totalTurns > 0)
-            {
-                // 进度 = TurnCount/总量（TurnCount = 已完成敌方回合结束次数；开局 0；每次敌方回合结束 +1 格）
-                _panel.SetTurnProgress(Mathf.Clamp01((float)_state.TurnCount / totalTurns));
-            }
-            RefreshWaveNodeStates();
-        }
-
-        /// <summary>波次节点：按 startTurn/总回合 比例定位（0~1 → Slider 范围）。</summary>
-        void BuildWaveNodes()
-        {
-            if (_panel == null || _panel.WaveNodesRoot == null) return;
-            foreach (var n in _waveNodes) if (n != null) Destroy(n);
-            _waveNodes.Clear();
-            if (_waveDefs.Count == 0 || _waveNodeTemplate == null) return;
-            var last = _waveDefs[_waveDefs.Count - 1];
-            int totalTurns = Mathf.Max(1, last.startTurn - 1 + Mathf.Max(0, last.endCountdown) - 1);
-            foreach (var wave in _waveDefs)
-            {
-                var node = Instantiate(_waveNodeTemplate, _panel.WaveNodesRoot);
-                node.name = $"WaveNode_{wave.startTurn}";
-                // 初始波（startTurn=1，第一回合默认生成初始敌人）不显示节点
-                if (wave.startTurn <= 1) node.SetActive(false);
-                _waveNodes.Add(node);
-                // 定位：startTurn/总量（与进度公式 TurnCount/total 对齐——敌方回合结束游标恰到节点位置）
-                var rt = node.GetComponent<RectTransform>();
-                if (rt != null && totalTurns > 0)
-                {
-                    float ratio = Mathf.Clamp01((float)wave.startTurn / totalTurns);
-                    rt.anchorMin = new Vector2(ratio, 0.5f);
-                    rt.anchorMax = new Vector2(ratio, 0.5f);
-                    rt.anchoredPosition = Vector2.zero;
-                }
-                // 波次号文本（可选）
-                var txt = node.GetComponentInChildren<TMP_Text>();
-                if (txt != null) txt.text = wave.startTurn.ToString();
-            }
-        }
-
-        /// <summary>节点状态：turn >= startTurn 亮黄（敌方回合结束进入新回合时才满足——与游标右移同刻）；
-        /// turn >= startTurn+1 变白（下一波生成时）。刷新时机 = PhaseChanged（含 PlayerTurn）。</summary>
-        void RefreshWaveNodeStates()
-        {
-            int turn = _state.TurnCount;
-            for (int i = 0; i < _waveNodes.Count && i < _waveDefs.Count; i++)
-            {
-                var node = _waveNodes[i];
-                if (node == null || !node.activeSelf) continue;
-                var img = node.GetComponent<Image>();
-                if (img == null) continue;
-                int startTurn = _waveDefs[i].startTurn;
-                if (turn >= startTurn + 1) img.color = new Color(1f, 1f, 1f, 1f);      // 已过（下一波亮黄后）：亮白
-                else if (turn >= startTurn) img.color = new Color(1f, 0.84f, 0.2f, 1f); // 当前波（敌方回合结束进入该回合）：金
-                else img.color = new Color(0.5f, 0.5f, 0.5f, 0.5f);                     // 未来：暗
-            }
-        }
-
-        /// <summary>加载波次节点模板（Addressables——Tag_WaveNode；失败则跳过节点只显示进度条）。</summary>
-        System.Collections.IEnumerator LoadWaveNodeTemplate()
-        {
-            var handle = UnityEngine.AddressableAssets.Addressables.LoadAssetAsync<GameObject>("Tag_WaveNode");
-            yield return handle;
-            if (handle.Status == UnityEngine.ResourceManagement.AsyncOperations.AsyncOperationStatus.Succeeded && handle.Result != null)
-            {
-                _waveNodeTemplate = handle.Result;
-                BuildWaveNodes();
-            }
-        }
+        // 回合进度条已迁移：Assets/_Project/UI/Widgets/WaveProgressBar.cs（BackgroundCanvas 心电图式，2026-08-24）
 
         // ========== 状态 ==========
         HashSet<int> _batchFlashAttackers; // 表现组内攻击者闪白去重（#6 前端部分：AOE 多目标只闪攻击者一次——架构 §四.7 组内并行）
@@ -278,7 +173,7 @@ namespace TheLaw.UI
             _panel = panel;
             if (_panel == null) return;
             _uiManager.RegisterPanel(panel); // 幂等覆盖（重复注册无害）
-            _uiManager.ShowPanel("Battle");
+            PanelTransition.ShowWithLoading(_uiManager, "Battle");
             // ⚠️ 面板局内复用（UI 架构重构 §五）：旧 BC 的按钮监听残留在复用面板上——
             // 每场绑定前必须 RemoveAllListeners（否则第 2 场起点按钮触发多次回调）
             if (_panel.PhaseButton != null)
@@ -331,10 +226,6 @@ namespace TheLaw.UI
                 });
                 Debug.Log($"[Battle] 开局视觉同步后补发部署表现回执 token=({pendingToken.sessionId},{pendingToken.actionId})");
             }
-            // 回合进度条：加载波次节点模板 + 首次刷新（2026-08-12）
-            StartCoroutine(LoadWaveNodeTemplate());
-            RefreshTurnProgress();
-            _lastTurnCount = _state.TurnCount; // 开局同步（第一回合=准备+敌方，敌方结束 0→1 才右移）
         }
 
         // ====== 遗物栏逻辑（2026-08-14）======
@@ -491,14 +382,6 @@ namespace TheLaw.UI
 
         void Update()
         {
-            // 回合推进轮询：TurnCount++ 发生在 ResolveEnemyTurn（敌方回合逻辑结束、动画前）
-            // → 游标右移/节点亮黄精确绑定敌方回合结束（而非我方回合开始——PhaseChanged(PlayerTurn) 在动画后才触发）
-            if (_state != null && _state.TurnCount != _lastTurnCount)
-            {
-                _lastTurnCount = _state.TurnCount;
-                RefreshTurnProgress();
-            }
-
             // 遗物列表"点击外部关闭"（2026-08-15：无遮挡方案——列表显示时全局监听下一次点击）
             UpdateRelicListOutsideClick();
 
@@ -1284,10 +1167,9 @@ namespace TheLaw.UI
             // 此处 ShowPanel 为幂等兜底（面板重建后需确保显示）
             if (_state.Phase == BattlePhase.Placement && _panel != null && _uiManager != null)
             {
-                _uiManager.ShowPanel("Battle");
+                PanelTransition.ShowWithLoading(_uiManager, "Battle");
             }
             RefreshAll();
-            RefreshTurnProgress(); // 回合进度条刷新（阶段切换=回合推进）
             ClearSelection();
             ClearHighlights(); // 阶段切换必清高亮
             // 阶段切换重置执行镜像（防执行中结束回合致新回合软锁）

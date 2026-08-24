@@ -57,6 +57,12 @@ namespace TheLaw.Gameplay
                 _resolver.DrawAbilityCandidates();
                 return; // 能力事件不走普通 EventOpened/选项流（前端按 AbilityCandidatesDrawn 显示三选一）
             }
+            // 玩法事件（2026-08-24 玩法选择机制）：打开即从未激活玩法抽 2 候选（二选一，不可刷新）——不显示固定选项
+            if (ev != null && ev.isRulePick)
+            {
+                _resolver.DrawRuleCandidates();
+                return; // 玩法事件不走普通 EventOpened/选项流（前端按 RuleCandidatesDrawn 显示二选一）
+            }
             // 通知 UI：事件关打开（携带当前事件 id——UI 据此打开事件界面）
             EventCenter.Instance.EventTrigger(GameEvent.EventOpened, _state.CurrentEventId);
         }
@@ -107,7 +113,7 @@ namespace TheLaw.Gameplay
                         break;
                     case EffectType.EditProgram:
                         // 棋子编辑事件（2026-08-19 流程落地）：抽三选一候选（未修改基础棋子，三类型各 1）
-                        // + 抽 6 候选模块（移动/攻击/效果各 2——RandomManager 种子相关）→ 发事件（UI 显示三选一面板）
+                        // + 抽 4 候选模块（移动/攻击各 2——RandomManager 种子相关；效果不参与——2026-08-24）→ 发事件（UI 显示三选一面板）
                         DrawEditCandidates();
                         break;
                     case EffectType.GrantAbility:
@@ -143,7 +149,7 @@ namespace TheLaw.Gameplay
         /// <summary>
         /// 编辑事件候选抽取（2026-08-19 流程落地）：
         /// ① 三选一：未修改基础棋子（CurrentPrograms 无该棋子 = 无编辑差异）按类型（初始/部署/升变）各随机 1（RandomManager——可复现）；
-        /// ② 6 候选模块：模板库按类型分组（移动/攻击/效果）各随机抽 2（无放回）。
+        /// ② 4 候选模块：模板库按类型分组（移动/攻击）各随机抽 2（无放回；效果不参与——2026-08-24 取消效果编辑）。
         /// 结果写 GameState（存档字段）→ 发 EditCandidatesDrawn（UI 三选一面板；选 1 后调 EditorSession.ConfirmEditPiece + BeginEdit）。
         /// </summary>
         private void DrawEditCandidates()
@@ -165,20 +171,18 @@ namespace TheLaw.Gameplay
                     pieces.Add(pool[RandomManager.Instance.Range(0, pool.Count)]);
                 }
             }
-            // ② 6 候选模块（移动/攻击/效果各抽 2；某池为空 → 实际数量可能 < 6——防御）
+            // ② 4 候选模块（移动/攻击各抽 2——2026-08-24 策划定案：取消效果编辑，效果不进候选池；某池为空 → 实际数量可能 < 4——防御）
             var modules = new List<Template>();
             var movePool = new List<Template>();
             var attackPool = new List<Template>();
-            var effectPool = new List<Template>();
             foreach (var t in TemplateLibrary.All())
             {
                 if (t is MoveTemplate) movePool.Add(t);
                 else if (t is AttackTemplate) attackPool.Add(t);
-                else if (t is EffectTemplate) effectPool.Add(t);
+                // EffectTemplate 不参与编辑候选（效果 = 默认程序保留的被动，不可编辑——2026-08-24 策划定案）
             }
             modules.AddRange(DrawTwo(movePool));
             modules.AddRange(DrawTwo(attackPool));
-            modules.AddRange(DrawTwo(effectPool));
 
             _state.EditCandidates = pieces;
             _state.EditModuleCandidates = modules;

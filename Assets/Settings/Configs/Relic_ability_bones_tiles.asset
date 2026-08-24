@@ -1,0 +1,24 @@
+%YAML 1.1
+%TAG !u! tag:unity3d.com,2011:
+--- !u!114 &11400000
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 0}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: 0ced73b344c7e094ca6f7de7a57148cb, type: 3}
+  m_Name: Relic_ability_bones_tiles
+  m_EditorClassIdentifier: 
+  _id: 773061663
+  displayName: "\u9AA8\u9AB0\u9AA8\u724C"
+  description: "\u6BCF\u6B21\u6295\u63B7\u9AB0\u5B50\u65F6\uFF0C\u9AB0\u5B50\u5BF9\u5E94\u7684\u70B9\u6570\u4E5F\u4F1A\u589E\u52A0\u5230\u724C\u5C71\u3002\u82E5\u9AB0\u5B50\u70B9\u6570\u7684\u6570\u5B57\u53C2\u4E0E\u51D1\u6210\u523B\u5B50\u6216\u987A\u5B50\u65F6\uFF0C\u884C\u52A8\u70B9\uFF0B1"
+  tags:
+  - mahjong
+  - dice
+  effects:
+  - type: 16
+    value: 1
+  abilities: []

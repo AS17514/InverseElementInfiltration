@@ -15,11 +15,11 @@ MonoBehaviour:
   _id: 77305968
   templateKey: Move-15
   template:
-    rid: 4463436102609141769
+    rid: 7823914186279223454
   references:
     version: 2
     RefIds:
-    - rid: 4463436102609141769
+    - rid: 7823914186279223454
       type: {class: MoveTemplate, ns: TheLaw.Data, asm: Data}
       data:
         id: 15
@@ -31,5 +31,5 @@ MonoBehaviour:
             - direction: 128
               steps: 01000000
         jumpOffsets:
-        - {x: -1, y: -2}
-        - {x: 1, y: -2}
+        - {x: -1, y: 2}
+        - {x: 1, y: 2}

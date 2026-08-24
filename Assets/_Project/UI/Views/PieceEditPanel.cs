@@ -42,7 +42,7 @@ namespace TheLaw.UI
         private int _selectedDefId = -1;
         private int _editableDefId = -1; // 本次编辑事件唯一允许写入的棋子
         private List<Template> _slotTemplates = new List<Template>(); // 当前选中棋子的程序（编辑副本）
-        private List<bool> _slotLocked = new List<bool>();            // 槽位锁定标记（与 _slotTemplates 同步位移——2026-08-24 起默认模块全部可编辑，恒 false 保留结构）
+        private List<bool> _slotLocked = new List<bool>();            // 槽位锁定标记（与 _slotTemplates 同步位移——2026-08-24 起移动/攻击默认槽可编辑；效果槽锁定[取消效果编辑]）
 
         // ====== 程序库（按当前棋子查询后端候选池） ======
         private List<Template> _programLibrary = new List<Template>();
@@ -767,13 +767,13 @@ namespace TheLaw.UI
             return new List<Template>();
         }
 
-        /// <summary>锁定标记（2026-08-24 用户定案：默认模块全部可编辑——不再锁定；被替换/移除的默认模块回候选库由后端候选池差集动态化负责，见 docs/后端待办.md）。</summary>
+        /// <summary>锁定标记（2026-08-24 定案合并）：移动/攻击默认槽全部可编辑（解除锁定）；效果槽锁定（「取消效果编辑」——默认内置效果保留原位、不可移除/替换，见 docs/后端待办.md）；回库=移动/攻击，由后端差集动态化负责。</summary>
         void InitLockedFlags(PieceDef def)
         {
             _slotLocked.Clear();
             for (int i = 0; i < _slotTemplates.Count; i++)
             {
-                _slotLocked.Add(false); // 全部可编辑（2026-08-24 定案：默认模块不再锁定）
+                _slotLocked.Add(_slotTemplates[i] is EffectTemplate); // 仅效果槽锁定；移动/攻击全可编辑
             }
         }
 
@@ -839,14 +839,14 @@ namespace TheLaw.UI
             _pieceInfo.gameObject.SetActive(true);
         }
 
-        // ====== 程序编排（2026-08-24 起默认模块全部可编辑：替换/插入/移除/重排——整组提交） ======
+        // ====== 程序编排（2026-08-24 起移动/攻击默认槽全可编辑：替换/插入/移除/重排；效果槽锁定——整组提交） ======
 
         /// <summary>程序槽位上限（当前方案固定 4——策划变更时改此处即可；ProgramDef.slots 本身是 List 无硬上限）。</summary>
         private const int MaxProgramSlots = 4;
 
         /// <summary>
         /// 拖入到槽 to（2026-08-11 需求对齐 v2）：
-        /// - 目标锁定槽 → 拒绝（2026-08-24 起无锁定槽——判定保留防未来锁定）
+        /// - 目标锁定槽 → 拒绝（效果槽锁定——「取消效果编辑」定案；移动/攻击槽不受限）
         /// - 程序有空缺（Count &lt; MaxProgramSlots）→ **插入 to 位置**（原 to 及之后顺移，空位补齐——如 [锁a 锁b c 空] 拖 x 到 c → [锁a 锁b x c]）
         /// - 程序满 → 替换 to 槽（原块回程序库——无限复制语义下无额外动作）
         /// ⚠️ 2026-08-12：原 Clamp(to,0,4) 满槽时 to=4 会索引越界（UI 只传 0-3 未触发）——改用 Count 动态处理，不依赖硬编码 4。
@@ -885,7 +885,7 @@ namespace TheLaw.UI
 
         /// <summary>
         /// 槽间重排（2026-08-12 需求修正：用户实测发现插入语义方向不对称——紧邻上拖下=原位无变化）。
-        /// 现语义：目标槽有块 → **交换（对调）**；目标空缺（末尾）→ 插入追加；锁定块不可拖出/不可作目标（2026-08-24 起默认模块不再锁定——全可拖/可作目标）。
+        /// 现语义：目标槽有块 → **交换（对调）**；目标空缺（末尾）→ 插入追加；锁定块不可拖出/不可作目标（2026-08-24 起移动/攻击槽可拖；效果槽仍锁定）。
         /// </summary>
         public bool MoveProgram(int from, int to)
         {
@@ -918,7 +918,7 @@ namespace TheLaw.UI
             return true;
         }
 
-        /// <summary>移除槽位块（拖出到空白）。锁定块不可移除（2026-08-24 起默认模块不再锁定——均可移除）。</summary>
+        /// <summary>移除槽位块（拖出到空白）。锁定块不可移除（效果槽锁定——「取消效果编辑」）。</summary>
         public bool RemoveProgramAt(int index)
         {
             if (!CanEditSelected() || index < 0 || index >= _slotTemplates.Count) return false;

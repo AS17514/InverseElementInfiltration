@@ -6,23 +6,28 @@ using UnityEngine;
 namespace TheLaw.UI
 {
     /// <summary>
-    /// 面板切换过渡（2026-08-25 用户定稿时序）：
-    /// ① 收到切换指令 → loading 渐入（PushOverlay——LoadingPanel.Show 负责）
-    /// ② 渐入动画【完毕】（OnFadeInComplete 事件，非同步）后延时 0.5s → 切换面板（ShowPanel）
-    /// ③ 切换后 → loading 渐出（PopOverlay——LoadingPanel.Hide 负责）
-    /// 豁免：主界面 → 剧情面板（调用点直显）；启动首个面板（LoadMainMenu 直显）；同面板重复 Show 直显。
+    /// 面板切换过渡（2026-08-25 重构——覆盖优先）：
+    /// 不变量①：旧面板在 loading 完全盖住前绝不移除（淡入全程旧面板保持完整显示——无闪断、无裸场景）；
+    /// 不变量②：新面板在 loading 揭开前必须已显示（弹栈只做淡出揭示）。
+    /// 时序：push loading → 淡入（旧面板保持）→ 渐入完毕延时 SwitchDelaySeconds → 隐藏旧+显示新（完全遮挡下）→ 淡出。
+    /// 同步切换：ShowWithLoading(ui, key)（内部 Begin + End）。
+    /// 异步切换（面板需先 Addressables 加载）：Begin(ui, onCovered)——onCovered 在遮挡就绪后执行
+    /// （调用方隐藏旧面板/启动加载）；面板显示点调用 ShowWithLoading 自动走 busy 分支（ShowPanel + End）。
     /// </summary>
     public static class PanelTransition
     {
         public const string LoadingKey = "Loading";
 
-        /// <summary>渐入动画完毕后到切换面板的延时（秒）。</summary>
-        public const float SwitchDelaySeconds = 0.5f;
-
-        /// <summary>loading 淡入时长（秒）——与 LoadingPanel.fadeInSeconds 默认一致（兜底超时用）。</summary>
+        /// <summary>loading 淡入时长（秒）——与 LoadingPanel.fadeInSeconds 默认一致。</summary>
         public const float FadeInSeconds = 0.2f;
 
-        private static bool _busy; // 过渡进行中防重（连续快速切换时后续切换直显，不被卡）
+        /// <summary>渐入完毕后到切换面板的延时（秒）。</summary>
+        public const float SwitchDelaySeconds = 0.5f;
+
+        /// <summary>切换完成后遮挡保持时长（秒）——旧面板卸载后 loading 延时淡出；≥1s 给图片/资源加载留足时间（用户定稿）。</summary>
+        public const float PostSwitchHoldSeconds = 1f;
+
+        private static bool _busy; // 过渡进行中（Begin 已开始未 End）
 
         public static void ShowWithLoading(UIManager ui, string key)
         {
@@ -37,65 +42,73 @@ namespace TheLaw.UI
 
             if (_busy)
             {
-                ui.ShowPanel(key); // 过渡中再切换：直显（目标面板不被卡）
+                // Begin 流程中的面板显示：遮挡下显示即结束过渡（旧面板已卸载——延时淡出）
+                ui.ShowPanel(key);
+                ScheduleEnd(ui);
                 return;
             }
 
-            _busy = true;
-
-            // ① 压栈 loading（LoadingPanel.Show 负责黑底快进 + 灰层淡入）
-            ui.PushOverlay(LoadingKey);
-            FadeOutCurrent(ui); // 上一个面板缓出（与黑底/灰层交叉淡出——切换时旧面板不瞬间消失）
-            var lp = ui.GetPanel(LoadingKey) as LoadingPanel;
-            bool switched = false;
-            Action handler = null;
-
-            void DoSwitch()
+            Begin(ui, () =>
             {
-                if (switched) return;
-                switched = true;
-                if (lp != null) lp.OnFadeInComplete -= handler;
-                if (ui == null)
-                {
-                    _busy = false;
-                    return;
-                }
-                ui.ShowPanel(key);                 // ② 渐入完毕 + 延时后切换面板
-                ui.PopOverlay(restoreCurrent: false); // ③ 切换后立即渐出
-                _busy = false;
-            }
+                ui.ShowPanel(key); // 遮挡下隐藏旧+显示新（新面板已就绪——后台加载完成后才进入）
+                ScheduleEnd(ui);   // 旧面板卸载后延时淡出
+            });
+        }
 
+        /// <summary>开始过渡：push loading → 淡入（旧面板保持完整显示）→ 延时 → onCovered（完全遮挡下执行）。</summary>
+        public static void Begin(UIManager ui, Action onCovered)
+        {
+            if (ui == null)
+            {
+                onCovered?.Invoke();
+                return;
+            }
+            if (_busy)
+            {
+                onCovered?.Invoke(); // 过渡中再触发：直接执行切换动作（不叠 loading）
+                return;
+            }
+            _busy = true;
+            ui.PushOverlay(LoadingKey); // ① 压栈 loading（淡入——旧面板保持，不变量①）
+            var lp = ui.GetPanel(LoadingKey) as LoadingPanel;
             if (lp == null)
             {
-                DoSwitch(); // 面板缺失防御：直切（无过渡可做）
+                onCovered?.Invoke(); // 面板缺失防御：直切
+                End(ui);
                 return;
             }
-
-            // 渐入动画完毕事件 → 延时 0.5s → 切换（非同步：等动画完成）
+            bool fired = false;
+            void Fire()
+            {
+                if (fired) return;
+                fired = true;
+                onCovered?.Invoke();
+            }
+            Action handler = null;
             handler = () =>
             {
                 lp.OnFadeInComplete -= handler;
-                if (switched) return;
-                DOVirtual.DelayedCall(SwitchDelaySeconds, DoSwitch);
+                DOVirtual.DelayedCall(SwitchDelaySeconds, Fire); // ② 渐入完毕后延时 0.5s
             };
             lp.OnFadeInComplete += handler;
-
-            // 兜底：渐入完成事件丢失（tween 被外部清理等）——超时强制切换，防 loading 卡死
-            DOVirtual.DelayedCall(FadeInSeconds + SwitchDelaySeconds + 1f, DoSwitch);
+            // 兜底①：渐入完成事件丢失（tween 被外部清理等）——超时强制继续，防卡死
+            DOVirtual.DelayedCall(FadeInSeconds + SwitchDelaySeconds + 1f, Fire);
+            // 兜底②：onCovered 后长时间未 End（流程异常）——自动弹栈防 loading 永久遮挡
+            DOVirtual.DelayedCall(FadeInSeconds + SwitchDelaySeconds + 10f, () => End(ui));
         }
 
-        /// <summary>旧面板缓出：当前切换型面板 CanvasGroup alpha 1→0（0.2s，与 loading 淡入交叉）。
-        /// 下次 Show 时 PanelBase.Show 复位 alpha=1。</summary>
-        private static void FadeOutCurrent(UIManager ui)
+        /// <summary>结束过渡：弹栈淡出（新面板已显示，不变量②）。幂等——无进行中过渡时 no-op。</summary>
+        public static void End(UIManager ui)
         {
-            if (ui == null || string.IsNullOrEmpty(ui.CurrentKey)) return; // 无当前面板（如剧情→首事件）——无可缓出
-            var cur = ui.GetPanel(ui.CurrentKey);
-            if (cur == null) return;
-            var mb = cur as MonoBehaviour;
-            if (mb == null || mb.gameObject == null) return;
-            var cg = mb.GetComponent<CanvasGroup>();
-            if (cg == null) cg = mb.gameObject.AddComponent<CanvasGroup>();
-            DOTween.To(() => cg.alpha, v => cg.alpha = v, 0f, 0.2f);
+            if (!_busy) return;
+            if (ui != null) ui.PopOverlay(restoreCurrent: false); // ③ 弹栈淡出（LoadingPanel.Hide 负责）
+            _busy = false;
+        }
+
+        /// <summary>切换完成后延时淡出（旧面板卸载 → 新面板进入 → 保持 PostSwitchHoldSeconds → 弹栈）。</summary>
+        private static void ScheduleEnd(UIManager ui)
+        {
+            DOVirtual.DelayedCall(PostSwitchHoldSeconds, () => End(ui));
         }
     }
 }

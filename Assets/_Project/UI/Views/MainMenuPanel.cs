@@ -1,6 +1,7 @@
 using System;
 using System.Collections;
 using System.Collections.Generic;
+using DG.Tweening;
 using TheLaw.Core;
 using TMPro;
 using UnityEngine;
@@ -20,13 +21,15 @@ namespace TheLaw.UI
         public event Action OnSettingsClicked;
         public event Action OnQuitClicked;
 
-        // ====== 冷启动开场动画（2026-08-26 用户定案 v2）======
-        // 时序（总 ~7.5s，相邻阶段 0.5s 重叠）：主标题渐入 → 副标题渐入 → 背景缓亮 + 按钮组渐入。
+        // ====== 冷启动开场动画（2026-08-26 用户定案 v2 + DOTween 丝滑化）======
+        // 时序（总 ~7.9s，相邻阶段 0.5s 重叠）：主标题渐入 → 副标题渐入 → 背景缓亮 + 按钮组渐入。
+        // 缓动：标题/副标题 OutCubic、背景 InOutQuad、按钮 OutQuad（DOTween——非协程逐帧 lerp，曲线更顺）。
         // 交互：动画期间全屏透明阻射线层（点击/任意键 = 跳过直落终态）；按钮始终可用态（透明度走 CanvasGroup）。
         // 范围：仅冷启动首次进主菜单播放；返回主菜单（战斗/事件退出）不播。
         private bool _introDone;       // 已播标记（冷启动一次）
         private bool _introRunning;    // 动画进行中（输入跳过判定）
         private Coroutine _introRoutine;
+        private readonly List<Tween> _introTweens = new List<Tween>(); // 进行中动画（跳过时统一 Kill）
         private Image _imgBg;          // 背景图（纯黑 → prefab 现值 ≈ #808080 缓亮）
         private Color _bgTargetColor = new Color(0.5f, 0.5f, 0.5f, 1f); // 终态（Awake 时取 prefab 现值）
         private CanvasGroup _titleGroup;    // 主标题（Txt_Title）
@@ -96,6 +99,7 @@ namespace TheLaw.UI
                 _introRoutine = null;
             }
             _introRunning = false;
+            KillIntroTweens();
         }
 
         // ====== 开场动画 ======
@@ -134,25 +138,25 @@ namespace TheLaw.UI
             if (_menuGroup != null) _menuGroup.alpha = 0f;
             CreateBlocker(); // 动画期阻射线（按钮保持可用态——点击 = 跳过）
 
-            yield return new WaitForSecondsRealtime(0.5f); // 黑屏静默（BGM 3s 渐入进行中）
+            yield return new WaitForSecondsRealtime(0.4f); // 黑屏静默（BGM 3s 渐入进行中）
             if (!_introRunning) yield break;
 
-            // ① 主标题渐入（2s）
-            if (_titleGroup != null) StartCoroutine(FadeGroup(_titleGroup, 0f, 1f, 2f));
+            // ① 主标题渐入（2s，OutCubic）
+            if (_titleGroup != null) FadeGroup(_titleGroup, 0f, 1f, 2f, Ease.OutCubic);
             // ② 副标题：1.5s 后起（与标题重叠 0.5s），渐入 2s
             yield return new WaitForSecondsRealtime(1.5f);
             if (!_introRunning) yield break;
-            if (_subtitleGroup != null) StartCoroutine(FadeGroup(_subtitleGroup, 0f, 1f, 2f));
-            // ③ 背景缓亮（4.5s）：3.0s 后起（与副标题重叠 0.5s）
+            if (_subtitleGroup != null) FadeGroup(_subtitleGroup, 0f, 1f, 2f, Ease.OutCubic);
+            // ③ 背景缓亮（4.5s，InOutQuad）：3.0s 后起（与副标题重叠 0.5s）
             yield return new WaitForSecondsRealtime(1.5f);
             if (!_introRunning) yield break;
-            var bgRoutine = _imgBg != null ? StartCoroutine(LerpColor(_imgBg, Color.black, _bgTargetColor, 4.5f)) : null;
-            // ④ 按钮组渐入（3.5s）：背景起 0.5s 后（与背景同步重叠）
+            if (_imgBg != null) LerpColor(_imgBg, Color.black, _bgTargetColor, 4.5f, Ease.InOutQuad);
+            // ④ 按钮组渐入（3.5s，OutQuad）：背景起 0.5s 后（与背景同步重叠）
             yield return new WaitForSecondsRealtime(0.5f);
             if (!_introRunning) yield break;
-            if (_menuGroup != null) StartCoroutine(FadeGroup(_menuGroup, 0f, 1f, 3.5f));
-            if (bgRoutine != null) yield return bgRoutine; // 等背景完成（t≈7.5s）
+            if (_menuGroup != null) FadeGroup(_menuGroup, 0f, 1f, 3.5f, Ease.OutQuad);
 
+            yield return new WaitForSecondsRealtime(4f); // 等背景完成（t≈7.9s）
             FinishIntro();
         }
 
@@ -166,6 +170,7 @@ namespace TheLaw.UI
                 StopCoroutine(_introRoutine);
                 _introRoutine = null;
             }
+            KillIntroTweens();
             if (_imgBg != null) _imgBg.color = _bgTargetColor;
             if (_titleGroup != null) _titleGroup.alpha = 1f;
             if (_subtitleGroup != null) _subtitleGroup.alpha = 1f;
@@ -178,6 +183,33 @@ namespace TheLaw.UI
         {
             _introRunning = false;
             RemoveBlocker();
+        }
+
+        private void KillIntroTweens()
+        {
+            foreach (var t in _introTweens)
+            {
+                if (t != null && t.IsActive()) t.Kill();
+            }
+            _introTweens.Clear();
+        }
+
+        private Tween FadeGroup(CanvasGroup group, float from, float to, float duration, Ease ease)
+        {
+            if (group == null) return null;
+            group.alpha = from;
+            var tw = DOTween.To(() => group.alpha, v => group.alpha = v, to, duration).SetEase(ease).SetUpdate(true);
+            _introTweens.Add(tw);
+            return tw;
+        }
+
+        private Tween LerpColor(Image image, Color from, Color to, float duration, Ease ease)
+        {
+            if (image == null) return null;
+            image.color = from;
+            var tw = DOTween.To(() => image.color, v => image.color = v, to, duration).SetEase(ease).SetUpdate(true);
+            _introTweens.Add(tw);
+            return tw;
         }
 
         private void CreateBlocker()
@@ -203,32 +235,6 @@ namespace TheLaw.UI
                 Destroy(_introBlocker.gameObject);
                 _introBlocker = null;
             }
-        }
-
-        private IEnumerator FadeGroup(CanvasGroup group, float from, float to, float duration)
-        {
-            if (group == null) yield break;
-            float t = 0f;
-            while (t < duration)
-            {
-                t += Time.unscaledDeltaTime;
-                group.alpha = Mathf.Lerp(from, to, Mathf.SmoothStep(0f, 1f, Mathf.Clamp01(t / duration)));
-                yield return null;
-            }
-            group.alpha = to;
-        }
-
-        private IEnumerator LerpColor(Image image, Color from, Color to, float duration)
-        {
-            if (image == null) yield break;
-            float t = 0f;
-            while (t < duration)
-            {
-                t += Time.unscaledDeltaTime;
-                image.color = Color.Lerp(from, to, Mathf.SmoothStep(0f, 1f, Mathf.Clamp01(t / duration)));
-                yield return null;
-            }
-            image.color = to;
         }
 
         private static bool AnyInputDown()

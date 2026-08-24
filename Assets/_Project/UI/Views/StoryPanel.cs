@@ -111,6 +111,21 @@ namespace TheLaw.UI
 
         // ====== 对外 API ======
 
+        private bool _deferPlayback; // 运镜过渡期间延迟开播（转场完成由 Bootstrap 调 StartPlayback）
+
+        /// <summary>运镜过渡：先显示不播（Bootstrap 转场完成后再 StartPlayback）。</summary>
+        public void DeferPlayback() { _deferPlayback = true; }
+
+        /// <summary>开始/恢复播放（转场完成调用；幂等）。</summary>
+        public void StartPlayback()
+        {
+            _deferPlayback = false;
+            if (_cues != null && _cues.Count > 0 && !_playing && gameObject.activeInHierarchy)
+            {
+                _playRoutine = StartCoroutine(PlayRoutine());
+            }
+        }
+
         /// <summary>加载开场剧情配置；返回 false = 配置缺失/为空（已 LogWarning——调用方跳过剧情直接进流程）。</summary>
         public bool PlayOpening()
         {
@@ -138,7 +153,7 @@ namespace TheLaw.UI
             _testerSilhouette = false;
             _exiting = false;
             ResetPortraits();
-            if (_cues != null && _cues.Count > 0 && !_playing)
+            if (_cues != null && _cues.Count > 0 && !_playing && !_deferPlayback)
             {
                 _playRoutine = StartCoroutine(PlayRoutine());
             }

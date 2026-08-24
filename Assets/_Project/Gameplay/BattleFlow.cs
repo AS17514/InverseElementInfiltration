@@ -52,7 +52,15 @@ namespace TheLaw.Gameplay
         private bool _enemyTurnEndPending;   // 敌方回合结束待定——本阶段表现全部播完才切回玩家回合（动画优先）
         private bool _hadEnemyPresentation;  // 本轮敌方回合是否有表现（有→表现完即切；无→等阶段展示信号）
         private bool _deployedThisRound;     // 本轮波次是否部署（部署动画挂起点）
-        private bool _pendingAutoPromote;    // 自动预告挂起（2026-08-19：本波第 1 回合结束后预告离中心最近 2 棋子，第 3 回合随机升变）
+        // 旧 promotions 延迟挂载批次（2026-08-24 时序修复：预告周期锚定下一波部署回合 s——s-2 挂载、s-1 升变、s 部署）。
+        // ⚠️ 瞬态（不入档）：当前无关卡使用旧机制；若在「部署后、预告前」存档窗口读档会丢失本批次——启用旧机制时需补存档字段。
+        private class PendingPromoBatch
+        {
+            public int announceTurn; // 预告挂载回合（TurnCount）
+            public List<PieceInstance> pieces = new List<PieceInstance>(); // 已部署棋子（与 promotions 下标对应）
+            public List<WavePromotion> promos = new List<WavePromotion>();
+        }
+        private readonly List<PendingPromoBatch> _pendingPromoBatches = new List<PendingPromoBatch>();
         private int _enemyBudget; // 敌方回合行动次数预算（逐步决策——每步一个行动；2026-08-13 替代请求队列）
         private readonly HashSet<int> _actedEnemyPieces = new HashSet<int>(); // 本回合已行动的敌方棋子（① 排除——防 requests[0] 固定重复执行）
 
@@ -131,7 +139,7 @@ namespace TheLaw.Gameplay
             _enemyTurnEndPending = false;
             _hadEnemyPresentation = false;
             _deployedThisRound = false;
-            _pendingAutoPromote = false; // 新字段必须进重置清单——防跨局残留（预告挂起未消费）
+            _pendingPromoBatches.Clear(); // 延迟挂载批次（新字段必须进重置清单——防跨局残留）
             _enemyBudget = 0; // 敌方行动预算（新字段必须进重置清单——防跨局残留）
             _actedEnemyPieces.Clear(); // 已行动棋子集合（新字段必须进重置清单——防跨局残留）
             _diceRigPending = false; // 2026-08-24 能力「出千」自选瞬态（新字段必须进重置清单）
@@ -204,7 +212,7 @@ namespace TheLaw.Gameplay
         {
             _state.EnemyAP = _state.EnemyAPMax;
             ChangePhase(BattlePhase.EnemyTurn);
-            HandleWaveAndPromotions(); // 波次调度 + 升变预告（本波开始预告下一波）
+            HandleWaveAndPromotions(); // 波次调度 + 升变预告（2026-08-24：预告周期锚定下一波部署回合 s——预告 s-2 / 升变 s-1 / 部署 s）
             ResolveEnemyTurn();
         }
 
@@ -265,12 +273,6 @@ namespace TheLaw.Gameplay
             CheckVictory(false);
             if (_state.Phase != BattlePhase.GameOver)
             {
-                // 自动预告（2026-08-19）：本波第 1 回合结束后（敌方执行完行动）——离中心最近 2 个敌方棋子获升变预告
-                if (_pendingAutoPromote)
-                {
-                    _pendingAutoPromote = false;
-                    AnnounceAutoPromotions();
-                }
                 // 动画优先：敌方回合展示到本阶段表现全部播完（含波次部署/AI 行动动画）再切回玩家回合
                 _enemyTurnEndPending = true;
                 // ⚠️ 2026-08-12：_hadEnemyPresentation 不在此采样（串行化后采样时表现已完成、_waitingPresentation 已清，
@@ -281,8 +283,9 @@ namespace TheLaw.Gameplay
         }
 
         /// <summary>
-        /// 自动预告（2026-08-19）：敌方场上离棋盘中心 (3.5,3.5) 最近的两个棋子获升变预告——
-        /// countdown=2（第 2 回合递减→1、第 3 回合递减→0 升变）；newDefId=0 表示升变时从升变类棋子随机（RandomManager）。
+        /// 自动预告（2026-08-19 引入；2026-08-24 时序修复）：敌方场上离棋盘中心 (3.5,3.5) 最近的两个棋子获升变预告——
+        /// countdown=1（下一敌方回合递减→0 升变）；预告在 s-2 回合挂载、s-1 回合升变（s = 本波 autoPromote 锚定的下一波部署回合，
+        /// 由 HandleWaveAndPromotions 前瞻触发）。newDefId=0 表示升变时从升变类棋子随机（RandomManager）。
         /// </summary>
         private void AnnounceAutoPromotions()
         {
@@ -303,11 +306,32 @@ namespace TheLaw.Gameplay
                 {
                     pieceId = piece.Id,
                     newDefId = 0,   // 升变时随机（RandomManager——种子相关可复现）
-                    countdown = 2,  // 本波第 3 回合开始升变
+                    countdown = 1,  // 下一敌方回合（部署回合 s-1）升变
                 };
                 _state.PromoteAnnouncements.Add(ann);
                 EventCenter.Instance.EventTrigger(GameEvent.PromoteAnnounced, ann);
                 EventCenter.Instance.EventTrigger(GameEvent.BuffsChanged, piece.Id); // 升变预告挂载 → buff 变化（2026-08-23：预告走 buff 显示，玩家可在 buff 区查看）
+            }
+        }
+
+        /// <summary>旧 promotions 挂载（2026-08-24）：对指定已部署棋子按 countdown 挂载升变预告并照发 PromoteAnnounced/BuffsChanged；目标已不在场（延迟窗口内阵亡/升变）则跳过。</summary>
+        private void MountPromotions(List<PieceInstance> wavePieces, List<WavePromotion> promos, int countdown)
+        {
+            foreach (var promo in promos)
+            {
+                if (promo.pieceIndexInWave < 0 || promo.pieceIndexInWave >= wavePieces.Count)
+                {
+                    continue;
+                }
+                var target = wavePieces[promo.pieceIndexInWave];
+                var alive = target != null ? _state.GetPiece(target.Id) : null;
+                if (alive == null || alive.side != Side.Enemy)
+                {
+                    continue;
+                }
+                _state.PromoteAnnouncements.Add(new PromoteAnnouncement { pieceId = target.Id, newDefId = promo.toDefId, countdown = countdown });
+                EventCenter.Instance.EventTrigger(GameEvent.PromoteAnnounced, new PromoteAnnouncement { pieceId = target.Id, newDefId = promo.toDefId, countdown = countdown });
+                EventCenter.Instance.EventTrigger(GameEvent.BuffsChanged, target.Id); // 升变预告挂载 → buff 变化（2026-08-23 同口径）
             }
         }
 
@@ -1196,9 +1220,13 @@ namespace TheLaw.Gameplay
 
         private void HandleWaveAndPromotions()
         {
-            // 升变预告倒计时（波次 N 开始预告波次 N+1）。
-            // 【语义确认 2026-08-13】按"每次 HandleWaveAndPromotions（每敌方回合）"递减——countdown=1 的预告
-            // 在下一敌方回合即升变（比"下波部署时升变"提前数回合）。该语义已确认保持现状（按实现），暂不改。
+            // 升变预告倒计时（每敌方回合递减；countdown=1 → 本回合挂载、下一敌方回合升变）。
+            // ⚠️ 2026-08-24 时序修复（策划定稿：预告 s-2 / 升变 s-1 / 部署 s——相对部署回合 s）：
+            // 旧 promotions 与本波 autoPromote 的预告周期统一锚定"下一波部署回合 s"：
+            //   - 预告：s-2 回合挂载（PromoteAnnouncement 挂载 + PromoteAnnounced/BuffsChanged）——旧机制延迟挂载（挂起批次）、autoPromote 前瞻触发；
+            //   - 升变：s-1 回合执行（countdown=1 下一敌方回合递减到 0）；
+            //   - 部署：s 回合。
+            // 末波（无后继波）：autoPromote 周期跳过；旧 promotions 保持原 countdown=1（部署当回合挂载、下一敌方回合升变）。
             foreach (var ann in new List<PromoteAnnouncement>(_state.PromoteAnnouncements))
             {
                 ann.countdown--;
@@ -1220,6 +1248,31 @@ namespace TheLaw.Gameplay
                             _resolver.Resolve(new PromoteAction(ann.pieceId, targetDefId));
                         }
                     }
+                }
+            }
+
+            // 旧 promotions 延迟挂载批次（2026-08-24）：预告回合到点才挂载（目标棋子已上场）——countdown=1 → 下一敌方回合（s-1）升变
+            for (int i = _pendingPromoBatches.Count - 1; i >= 0; i--)
+            {
+                var batch = _pendingPromoBatches[i];
+                if (batch.announceTurn <= _state.TurnCount)
+                {
+                    _pendingPromoBatches.RemoveAt(i);
+                    if (batch.announceTurn == _state.TurnCount)
+                    {
+                        MountPromotions(batch.pieces, batch.promos, 1);
+                    }
+                }
+            }
+
+            // autoPromote 前瞻（2026-08-24 时序修复）：autoPromote 波的预告周期锚定下一波部署回合 s——
+            // s-2 回合（TurnCount == s-3）预告离中心最近 2 个敌方棋子（countdown=1 → s-1 升变）；末波无后继波 → 跳过
+            for (int wi = 0; wi + 1 < _floor.waveDefs.Count; wi++)
+            {
+                if (_floor.waveDefs[wi].autoPromote
+                    && _floor.waveDefs[wi + 1].startTurn - 3 == _state.TurnCount)
+                {
+                    AnnounceAutoPromotions();
                 }
             }
 
@@ -1295,31 +1348,27 @@ namespace TheLaw.Gameplay
                     break;
                 }
                 _deployedThisRound = true;
-                // 自动预告模式（2026-08-19）：本波第 1 回合结束后预告离中心最近 2 个敌方棋子（EndEnemyTurn 触发）——此处仅挂起
-                if (wave.autoPromote)
+                // 旧 promotions 机制（2026-08-24 时序修复）：预告周期锚定下一波部署回合 s——
+                // 间隔≥3 → 挂起批次到 s-2 回合挂载（目标棋子已上场）；间隔=2 → 部署当回合即 s-2，countdown=1 直接命中；
+                // 末波无后继波 → 保持原 countdown=1（部署当回合挂载、下一敌方回合升变）。autoPromote 模式互斥跳过。
+                if (!wave.autoPromote && wave.promotions.Count > 0)
                 {
-                    _pendingAutoPromote = true;
-                }
-                // 本波开始 → 预告下一波升变（配置的升变棋子——旧机制；autoPromote 自动预告模式时互斥跳过）
-                if (!wave.autoPromote)
-                {
-                    foreach (var promo in wave.promotions)
+                    int nextStartTurn = _deployedWaveIndex + 1 < _floor.waveDefs.Count
+                        ? _floor.waveDefs[_deployedWaveIndex + 1].startTurn
+                        : -1;
+                    if (nextStartTurn > 0 && nextStartTurn - 3 > _state.TurnCount)
                     {
-                        if (promo.pieceIndexInWave >= 0 && promo.pieceIndexInWave < deployedThisWave.Count)
+                        _pendingPromoBatches.Add(new PendingPromoBatch
                         {
-                            var target = deployedThisWave[promo.pieceIndexInWave];
-                            if (target != null)
-                            {
-                                _state.PromoteAnnouncements.Add(new PromoteAnnouncement
-                                {
-                                    pieceId = target.Id,
-                                    newDefId = promo.toDefId,
-                                    countdown = 1, // 下一波次升变
-                                });
-                                EventCenter.Instance.EventTrigger(GameEvent.PromoteAnnounced, new PromoteAnnouncement { pieceId = target.Id, newDefId = promo.toDefId, countdown = 1 });
-                                EventCenter.Instance.EventTrigger(GameEvent.BuffsChanged, target.Id); // 升变预告挂载 → buff 变化（2026-08-23 同 autoPromote 口径）
-                            }
-                        }
+                            announceTurn = nextStartTurn - 3,
+                            pieces = new List<PieceInstance>(deployedThisWave),
+                            promos = new List<WavePromotion>(wave.promotions),
+                        });
+                    }
+                    else
+                    {
+                        int countdown = nextStartTurn > 0 ? Mathf.Max(1, nextStartTurn - wave.startTurn - 1) : 1;
+                        MountPromotions(deployedThisWave, wave.promotions, countdown);
                     }
                 }
                 _state.WaveScores.Add(0);

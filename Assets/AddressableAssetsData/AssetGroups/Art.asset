@@ -17,13 +17,28 @@ MonoBehaviour:
     m_SerializedData: []
   m_GUID: a91094174b93bdb4fb3abff2bc17d682
   m_SerializeEntries:
+  - m_GUID: 05998a86c74d83942b9673f37ced612e
+    m_Address: "Xeon_\u607C\u706B"
+    m_ReadOnly: 0
+    m_SerializedLabels: []
+    FlaggedDuringContentUpdateRestriction: 0
   - m_GUID: 091112939ebdadf4cb9f6f726dd3315c
     m_Address: Cannoner
     m_ReadOnly: 0
     m_SerializedLabels: []
     FlaggedDuringContentUpdateRestriction: 0
+  - m_GUID: 0ed63bb4a72ce1641a02b847bd4f8bc4
+    m_Address: ChessPlayer3_09_GreenDisplay
+    m_ReadOnly: 0
+    m_SerializedLabels: []
+    FlaggedDuringContentUpdateRestriction: 0
   - m_GUID: 1a13285a1fbfc1e49ae82f564f4e3796
     m_Address: Marksman
+    m_ReadOnly: 0
+    m_SerializedLabels: []
+    FlaggedDuringContentUpdateRestriction: 0
+  - m_GUID: 1c1b531c02154cd47a2667a3062c54c5
+    m_Address: Tester_Default
     m_ReadOnly: 0
     m_SerializedLabels: []
     FlaggedDuringContentUpdateRestriction: 0
@@ -42,6 +57,11 @@ MonoBehaviour:
     m_ReadOnly: 0
     m_SerializedLabels: []
     FlaggedDuringContentUpdateRestriction: 0
+  - m_GUID: 4d034ac5357a8d84ba22a81019191c81
+    m_Address: ChessPlayer3_06_HeadGlow
+    m_ReadOnly: 0
+    m_SerializedLabels: []
+    FlaggedDuringContentUpdateRestriction: 0
   - m_GUID: 6a2d713141fb86d4a911e707f0dddb5e
     m_Address: ShortArcher
     m_ReadOnly: 0
@@ -52,8 +72,53 @@ MonoBehaviour:
     m_ReadOnly: 0
     m_SerializedLabels: []
     FlaggedDuringContentUpdateRestriction: 0
+  - m_GUID: 870b837b66e7dfe49b00e1f00f849c50
+    m_Address: "Xeon_\u60CA\u8BB6"
+    m_ReadOnly: 0
+    m_SerializedLabels: []
+    FlaggedDuringContentUpdateRestriction: 0
+  - m_GUID: 8ec1b2038c3040a458df7e1e1cb80a33
+    m_Address: ChessPlayer3_10_DigitDisplay
+    m_ReadOnly: 0
+    m_SerializedLabels: []
+    FlaggedDuringContentUpdateRestriction: 0
+  - m_GUID: a1bcbc9e6b39f6049b913fc3105ba96b
+    m_Address: ChessPlayer3_03_PinkGlow
+    m_ReadOnly: 0
+    m_SerializedLabels: []
+    FlaggedDuringContentUpdateRestriction: 0
+  - m_GUID: a45cc684260f36245a273780e66c6e2b
+    m_Address: ChessPlayer3_07_DigitDisplay
+    m_ReadOnly: 0
+    m_SerializedLabels: []
+    FlaggedDuringContentUpdateRestriction: 0
+  - m_GUID: a98d2e2dd33c81542a118d0a0ea65630
+    m_Address: ChessPlayer3_08_CyanGlow
+    m_ReadOnly: 0
+    m_SerializedLabels: []
+    FlaggedDuringContentUpdateRestriction: 0
+  - m_GUID: aa558760eaf32554fb26fac9fa204d0e
+    m_Address: "Xeon_\u51DD\u91CD"
+    m_ReadOnly: 0
+    m_SerializedLabels: []
+    FlaggedDuringContentUpdateRestriction: 0
+  - m_GUID: c3ef7ad61441bda488c080887ef4da2a
+    m_Address: ChessPlayer3_01_Default
+    m_ReadOnly: 0
+    m_SerializedLabels: []
+    FlaggedDuringContentUpdateRestriction: 0
   - m_GUID: c659db84df3251f4896dd57ce5e14fbe
     m_Address: Wizard
+    m_ReadOnly: 0
+    m_SerializedLabels: []
+    FlaggedDuringContentUpdateRestriction: 0
+  - m_GUID: d09c6e20a15499f4a83c5be5e4320400
+    m_Address: "Xeon_\u5E38\u6001"
+    m_ReadOnly: 0
+    m_SerializedLabels: []
+    FlaggedDuringContentUpdateRestriction: 0
+  - m_GUID: da9433238760eeb4796c47b9dc72fe61
+    m_Address: ChessPlayer3_04_ArmChess
     m_ReadOnly: 0
     m_SerializedLabels: []
     FlaggedDuringContentUpdateRestriction: 0
@@ -67,13 +132,33 @@ MonoBehaviour:
     m_ReadOnly: 0
     m_SerializedLabels: []
     FlaggedDuringContentUpdateRestriction: 0
+  - m_GUID: f011e42f00372c041a26b046e748ae49
+    m_Address: "Xeon_\u574F\u7B11"
+    m_ReadOnly: 0
+    m_SerializedLabels: []
+    FlaggedDuringContentUpdateRestriction: 0
   - m_GUID: f45a35264cba84d47990e222a541a219
     m_Address: ShieldGuard
     m_ReadOnly: 0
     m_SerializedLabels: []
     FlaggedDuringContentUpdateRestriction: 0
+  - m_GUID: f74508f942e6eb340800f4a6d6aa7c64
+    m_Address: Xeon_404
+    m_ReadOnly: 0
+    m_SerializedLabels: []
+    FlaggedDuringContentUpdateRestriction: 0
+  - m_GUID: fb4db8bc6da0b094fa079a5cea0d092a
+    m_Address: ChessPlayer3_02_TubeChess
+    m_ReadOnly: 0
+    m_SerializedLabels: []
+    FlaggedDuringContentUpdateRestriction: 0
   - m_GUID: fd14f8466fa760f478782ee49c91f839
     m_Address: Assassin
+    m_ReadOnly: 0
+    m_SerializedLabels: []
+    FlaggedDuringContentUpdateRestriction: 0
+  - m_GUID: ffec0f950dd6b0f4b8e085ae8449ee5f
+    m_Address: ChessPlayer3_05_PurpleLetter
     m_ReadOnly: 0
     m_SerializedLabels: []
     FlaggedDuringContentUpdateRestriction: 0

@@ -5,6 +5,7 @@
         "Core",
         "Data",
         "Gameplay",
+        "Unity.Nuget.NewtonsoftJson",
         "UnityEngine.UI",
         "Unity.TextMeshPro",
         "Unity.Addressables",

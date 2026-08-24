@@ -93,6 +93,7 @@ namespace TheLaw.UI
 
         void OnConfirmClicked()
         {
+            UiSfx.Play(); // 确认按钮碰撞音（2026-08-24 音频挂点方案）
             var cb = _onConfirm;
             Close();
             cb?.Invoke(); // 先关再回调（防回调内再弹确认面板的时序）
@@ -105,6 +106,7 @@ namespace TheLaw.UI
 
         void Cancel()
         {
+            UiSfx.Play(); // 取消按钮/点背景取消碰撞音（2026-08-24 音频挂点方案）
             var cb = _onCancel;
             Close();
             cb?.Invoke(); // 先关再回调（恢复调用方状态——如退出按钮重新可用）

@@ -64,6 +64,8 @@ namespace TheLaw.UI
         private TowerFlow _towerFlow;
         private BattleResultPanel _battleResultPanel; // 结算面板（战斗结束 overlay——常驻，自身监听 StateChanged）
         private ConfirmPanel _confirmPanel; // 通用确认弹窗（常驻——退出确认等场景复用）
+        private StoryPanel _storyPanel; // 开场剧情面板（新游戏先播；播完销毁进新局）
+        private bool _storyPlaying; // 剧情播放中（防重）
 
         private void Awake()
         {
@@ -95,6 +97,8 @@ namespace TheLaw.UI
             EditConfig.AutoLoad();
             // ③ 创建规则层（依赖注入）
             CreateGameplay();
+            // ③a 行动经济 buff 前端同步桥（订阅现有回合/表现事件补发 BuffsChanged——不新增后端接口）
+            ActionEconomyBuffSync.EnsureSubscribed(_gameState);
             // ④ 注册存档快照
             RegisterSnapshots();
             // ⚠️ 2026-08-23 修复：移除启动自动 LoadAll——它会使"开始新游戏"继承旧档未复位字段（示例：AP 上限、随机种子）
@@ -277,6 +281,7 @@ namespace TheLaw.UI
             EventCenter.Instance.RemoveEventListener(GameEvent.EventOpened, OnEventOpenedForSave);
             EventCenter.Instance.RemoveEventListener(GameEvent.AbilityCandidatesDrawn, OnAbilityCandidatesForSave);
             EventCenter.Instance.RemoveEventListener(GameEvent.PhaseChanged, OnPhaseChangedForSave);
+            ActionEconomyBuffSync.Shutdown(); // 行动经济 buff 同步桥退订（与 EnsureSubscribed 对称）
         }
 
         private void OnPhaseChanged(object data)
@@ -678,6 +683,49 @@ namespace TheLaw.UI
             return true;
         }
 
+        /// <summary>主菜单"新游戏"：先播开场剧情，播完（含长按跳过）回调继续原新局流程。</summary>
+        private void StartNewGameWithOpeningStory()
+        {
+            if (_storyPlaying) return; // 防重（连点）
+            _uiManager.HidePanel("MainMenu");
+            StartCoroutine(PlayOpeningStoryThenStartNewGame());
+        }
+
+        /// <summary>
+        /// 开场剧情流程：加载 StoryPanel（Addressables）→ PlayOpening（读 story_opening.json）→
+        /// 剧情播完/跳过 → OnOpeningStoryFinished → StartNewGame（进入第一个事件）。
+        /// 配置缺失：StoryPanel 内 LogWarning——直接跳过剧情进流程（不卡新局）。
+        /// </summary>
+        private System.Collections.IEnumerator PlayOpeningStoryThenStartNewGame()
+        {
+            yield return LoadPanelAsync<StoryPanel>(p =>
+            {
+                _storyPanel = p;
+                _uiManager.RegisterPanel(p);
+            }, sessionBound: false); // 不绑定局代际——剧情在新局边界之前
+            if (_storyPanel == null || !_storyPanel.PlayOpening())
+            {
+                _storyPanel = null;
+                StartNewGame(); // 无配置/面板创建失败：跳过剧情直接进流程
+                yield break;
+            }
+            _storyPanel.Finished += OnOpeningStoryFinished;
+            _storyPlaying = true;
+            _uiManager.ShowPanel("StoryPanel");
+            Debug.Log("[Bootstrap] 开场剧情播放开始");
+        }
+
+        /// <summary>剧情结束（播完/长按跳过）：隐藏并销毁面板 → 继续原 StartNewGame 流程。</summary>
+        private void OnOpeningStoryFinished()
+        {
+            _storyPlaying = false;
+            if (_storyPanel == null) return;
+            _uiManager.HidePanel("StoryPanel");
+            DestroyImmediate(_storyPanel.gameObject);
+            _storyPanel = null;
+            StartNewGame();
+        }
+
         private void StartNewGame()
         {
             _sessionGeneration++; // 新局边界：旧局异步面板不得接线到当前会话
@@ -987,7 +1035,7 @@ namespace TheLaw.UI
             {
             _uiManager.RegisterPanel(panel);
             // 按钮事件接线（面板只转发输入，流程响应在此）
-            panel.OnNewGameClicked += () => { _uiManager.HidePanel("MainMenu"); StartNewGame(); };
+            panel.OnNewGameClicked += StartNewGameWithOpeningStory; // 2026-08-24：新游戏先播开场剧情，播完回调继续 StartNewGame 原流程
             panel.OnContinueClicked += ContinueGame; // 2026-08-23：对接存档继续（读档恢复会话/事件流程）
             panel.OnSettingsClicked += () => { _uiManager.PushOverlay("Settings"); }; // 设置面板 overlay（主菜单之上，暂停型）
             panel.OnQuitClicked += Application.Quit;

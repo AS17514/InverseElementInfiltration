@@ -137,7 +137,10 @@ namespace TheLaw.UI
             if (_tipGo == null || !_requestedVisible) yield break;
             if (_tipView != null) _tipView.Bind(_requestedData);
             PlaceAt(_requestedScreenPosition);
+            bool wasVisible = _tipGo.activeSelf;
             _tipGo.SetActive(true);
+            // Tooltip 新浮窗出现碰撞音（2026-08-24 音频挂点方案；已显示时换内容/连续刷新不重复播）
+            if (!wasVisible) UiSfx.Play();
         }
 
         /// <summary>顶层 Canvas（FindObjectOfType 会误命中运行时子 Canvas——手牌区 overrideSorting 等）。</summary>

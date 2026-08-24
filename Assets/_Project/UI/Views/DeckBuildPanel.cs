@@ -274,6 +274,7 @@ namespace TheLaw.UI
                 return;
             }
             _deck.Add(defId);
+            UiSfx.Play(); // 构筑加牌碰撞音（2026-08-24 音频挂点方案）
             RefreshAfterDeckChange();
         }
 
@@ -281,6 +282,7 @@ namespace TheLaw.UI
         void RemoveFromDeck(int defId)
         {
             if (!_deck.Remove(defId)) return; // 不在队：忽略
+            UiSfx.Play(); // 构筑减牌碰撞音（2026-08-24 音频挂点方案）
             RefreshAfterDeckChange();
         }
 
@@ -507,6 +509,7 @@ namespace TheLaw.UI
             }
             if (_resolver.BuildDeck(new List<int>(_deck)))
             {
+                UiSfx.Play(); // 构筑确认按钮碰撞音（2026-08-24 音频挂点方案）
                 gameObject.SetActive(false);
                 EventCenter.Instance.EventTrigger(GameEvent.EventCompleted, _state != null ? _state.CurrentEventId : null); // 推进（携带事件 id——TowerFlow 校验匹配；防重复信号跳节点）
             }

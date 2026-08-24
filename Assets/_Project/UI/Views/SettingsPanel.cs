@@ -111,7 +111,11 @@ namespace TheLaw.UI
             }
             if (_togFullscreen != null)
             {
-                _togFullscreen.onValueChanged.AddListener(v => SettingsSystem.Instance.SetFullscreen(v)); // 应用由 ScreenSettingsApplier 监听 SettingsChanged 落地
+                _togFullscreen.onValueChanged.AddListener(v =>
+                {
+                    UiSfx.Play(); // 全屏开关碰撞音（2026-08-24 音频挂点方案）
+                    SettingsSystem.Instance.SetFullscreen(v); // 应用由 ScreenSettingsApplier 监听 SettingsChanged 落地
+                });
             }
             if (_dpdResolution != null)
             {
@@ -174,6 +178,7 @@ namespace TheLaw.UI
 
         void OnReset()
         {
+            UiSfx.Play(); // 重置按钮碰撞音（2026-08-24 音频挂点方案）
             var s = SettingsSystem.Instance;
             s.SetBGMVolumePercent(80);
             s.SetSFXVolumePercent(100);

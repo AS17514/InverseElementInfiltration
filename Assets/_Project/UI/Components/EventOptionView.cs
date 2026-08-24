@@ -58,6 +58,7 @@ namespace TheLaw.UI
                     _suppressClick = false; // 长按已触发刷新——吞掉本次抬起点击（防误选）
                     return;
                 }
+                UiSfx.Play(); // 事件选项/继续按钮碰撞音（2026-08-24 音频挂点方案）
                 onClick();
             };
             _button.onClick.AddListener(_boundClick);
@@ -71,6 +72,7 @@ namespace TheLaw.UI
             _suppressClick = true; // 长按触发 → 本次抬起不再当点击
             var handler = _onLongPress;
             _onLongPress = null;   // 只触发一次（刷新后选项区整体重建，防止残留重复触发）
+            UiSfx.Play(); // 长按刷新候选碰撞音（2026-08-24 音频挂点方案）
             handler?.Invoke();
         }
 

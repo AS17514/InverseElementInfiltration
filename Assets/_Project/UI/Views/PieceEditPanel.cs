@@ -42,7 +42,7 @@ namespace TheLaw.UI
         private int _selectedDefId = -1;
         private int _editableDefId = -1; // 本次编辑事件唯一允许写入的棋子
         private List<Template> _slotTemplates = new List<Template>(); // 当前选中棋子的程序（编辑副本）
-        private List<bool> _slotLocked = new List<bool>();            // 槽位锁定标记（与 _slotTemplates 同步位移——模板原始程序块）
+        private List<bool> _slotLocked = new List<bool>();            // 槽位锁定标记（与 _slotTemplates 同步位移——2026-08-24 起默认模块全部可编辑，恒 false 保留结构）
 
         // ====== 程序库（按当前棋子查询后端候选池） ======
         private List<Template> _programLibrary = new List<Template>();
@@ -179,6 +179,7 @@ namespace TheLaw.UI
         void OnUndoClicked()
         {
             if (!CanEditSelected()) return;
+            UiSfx.Play(); // 撤销一步碰撞音（2026-08-24 音频挂点方案）
             _editor.Undo(_selectedDefId);
             var def = ConfigTable.Find<PieceDef>(_selectedDefId);
             if (def != null)
@@ -291,6 +292,7 @@ namespace TheLaw.UI
                 Debug.LogWarning($"[PieceEdit] {def?.displayName ?? _editableDefId.ToString()} 程序为空——无法完成编辑，请至少保留 1 个程序块");
                 return;
             }
+            UiSfx.Play(); // 编辑完成（下一步）按钮碰撞音（2026-08-24 音频挂点方案）
             gameObject.SetActive(false);
             EventCenter.Instance.EventTrigger(GameEvent.EventCompleted, _state != null ? _state.CurrentEventId : null); // 推进（携带事件 id——TowerFlow 校验匹配；防重复信号跳节点）
         }
@@ -765,14 +767,13 @@ namespace TheLaw.UI
             return new List<Template>();
         }
 
-        /// <summary>锁定标记：模板原始程序块（def 默认模组前 N 槽）锁定——绝对固定（当前 _allowShiftLocked=false）。</summary>
+        /// <summary>锁定标记（2026-08-24 用户定案：默认模块全部可编辑——不再锁定；被替换/移除的默认模块回候选库由后端候选池差集动态化负责，见 docs/后端待办.md）。</summary>
         void InitLockedFlags(PieceDef def)
         {
             _slotLocked.Clear();
-            int templateCount = def.programSet != null && def.programSet.Count > 0 ? def.programSet[0].slots.Count : 0;
             for (int i = 0; i < _slotTemplates.Count; i++)
             {
-                _slotLocked.Add(i < templateCount); // 前 N 槽 = 模板原始块
+                _slotLocked.Add(false); // 全部可编辑（2026-08-24 定案：默认模块不再锁定）
             }
         }
 
@@ -838,14 +839,14 @@ namespace TheLaw.UI
             _pieceInfo.gameObject.SetActive(true);
         }
 
-        // ====== 程序编排（锁定块在前绝对固定 + 替换/插入语义——整组提交） ======
+        // ====== 程序编排（2026-08-24 起默认模块全部可编辑：替换/插入/移除/重排——整组提交） ======
 
         /// <summary>程序槽位上限（当前方案固定 4——策划变更时改此处即可；ProgramDef.slots 本身是 List 无硬上限）。</summary>
         private const int MaxProgramSlots = 4;
 
         /// <summary>
         /// 拖入到槽 to（2026-08-11 需求对齐 v2）：
-        /// - 目标锁定槽 → 拒绝（锁定块绝对固定）
+        /// - 目标锁定槽 → 拒绝（2026-08-24 起无锁定槽——判定保留防未来锁定）
         /// - 程序有空缺（Count &lt; MaxProgramSlots）→ **插入 to 位置**（原 to 及之后顺移，空位补齐——如 [锁a 锁b c 空] 拖 x 到 c → [锁a 锁b x c]）
         /// - 程序满 → 替换 to 槽（原块回程序库——无限复制语义下无额外动作）
         /// ⚠️ 2026-08-12：原 Clamp(to,0,4) 满槽时 to=4 会索引越界（UI 只传 0-3 未触发）——改用 Count 动态处理，不依赖硬编码 4。
@@ -858,7 +859,9 @@ namespace TheLaw.UI
             // 后端先校验并落账；false 时保持当前 UI，不播放成功态。
             if (IsBuiltinRestoreCandidate(template, to))
             {
-                return _editor.TryRestoreBuiltinModule(_selectedDefId, template, to);
+                bool ok = _editor.TryRestoreBuiltinModule(_selectedDefId, template, to);
+                if (ok) UiSfx.Play(); // 内置模块回原槽碰撞音（2026-08-24 音频挂点方案）
+                return ok;
             }
 
             if (_slotTemplates.Count >= MaxProgramSlots)
@@ -882,7 +885,7 @@ namespace TheLaw.UI
 
         /// <summary>
         /// 槽间重排（2026-08-12 需求修正：用户实测发现插入语义方向不对称——紧邻上拖下=原位无变化）。
-        /// 现语义：目标槽有块 → **交换（对调）**；目标空缺（末尾）→ 插入追加；锁定块不可拖出/不可作目标。
+        /// 现语义：目标槽有块 → **交换（对调）**；目标空缺（末尾）→ 插入追加；锁定块不可拖出/不可作目标（2026-08-24 起默认模块不再锁定——全可拖/可作目标）。
         /// </summary>
         public bool MoveProgram(int from, int to)
         {
@@ -915,7 +918,7 @@ namespace TheLaw.UI
             return true;
         }
 
-        /// <summary>移除槽位块（拖出到空白）。锁定块不可移除。</summary>
+        /// <summary>移除槽位块（拖出到空白）。锁定块不可移除（2026-08-24 起默认模块不再锁定——均可移除）。</summary>
         public bool RemoveProgramAt(int index)
         {
             if (!CanEditSelected() || index < 0 || index >= _slotTemplates.Count) return false;
@@ -930,6 +933,7 @@ namespace TheLaw.UI
         {
             if (!CanEditSelected()) return;
             _editor.EditProgram(_selectedDefId, new List<Template>(_slotTemplates));
+            UiSfx.Play(); // 编辑拖放落账（插入/重排/替换/移除）碰撞音（2026-08-24 音频挂点方案）
             RefreshUndoButton(); // 编辑后必有可撤销历史 → 亮
             var def = ConfigTable.Find<PieceDef>(_selectedDefId);
             if (def != null)

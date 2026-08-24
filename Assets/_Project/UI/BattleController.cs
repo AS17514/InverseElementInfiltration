@@ -154,6 +154,10 @@ namespace TheLaw.UI
         bool _isMoveSelect;          // true=移动选格 false=攻击选格
         List<Vector2Int> _cellOptions = new List<Vector2Int>();
         GameObject _highlightRoot;   // 移动可选格高亮容器
+        // ====== 插入执行（免费行动"获得即立即执行"——2026-08-24 定案：提示条 + 自动锁定 + 弹目标选择 + 允许空放）======
+        readonly Queue<int> _pendingForcedExecs = new Queue<int>(); // 免费行动待强制执行队（镜像后端 _pendingImmediateExecutes 时机）
+        bool _freeActionTipShowing;                                      // 免费行动提示防连发
+        const float FreeActionTipDuration = 2.0f;                        // 免费行动提示显示时长（秒）
         int _selectedPieceId = -1;
         // 敌方升变预告可能早于 Piece View 创建：按 pieceId 缓存，视觉出现后补应用。
         readonly Dictionary<int, PromoteAnnouncement> _pendingPromotionWarnings = new Dictionary<int, PromoteAnnouncement>();
@@ -186,6 +190,8 @@ namespace TheLaw.UI
         List<Template> _infoProgram; // 当前信息面板显示的程序（浮窗内容源）
         DG.Tweening.Tween _phaseFlashTween; // 准备完成按钮文字闪动 tween（显式管理，防销毁后访问）
         bool _phaseTipShowing;             // 阶段按钮 hover 提示是否正在显示（2026-08-23 准备引导）
+        bool _apEmptyTipShowing;           // AP 耗尽悬浮提示正在显示（2026-08-24 可选挂点——防连发刷屏）
+        const float ApEmptyTipDuration = 1.6f; // AP 耗尽提示显示时长（秒）
 
         // ====== 通用变亮通道（HintRequested——2026-08-23：E5 资格等提示；视觉与升变预告红框相互独立）======
         GameObject _qualifyCardHighlight;      // 当前 E5 资格高亮的手牌卡（CardQualify targetId=牌 instanceId）
@@ -217,6 +223,9 @@ namespace TheLaw.UI
             if (_handSizeTween != null) _handSizeTween.Kill();
             if (_phaseFlashTween != null) { _phaseFlashTween.Kill(); _phaseFlashTween = null; }
             if (_phaseTipShowing) { _phaseTipShowing = false; TooltipManager.Instance.Hide(); }
+            if (_apEmptyTipShowing) { _apEmptyTipShowing = false; TooltipManager.Instance.Hide(); }
+            if (_freeActionTipShowing) { _freeActionTipShowing = false; TooltipManager.Instance.Hide(); }
+            _pendingForcedExecs.Clear();
             _pendingPromotionWarnings.Clear();
             // 遗物按钮监听对称清理（L1——不依赖下个 BC 的 Init RemoveAllListeners 兜底）
             if (_relicBtn != null) _relicBtn.onClick.RemoveListener(ToggleRelicList);
@@ -522,6 +531,8 @@ namespace TheLaw.UI
                 return;
             }
 
+            if (_executing) return; // 执行中（含免费行动强制执行）——锁定棋子：禁止改选/取消/新执行
+
             // 执行候选：玩家回合、非执行中、已选中我方单位
             bool canExecute = !_executing && _state.Phase == BattlePhase.PlayerTurn && _selectedPieceId >= 0;
             if (canExecute)
@@ -757,6 +768,7 @@ namespace TheLaw.UI
             _selectResultDirty = false;
             RefreshAP();
             RefreshDrawPile();
+            TryStartForcedExec(); // 插入执行：整段执行收尾后强制下一免费行动（镜像后端 FinishExecute→TryFlushImmediateExecutes）
         }
 
         /// <summary>表现组播完后：镜像推进下一槽（规则层已 AdvanceSlot 到等待/结束）。</summary>
@@ -824,6 +836,7 @@ namespace TheLaw.UI
             }
             _presentationPlaying = false;
             RefreshDrawPile();
+            TryStartForcedExec(); // 插入执行：表现排空后（后端 _waitingPresentation 结束同帧）触发待执行免费行动
         }
 
         /// <summary>组内并行子协程：播完计数（finally 保证异常/中断也计数——防组等待卡死）。</summary>
@@ -975,6 +988,57 @@ namespace TheLaw.UI
         {
             OnBuffsChanged(data);
             AudioManager.Instance.PlaySFX(AudioRefs.SfxFreeAction);
+            // 2026-08-24 定案：玩家侧免费行动 = 插入执行（后端强制）——提示条 + 自动锁定 + 弹目标选择 + 允许空放
+            if (!(data is int pieceId)) return;
+            var grantedPiece = _state != null ? _state.GetPiece(pieceId) : null;
+            if (grantedPiece == null || grantedPiece.side != Side.Player) return; // 仅玩家侧（敌方 AI 自动选格）
+            _pendingForcedExecs.Enqueue(pieceId);
+            ShowFreeActionTip(pieceId);
+            TryStartForcedExec();
+        }
+
+        /// <summary>插入执行镜像启动：与后端 TryFlushImmediateExecutes 同时机（玩家回合 + 空闲）——出队强制该棋执行（free 由后端落账）。</summary>
+        void TryStartForcedExec()
+        {
+            while (_pendingForcedExecs.Count > 0)
+            {
+                if (_executing || _presentationPlaying) return; // 非空闲——执行/表现收尾后再触发
+                if (_state == null || _state.Phase != BattlePhase.PlayerTurn) return; // 与后端一致：仅玩家回合
+                int pieceId = _pendingForcedExecs.Dequeue();
+                var piece = _state.GetPiece(pieceId);
+                if (piece == null || piece.side != Side.Player) continue; // 已不在/非玩家——跳过
+                var program = piece.GetProgram(_state);
+                if (program == null || program.Count == 0) continue; // 无程序——跳过
+                // 自动选中并锁定该棋子（锁定 = 执行中 OnCellClicked 禁止改选）
+                _selectedPieceId = pieceId;
+                ShowPieceInfo(pieceId);
+                _executing = true;
+                _execPieceId = pieceId;
+                _execProgram = program;
+                _execIndex = 0;
+                AdvanceExec(); // 与后端 AdvanceSlot 同步：跳无效槽 → 弹目标选择（高亮）
+                return; // 一次一个（执行收尾点再次触发——镜像后端）
+            }
+        }
+
+        /// <summary>免费行动提示条（2026-08-24 插入执行定案——提示 + 自动锁定；Tooltip 短暂显示防连发）。</summary>
+        void ShowFreeActionTip(int pieceId)
+        {
+            if (_freeActionTipShowing) return;
+            var piece = _state != null ? _state.GetPiece(pieceId) : null;
+            if (piece == null) return;
+            var view = _pieceViews.Get(pieceId);
+            if (view == null) return;
+            _freeActionTipShowing = true;
+            TooltipManager.Instance.Show("免费行动！该棋子立即执行", view.transform.position);
+            StartCoroutine(HideFreeActionTipLater());
+        }
+
+        IEnumerator HideFreeActionTipLater()
+        {
+            yield return new WaitForSeconds(FreeActionTipDuration);
+            _freeActionTipShowing = false;
+            TooltipManager.Instance.Hide();
         }
 
         void OnRelicObtained(object data)
@@ -1234,6 +1298,8 @@ namespace TheLaw.UI
             _awaitingCell = false;
             _selectResultDirty = false;
             UpdateHandPositionByPhase();
+            if (_state.Phase == BattlePhase.PlayerTurn) TryStartForcedExec(); // 插入执行：回合切换后（后端同守卫）触发
+
             // 阶段展示信号：下一帧通知规则层（动画优先——无动画的阶段切换至少展示一帧）
             if (data is BattlePhase phase)
             {
@@ -1308,9 +1374,16 @@ namespace TheLaw.UI
         /// <summary>通用状态通知（规则层字符串信号——如 placement-incomplete：摆放未完成拒绝结束）。</summary>
         void OnStateChanged(object data)
         {
-            if (data is string s && s == "placement-incomplete")
+            if (data is string s)
             {
-                RefreshPhaseButton(); // 刷新按钮状态（提示继续摆放）
+                if (s == "placement-incomplete")
+                {
+                    RefreshPhaseButton(); // 刷新按钮状态（提示继续摆放）
+                }
+                else if (s == "ap-empty")
+                {
+                    ShowApEmptyTip(); // 行动点耗尽 → "请结束回合"悬浮提示（2026-08-24 可选挂点）
+                }
             }
             RefreshDrawPile();
             RefreshScore(); // score / mahjong-hu 等 StateChanged 信号均可安全刷新
@@ -1565,6 +1638,38 @@ namespace TheLaw.UI
             Vector2 screen = RectTransformUtility.WorldToScreenPoint(canvas.worldCamera, _panel.PhaseButton.transform.position);
             _phaseTipShowing = true;
             TooltipManager.Instance.ShowAtScreen("部署完所有初始棋子后激活此按钮", screen);
+        }
+
+        /// <summary>行动点耗尽提示（2026-08-24 可选挂点——StateChanged("ap-empty")：后端 AP≤0 时每次行动尝试都会发，需防连发）。</summary>
+        void ShowApEmptyTip()
+        {
+            if (_panel == null || _panel.PhaseButton == null
+                || _state == null || _state.Phase != BattlePhase.PlayerTurn)
+            {
+                return; // 仅玩家回合提示有实际意义
+            }
+            if (_apEmptyTipShowing)
+            {
+                return; // 防连发刷屏（AP=0 时每次请求都会触发）
+            }
+            var canvas = _panel.PhaseButton.GetComponentInParent<Canvas>();
+            if (canvas == null) return;
+            Vector2 screen = RectTransformUtility.WorldToScreenPoint(canvas.worldCamera, _panel.PhaseButton.transform.position);
+            if (_phaseTipShowing)
+            {
+                _phaseTipShowing = false; // 同通道互斥：先收起准备引导再显示 AP 提示
+                TooltipManager.Instance.Hide();
+            }
+            TooltipManager.Instance.ShowAtScreen("行动点耗尽，请结束回合", screen);
+            _apEmptyTipShowing = true;
+            StartCoroutine(HideApEmptyTipLater());
+        }
+
+        IEnumerator HideApEmptyTipLater()
+        {
+            yield return new WaitForSeconds(ApEmptyTipDuration);
+            _apEmptyTipShowing = false;
+            TooltipManager.Instance.Hide();
         }
 
         /// <summary>准备完成 → 阶段按钮文字闪动提醒（2026-08-23；显式管理 tween 防销毁后访问）。</summary>

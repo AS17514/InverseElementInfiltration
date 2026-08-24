@@ -110,7 +110,11 @@ namespace TheLaw.UI
                 return;
             }
             btn.onClick.RemoveAllListeners();
-            btn.onClick.AddListener(() => OnSettingsClicked?.Invoke());
+            btn.onClick.AddListener(() =>
+            {
+                UiSfx.Play(); // 事件面板设置按钮碰撞音（2026-08-24 音频挂点方案）
+                OnSettingsClicked?.Invoke();
+            });
         }
 
         System.Collections.IEnumerator LoadOptionTemplate()
@@ -162,7 +166,10 @@ namespace TheLaw.UI
             if (_title != null) _title.text = string.IsNullOrEmpty(_currentEvent.title) ? "未知事件" : _currentEvent.title; // 中文兜底（防资产名泄漏）
             if (_desc != null) _desc.text = Describe(_currentEvent);
             BuildOptions(); // 选项就位后内部刷新布局（时序正确——模板未就绪时由 BuildOptionsWhenReady 补刷）
+            bool wasVisible = gameObject.activeSelf;
             gameObject.SetActive(true);
+            // 事件面板"隐藏→显示"时播碰撞音（2026-08-24 音频挂点方案；已显示时换事件不重复播）
+            if (!wasVisible) UiSfx.Play();
         }
 
         /// <summary>描述：优先资产内 description 字段（JSON 导入）；空则回退标题/资产名（历史资产未重导入时兜底）。</summary>
@@ -257,7 +264,10 @@ namespace TheLaw.UI
             if (_desc != null) _desc.text = DescribeAbility();
             if (_exitBtn != null) _exitBtn.interactable = false; // 能力模式禁用退出（不能"直接完成"绕过能力选择）
             BuildAbilityOptions(); // 候选就位后内部刷新布局（时序正确）
+            bool wasVisible = gameObject.activeSelf;
             gameObject.SetActive(true);
+            // 能力事件三选一"隐藏→显示"时播碰撞音（2026-08-24 音频挂点方案；已显示时刷新候选不重复播）
+            if (!wasVisible) UiSfx.Play();
         }
 
         /// <summary>能力描述：事件描述 + 操作提示；候选清单不移入文本区（2026-08-23：与按钮区重复渲染导致叠加——见 docs/能力事件显示-修复参考_20260823.md）。</summary>
@@ -406,6 +416,7 @@ namespace TheLaw.UI
 
         void Exit()
         {
+            UiSfx.Play(); // 事件面板退出按钮碰撞音（2026-08-24 音频挂点方案）
             // 退出事件关（2026-08-23）：转 Bootstrap 确认弹窗（确认=保存进度并返回主菜单；取消=无改动）——不再直接推进
             OnExitClicked?.Invoke();
         }

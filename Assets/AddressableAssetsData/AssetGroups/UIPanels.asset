@@ -17,6 +17,16 @@ MonoBehaviour:
     m_SerializedData: []
   m_GUID: 892f34792af6aac4ebf2853746d97501
   m_SerializeEntries:
+  - m_GUID: 05f6c845e4a5c0a4eaad6ecb4fe55bd5
+    m_Address: Grp_FloorPlay_Dice
+    m_ReadOnly: 0
+    m_SerializedLabels: []
+    FlaggedDuringContentUpdateRestriction: 0
+  - m_GUID: 16b61da117c3a124f83fa368189bba77
+    m_Address: Grp_Play_None
+    m_ReadOnly: 0
+    m_SerializedLabels: []
+    FlaggedDuringContentUpdateRestriction: 0
   - m_GUID: 1c800e9f11fd543489c70a6725f57e7d
     m_Address: LoadingPanel
     m_ReadOnly: 0
@@ -44,6 +54,11 @@ MonoBehaviour:
     FlaggedDuringContentUpdateRestriction: 0
   - m_GUID: 3e39db517f800bf45b659929d7ec51c9
     m_Address: Piece_Card
+    m_ReadOnly: 0
+    m_SerializedLabels: []
+    FlaggedDuringContentUpdateRestriction: 0
+  - m_GUID: 4708d8bc14048474e8cc9482336307e6
+    m_Address: Grp_FloorPlay_Go
     m_ReadOnly: 0
     m_SerializedLabels: []
     FlaggedDuringContentUpdateRestriction: 0
@@ -78,7 +93,7 @@ MonoBehaviour:
     m_SerializedLabels: []
     FlaggedDuringContentUpdateRestriction: 0
   - m_GUID: a0c1a2406283ed6418aeebf4ce2a5b02
-    m_Address: DeckLibrary
+    m_Address: DeckLibraryPanel
     m_ReadOnly: 0
     m_SerializedLabels: []
     FlaggedDuringContentUpdateRestriction: 0

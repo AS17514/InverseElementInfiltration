@@ -794,6 +794,7 @@ GameObject:
   - component: {fileID: 3553075436028208613}
   - component: {fileID: 7527493211156277804}
   - component: {fileID: 6640871560780322031}
+  - component: {fileID: 1377584734406535208}
   m_Layer: 5
   m_Name: Grp_MenuOptions
   m_TagString: Untagged
@@ -862,6 +863,18 @@ MonoBehaviour:
   m_EditorClassIdentifier: 
   m_HorizontalFit: 2
   m_VerticalFit: 2
+--- !u!225 &1377584734406535208
+CanvasGroup:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 4486964536064273767}
+  m_Enabled: 1
+  m_Alpha: 1
+  m_Interactable: 1
+  m_BlocksRaycasts: 1
+  m_IgnoreParentGroups: 0
 --- !u!1 &5970165732908965470
 GameObject:
   m_ObjectHideFlags: 0

@@ -39,5 +39,19 @@ namespace TheLaw.Data
                 default: return false;
             }
         }
+
+        /// <summary>某属性的"相生属性"（它生成的对象——金→水、木→火、水→木、火→土、土→金；None → None。2026-08-24 提纯用）。</summary>
+        public static Element GeneratingOf(Element a)
+        {
+            switch (a)
+            {
+                case Element.Gold: return Element.Water;  // 金生水
+                case Element.Wood: return Element.Fire;   // 木生火
+                case Element.Water: return Element.Wood;  // 水生木
+                case Element.Fire: return Element.Earth;  // 火生土
+                case Element.Earth: return Element.Gold;  // 土生金
+                default: return Element.None;
+            }
+        }
     }
 }

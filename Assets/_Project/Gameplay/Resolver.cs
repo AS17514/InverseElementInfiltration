@@ -1,4 +1,4 @@
-﻿using System.Collections.Generic;
+using System.Collections.Generic;
 using TheLaw.Core;
 using TheLaw.Data;
 using UnityEngine;
@@ -297,6 +297,16 @@ namespace TheLaw.Gameplay
             {
                 AddMultiplier(1);
             }
+            // ⚠️ 2026-08-24 能力「改良」：己方部署棋子时，棋子价值填入牌山（麻将玩法激活时才有能力——HasRelicEffect 判定）
+            if (action.side == Side.Player && _state.HasRelicEffect(RelicEffectType.MahjongFillOnDeployPromote))
+            {
+                PushMahjongScore(PieceValue.SumValue(piece.GetProgram(_state)));
+            }
+            // ⚠️ 2026-08-24 能力「提纯」：部署时我方所有己方棋子属性 → 部署棋子属性（变化者计分）
+            if (action.side == Side.Player && _state.HasRelicEffect(RelicEffectType.ElementRefine))
+            {
+                RefineAllPieceElements(piece.element);
+            }
             EventCenter.Instance.EventTrigger(GameEvent.PieceDeployed, new DeployInfo { PieceId = piece.Id, DefId = action.pieceDefId, Side = action.side, Cell = action.cell, CardInstanceId = action.cardInstanceId });
         }
 
@@ -357,13 +367,16 @@ namespace TheLaw.Gameplay
             }
             var oldDefId = piece.DefId;      // 升变前 def（相生复制牌用——被升变棋子）
             var oldElement = piece.element;  // 升变前属性（相克/相生判定用——旧棋子 vs 新棋子）
+            bool wasGo = piece.IsGo;         // 2026-08-24 能力「假定」：围棋升变——升变前是围棋（无"牌"概念——不写弃牌区/替换池；升变后为真实棋子）
             piece.def = newDef;
+            piece.IsGo = false;              // 2026-08-24：围棋升变 → 真实棋子（可行动/正常死亡流程）
             piece.ApplyDefProperties(); // 承伤+护盾按新身体重算（2026-08-12：护盾此前漏算——升变丢新身体护盾；统一初始化路径）
             // ⚠️ 2026-08-24 策划新语义（补充）：被升变的棋子（原牌）**立刻**进入弃牌区（升变瞬间记录，非死亡时两张）——
-            // 死亡时弃牌区只记升变牌（当前形态）——见 HandleDeath；**仅玩家侧**（敌方无"牌"概念——敌方升变不写玩家弃牌区）
-            if (piece.side == Side.Player)
+            // 死亡时弃牌区只记升变牌（当前形态）——见 HandleDeath；**仅玩家侧**（敌方无"牌"概念——敌方升变不写玩家弃牌区）；
+            // 围棋升变：无牌概念（"棋子牌"未消耗）→ 不写弃牌区
+            if (piece.side == Side.Player && !wasGo)
             {
-                _state.Discard.RecordPieceDeath(Card.Piece(oldDefId, oldElement));
+                RecordPieceDeathWithBaopai(Card.Piece(oldDefId, oldElement)); // 2026-08-24 宝牌判定并入
             }
             // ⚠️ 2026-08-20「属性」玩法：升变 = 新身体 → 属性重随机（激活玩法时）；
             // 相克/相生判定（升变棋子 vs 被升变棋子属性）：
@@ -385,8 +398,8 @@ namespace TheLaw.Gameplay
                 HandRemovePieceAt(consumedCardIndex); // 升变牌打出：移除实际消耗的同一张牌（统一牌区入口）
             }
             // ⚠️ 2026-08-24 牌去向记录：场上原牌被升变替换 → 进升变替换池（仅玩家侧——敌方无"牌"概念；
-            // 升变后的新牌（升变牌）死亡仍由 HandleDeath 记入墓地——记死亡时 defId = 升变后形态）
-            if (piece.side == Side.Player)
+            // 升变后的新牌（升变牌）死亡仍由 HandleDeath 记入墓地——记死亡时 defId = 升变后形态；围棋升变无牌概念不记）
+            if (piece.side == Side.Player && !wasGo)
             {
                 _state.RecordPromotedReplaced(Card.Piece(oldDefId, oldElement));
             }
@@ -395,6 +408,16 @@ namespace TheLaw.Gameplay
                 && _state.GetEffectiveType(oldDefId) == PieceType.Deployable)
             {
                 HandAddCard(Card.Piece(oldDefId));
+            }
+            // ⚠️ 2026-08-24 能力「改良」：己方升变棋子时，升变后棋子价值填入牌山
+            if (piece.side == Side.Player && _state.HasRelicEffect(RelicEffectType.MahjongFillOnDeployPromote))
+            {
+                PushMahjongScore(PieceValue.SumValue(piece.GetProgram(_state)));
+            }
+            // ⚠️ 2026-08-24 能力「提纯」：升变时我方所有己方棋子属性 → 升变后棋子属性（变化者计分）
+            if (piece.side == Side.Player && _state.HasRelicEffect(RelicEffectType.ElementRefine))
+            {
+                RefineAllPieceElements(piece.element);
             }
             EventCenter.Instance.EventTrigger(GameEvent.PiecePromoted, new PromoteInfo { PieceId = piece.Id, NewDefId = action.newDefId, CardInstanceId = action.cardInstanceId });
         }
@@ -456,7 +479,8 @@ namespace TheLaw.Gameplay
             // + 墓地（仅玩家棋子；敌方无手牌概念）
             // ⚠️ 2026-08-19 计分规则：击败敌方棋子 → **基础得分** + 该棋子价值（固定得分规则）；
             // 总得分/波次得分由回合结算（SettleScore）统一入账（原击杀直加 PlayerScore/WaveScores 移除）
-            int killValue = PieceValue.SumValue(victim.GetProgram(_state));
+            // ⚠️ 2026-08-24 能力「升值」：围棋棋子的击杀价值 = GoValueBonus（0+累计加成；程序推导恒 0）
+            int killValue = victim.IsGo ? _state.GoValueBonus : PieceValue.SumValue(victim.GetProgram(_state));
             if (victim.side == Side.Player)
             {
                 // ⚠️ 2026-08-24 围棋棋子：不进墓地/弃牌区（"棋子牌"未消耗、停留手上——B6 定稿）；价值 0 无分
@@ -465,7 +489,7 @@ namespace TheLaw.Gameplay
                     _state.Graveyard.Add(victim.DefId);
                     // 弃牌区·棋子死亡（Card 化——双写 A：Graveyard 保留 + DiscardZone 权威）
                     // ⚠️ 2026-08-24 策划新语义：死亡时**只记升变牌（当前形态）**——原牌已在升变瞬间进弃牌区（ResolvePromote）
-                    _state.Discard.RecordPieceDeath(Card.Piece(victim.DefId, victim.element));
+                    RecordPieceDeathWithBaopai(Card.Piece(victim.DefId, victim.element)); // 2026-08-24 宝牌判定并入
                     // ⚠️ EnemyScore：**无策划依据的遗留实现**（2026-08-19 确认保留——仅结算面板显示"敌方得分"，不参与任何判定；
                     // 玩家计分规则（回合计分）只有玩家侧——见 计分规则_策划口述_20260819.md）
                     _state.EnemyScore += killValue;
@@ -479,10 +503,16 @@ namespace TheLaw.Gameplay
             else
             {
                 AddBaseScore(killValue); // 基础得分积累（回合结束按 基础分×倍率 结算——2026-08-20 计分统一入口）
-                // ⚠️ 2026-08-20 麻将玩法：敌方棋子被击败 → 该牌价值数字填入牌山（刻/顺判定——番数）
+                // ⚠️ 2026-08-20 麻将玩法：敌方棋子被击败 → 该牌价值数字填入牌山（刻/顺判定——番数；本体机制，非能力「改良」）
                 if (_state.IsStyleActive(Mahjong.StyleId))
                 {
                     PushMahjongScore(killValue);
+                }
+                // ⚠️ 2026-08-24 能力「开源」：击败对方棋子 → 获得 1 代币（玩家侧能力——敌方击杀不触发）
+                if (_state.HasRelicEffect(RelicEffectType.TokenOnKill))
+                {
+                    _state.TokenCount += 1;
+                    EventCenter.Instance.EventTrigger(GameEvent.StateChanged, "token");
                 }
             }
 
@@ -522,6 +552,12 @@ namespace TheLaw.Gameplay
                 if (Mahjong.IsTripletOrSequence(_state.MahjongScore))
                 {
                     _state.FanCount += 1;      // 刻子/顺子成形 → 番数 +1
+                    // ⚠️ 2026-08-24 能力「宝牌」：组成刻子/顺子的数字含宝牌数字 → 番数额外 +1（本组共 +2）
+                    if (_state.HasRelicEffect(RelicEffectType.Baopai) && _state.BaopaiNumber > 0
+                        && _state.MahjongScore.Contains(_state.BaopaiNumber))
+                    {
+                        _state.FanCount += 1;
+                    }
                     _state.MahjongScore.Clear();
                 }
                 else
@@ -580,7 +616,7 @@ namespace TheLaw.Gameplay
             _state.MoveMahjongUsedToDead(wall.instanceId, wall.value); // 2026-08-24：使用池→死亡池（精确按 instanceId；0/找不到兜底按点数——同点数等价）
             var deadCard = Card.Mahjong(wall.value); // 2026-08-24 弃牌区·麻将死亡（墙体破坏后才进弃牌区——记录实际那张牌含实例 id）
             deadCard.instanceId = wall.instanceId;
-            _state.Discard.RecordMahjongDeath(deadCard);
+            RecordMahjongDeathWithBaopai(deadCard); // 2026-08-24 宝牌判定并入（进弃牌区 → 宝牌得分）
             PushMahjongScore(wall.value);       // 破坏 → 填牌山点数
             AddBaseScore(1);                     // 破坏 → 基础得分 +1（2026-08-20 计分统一入口——顺带补发计分事件）
             EventCenter.Instance.EventTrigger(GameEvent.StateChanged, "mahjong-wall");
@@ -596,7 +632,7 @@ namespace TheLaw.Gameplay
             if (!mahjongCard.IsMahjong) return;
             var actual = TakeMahjongFromHand(mahjongCard.value);
             if (actual.HasValue) _state.RecordMahjongUsed(actual.Value); // 使用池：摸切 = 使用（手牌消耗）
-            _state.Discard.RecordMahjongDeath(actual ?? mahjongCard); // 2026-08-24 弃牌区·麻将死亡（摸切"使用即入"——含实例 id）
+            RecordMahjongDeathWithBaopai(actual ?? mahjongCard); // 2026-08-24 弃牌区·麻将死亡（摸切"使用即入"——含实例 id；宝牌判定并入）
             PushMahjongScore(mahjongCard.value);
             DrawCard();
         }
@@ -623,9 +659,32 @@ namespace TheLaw.Gameplay
         {
             if (fanToUse <= 0) return false;
             AddMultiplier(fanToUse); // 倍率 + 番数（当回合——结算后复位 1；2026-08-20 计分统一入口）
+            // ⚠️ 2026-08-24 能力「改良」：和牌时基础得分 + 雀头价值数（多个按最高——手牌中两两同价的最大价值）
+            if (_state.HasRelicEffect(RelicEffectType.HuBaseScoreBonus))
+            {
+                AddBaseScore(MaxHuHeadValue());
+            }
             _state.FanCount = 0;                // 番数清零
             EventCenter.Instance.EventTrigger(GameEvent.StateChanged, "mahjong-hu");
             return true;
+        }
+
+        /// <summary>手牌雀头最大价值（任意两牌价值相同——不限麻将牌；无雀头 = 0。能力「改良」和牌加分用）。</summary>
+        private int MaxHuHeadValue()
+        {
+            int best = 0;
+            for (int i = 0; i < _state.Hand.Count; i++)
+            {
+                for (int j = i + 1; j < _state.Hand.Count; j++)
+                {
+                    int v = CardValue(_state.Hand[i]);
+                    if (v != 0 && v == CardValue(_state.Hand[j]) && v > best)
+                    {
+                        best = v;
+                    }
+                }
+            }
+            return best;
         }
 
         // ========== 玩法·骰子（2026-08-24 设计定稿——仅玩家侧）==========
@@ -636,6 +695,24 @@ namespace TheLaw.Gameplay
             _state.DiceValue = RandomManager.Instance.Range(1, 7); // RandomManager——种子相关可复现
             AddBaseScore(_state.DiceValue); // 基础得分 + 骰子点数
             EventCenter.Instance.EventTrigger(GameEvent.StateChanged, "dice");
+        }
+
+        /// <summary>投掷（自选点数版——2026-08-24 能力「出千」：前端 1-6 自选面板回调，BattleFlow 校验等待态后调用）。</summary>
+        public void RollDiceChosen(int value)
+        {
+            if (value < 1 || value > 6) return; // 自选仅 1-6（防御）
+            _state.DiceValue = value;
+            AddBaseScore(value); // 基础得分 + 骰子点数（口径同随机投掷）
+            EventCenter.Instance.EventTrigger(GameEvent.StateChanged, "dice");
+        }
+
+        /// <summary>宝牌数字写入（2026-08-24 能力「宝牌」：前端 1-9 数字选择面板回调——校验 1-9 + 持有能力；0 拒绝）。</summary>
+        public void SetBaopaiNumber(int number)
+        {
+            if (number < 1 || number > 9) return;
+            if (!_state.HasRelicEffect(RelicEffectType.Baopai)) return;
+            _state.BaopaiNumber = number;
+            EventCenter.Instance.EventTrigger(GameEvent.StateChanged, "baopai");
         }
 
         /// <summary>启动"点数直线移动"（消耗点数、不耗 AP）：点数清零 + 全场挂 buff（下次点棋子执行时重定向为点数步直线移动；其他行动不取消；不跨回合）。</summary>
@@ -659,11 +736,11 @@ namespace TheLaw.Gameplay
 
         // ========== 玩法·围棋（2026-08-24 设计定稿——仅玩家侧）==========
 
-        /// <summary>部署"棋子牌"（不耗 AP、每回合 1 次、任意空格——BattleFlow 校验）：蓝红 side 切换（首次蓝）+ 围杀检查。</summary>
+        /// <summary>部署"棋子牌"（不耗 AP、每回合限次[1/速攻→2]、任意空格——BattleFlow 校验）：蓝红 side 切换（首次蓝）+ 围杀检查。</summary>
         public bool DeployGoPiece(Vector2Int cell)
         {
             if (!_state.IsStyleActive(StyleRegistry.Go)) return false;
-            if (_state.GoDeployCount >= 1) return false; // 每回合限 1 次（BattleFlow 已校验——防御）
+            if (_state.GoDeployCount >= _state.GoDeployLimit()) return false; // 每回合限次（速攻→2；BattleFlow 已校验——防御，规则单一来源 GameState）
             if (_state.Pieces.ContainsKey(cell)) return false; // 空格（任意格——非占用即可）
             // 颜色切换：首次蓝（Player）；之后每次部署切换（上次红→本次蓝、上次蓝→本次红）
             Side side = !_state.GoEverDeployed ? Side.Player : (_state.GoLastColor == Side.Player ? Side.Enemy : Side.Player);
@@ -677,6 +754,12 @@ namespace TheLaw.Gameplay
             _state.Pieces[cell] = piece;
             _state.PiecesById[piece.Id] = piece;
             _state.GoDeployCount++;
+            // ⚠️ 2026-08-24 能力「升值」：每次部署围棋 → 全场围棋价值 +1（战斗级——ResetForBattle 复原；击杀得分/展示消费此值）
+            if (_state.HasRelicEffect(RelicEffectType.GoValueUp))
+            {
+                _state.GoValueBonus += 1;
+                EventCenter.Instance.EventTrigger(GameEvent.StateChanged, "go"); // 价值变化（前端刷新）
+            }
             EventCenter.Instance.EventTrigger(GameEvent.PieceDeployed, new DeployInfo { PieceId = piece.Id, DefId = GoPiece.DefId, Side = side, Cell = cell });
             CheckGoCapture(cell); // 落子瞬间围杀检查（2026-08-24 策划新语义：只有本次落子补全的包围才生效）
             return true;
@@ -786,7 +869,8 @@ namespace TheLaw.Gameplay
             return list;
         }
 
-        /// <summary>购买（2026-08-24）：选弃牌区一张牌 → 消耗该牌价值数代币（棋子=推导价值；麻将=点数）→ 复制入手牌 + 基础分+消耗数；每回合不限次。</summary>
+        /// <summary>购买（2026-08-24）：选弃牌区一张牌 → 消耗该牌价值数代币（棋子=推导价值；麻将=点数）→ 复制入手牌 + 基础分+消耗数；每回合不限次。
+        /// ⚠️ 2026-08-24 能力「节流」：每次消耗代币 → 倍率+1；若购买的是**非初始棋子**（棋子牌且非 Initial 档）→ 返还 1 代币。</summary>
         public bool BuyFromDiscard(int discardIndex)
         {
             if (!_state.IsStyleActive(StyleRegistry.Token)) return false;
@@ -807,6 +891,15 @@ namespace TheLaw.Gameplay
             else
             {
                 return false;
+            }
+            // ⚠️ 2026-08-24 能力「节流」：消耗代币 → 倍率+1；购买非初始棋子 → 返还 1 代币（麻将牌非棋子不返还）
+            if (_state.HasRelicEffect(RelicEffectType.TokenSpendMultiplier))
+            {
+                AddMultiplier(1); // 每次消耗代币 → 倍率 +1（统一入口）
+                if (card.IsPiece && _state.GetEffectiveType(card.defId) != PieceType.Initial)
+                {
+                    _state.TokenCount += 1; // 购买非初始棋子返还 1 代币
+                }
             }
             AddBaseScore(cost); // 基础得分 + 消耗代币数
             EventCenter.Instance.EventTrigger(GameEvent.StateChanged, "token");
@@ -1080,6 +1173,86 @@ namespace TheLaw.Gameplay
                         Debug.LogWarning($"[牌区] {caller}：牌实例 id 重复（{c.instanceId}）——分配/读档重分配异常");
                     }
                 }
+            }
+        }
+
+        // ========== 2026-08-24 能力池 P1 辅助（宝牌/提纯——能力事件与弃牌区联动）==========
+
+        /// <summary>牌价值口径（宝牌判定/改良雀头用）：麻将 = 点数；棋子 = 推导价值（EffectiveValue——编辑后变化）。</summary>
+        private int CardValue(Card card)
+        {
+            if (card.IsMahjong) return card.value;
+            if (card.IsPiece) return _state.GetEffectiveValue(card.defId);
+            return 0;
+        }
+
+        /// <summary>该牌是否为宝牌（能力「宝牌」激活 + 数字已选 + 牌价值 == 宝牌数字）。</summary>
+        private bool IsBaopai(Card card)
+        {
+            if (!_state.HasRelicEffect(RelicEffectType.Baopai) || _state.BaopaiNumber <= 0) return false;
+            return CardValue(card) == _state.BaopaiNumber;
+        }
+
+        /// <summary>弃牌区·棋子死亡（宝牌判定版——进弃牌区时若为宝牌 → 基础得分 + 其价值；棋子死亡/升变原牌共用）。</summary>
+        private void RecordPieceDeathWithBaopai(Card card)
+        {
+            _state.Discard.RecordPieceDeath(card);
+            if (IsBaopai(card))
+            {
+                AddBaseScore(CardValue(card)); // 宝牌进弃牌区 → 基础得分 + 其价值数
+            }
+        }
+
+        /// <summary>弃牌区·麻将死亡（宝牌判定版——摸切立即/墙体破坏后进弃牌区共用）。</summary>
+        private void RecordMahjongDeathWithBaopai(Card card)
+        {
+            _state.Discard.RecordMahjongDeath(card);
+            if (IsBaopai(card))
+            {
+                AddBaseScore(CardValue(card)); // 宝牌进弃牌区 → 基础得分 + 其价值数（点数）
+            }
+        }
+
+        /// <summary>手牌属性重刷（2026-08-24 能力「提纯」：每回合开始时——所有手牌棋子牌属性 → 其相生属性；无属性/麻将牌跳过；含发事件）。</summary>
+        public void RefineHandElements()
+        {
+            if (!_state.HasRelicEffect(RelicEffectType.ElementRefine)) return;
+            bool any = false;
+            for (int i = 0; i < _state.Hand.Count; i++)
+            {
+                var c = _state.Hand[i];
+                if (!c.IsPiece || c.element == Element.None) continue;
+                var refined = ElementRules.GeneratingOf(c.element); // 相生属性（金→水…）
+                if (refined != c.element)
+                {
+                    c.element = refined;
+                    _state.Hand[i] = c; // struct 索引写回
+                    any = true;
+                }
+            }
+            if (any)
+            {
+                EventCenter.Instance.EventTrigger(GameEvent.HandChanged, _state.Hand);
+            }
+        }
+
+        /// <summary>全场己方棋子属性统一（2026-08-24 能力「提纯」：部署/升变时——所有己方棋子属性 = 操作棋子属性；每有一个棋子属性变化 → 基础得分 +1）。</summary>
+        private void RefineAllPieceElements(Element target)
+        {
+            if (target == Element.None) return;
+            int changed = 0;
+            foreach (var piece in _state.Pieces.Values)
+            {
+                if (piece == null || piece.side != Side.Player) continue;
+                if (piece.element != target)
+                {
+                    piece.element = target;
+                    changed++;
+                }
+            }
+            if (changed > 0)
+            {
+                AddBaseScore(changed); // 每有一个棋子属性发生变化 → 基础得分 +1
             }
         }
 

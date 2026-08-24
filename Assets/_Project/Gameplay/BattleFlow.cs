@@ -133,6 +133,7 @@ namespace TheLaw.Gameplay
             _pendingAutoPromote = false; // 新字段必须进重置清单——防跨局残留（预告挂起未消费）
             _enemyBudget = 0; // 敌方行动预算（新字段必须进重置清单——防跨局残留）
             _actedEnemyPieces.Clear(); // 已行动棋子集合（新字段必须进重置清单——防跨局残留）
+            _diceRigPending = false; // 2026-08-24 能力「出千」自选瞬态（新字段必须进重置清单）
         }
 
         private void OnPlacementFinished(object data)
@@ -173,11 +174,13 @@ namespace TheLaw.Gameplay
             _state.GoDeployCount = 0;          // 2026-08-24 围棋：每回合限部署 1 次（回合开始重置）
             _state.DiceMovePending = false;    // 2026-08-24 骰子：点数移动 buff **不跨回合**（新回合清）
             _state.DiceMoveSteps = 0;
+            _diceRigPending = false;           // 2026-08-24 能力「出千」：自选瞬态不跨回合（未选则作废）
             if (_state.IsStyleActive(StyleRegistry.Token))
             {
                 _state.TokenCount += 1;        // 2026-08-24 代币：每回合开始 +1（初始 0；不跨战斗）
                 EventCenter.Instance.EventTrigger(GameEvent.StateChanged, "token");
             }
+            _resolver.RefineHandElements();    // 2026-08-24 能力「提纯」：手牌属性回合开始变相生（激活时内部判）
             ChangePhase(BattlePhase.PlayerTurn);
             _floorRules.OnTurnStart(_state, _resolver);
             _relicSystem.OnTurnStart();
@@ -475,9 +478,11 @@ namespace TheLaw.Gameplay
                         var promoteDef = ConfigTable.Find<PieceDef>(promote.newDefId);
                         // 升变规则（放宽）：任意【非升变】棋子 + 手牌有【升变牌】→ 可升变（无映射限制）
                         // ⚠️ 2026-08-15：类型 = 价值档位推导（升变 = 7+ 档；编辑跨档后判定随之变化）
-                        // ⚠️ 2026-08-24：围棋棋子不可升变（口述定稿——promotionConfigId=0 且 IsGo 拒绝）
-                        bool promoteValid = piece != null && !piece.IsGo && piece.side == side
-                            && _state.GetEffectiveType(piece.DefId) != PieceType.Promoted
+                        // ⚠️ 2026-08-24：围棋棋子默认不可升变（IsGo 拒绝）；能力「假定」激活 → 放行（用手牌升变牌，升变为该牌棋子）
+                        bool goPromoteAllowed = piece != null && piece.IsGo && _state.HasRelicEffect(RelicEffectType.GoPromote);
+                        bool promoteValid = piece != null && (goPromoteAllowed || (!piece.IsGo
+                            && _state.GetEffectiveType(piece.DefId) != PieceType.Promoted))
+                            && piece.side == side
                             && promoteDef != null && _state.GetEffectiveType(promoteDef.Id) == PieceType.Promoted
                             && HasPieceInHand(promote.newDefId);
                         if (promoteValid)
@@ -590,9 +595,18 @@ namespace TheLaw.Gameplay
                     // ========== 2026-08-24 新玩法（骰子/围棋/代币——设计定稿；仅玩家侧）==========
                     case RollDiceRequest:
                         // 骰子·投掷（执行类行动 1 AP）：随机 1~6 → 点数 + 基础分
+                        // ⚠️ 2026-08-24 能力「出千」：投掷点数可自选——挂起自选瞬态（前端弹 1-6 选择 → OnDiceNumberSelected 落账；不跨回合）
                         if (side == Side.Player && _state.IsStyleActive(StyleRegistry.Dice))
                         {
-                            _resolver.RollDice();
+                            if (_state.HasRelicEffect(RelicEffectType.DiceRig))
+                            {
+                                _diceRigPending = true;
+                                EventCenter.Instance.EventTrigger(GameEvent.StateChanged, "dice-rig-select");
+                            }
+                            else
+                            {
+                                _resolver.RollDice();
+                            }
                             DeductActionPoint(request.free, side);
                         }
                         break;
@@ -604,9 +618,10 @@ namespace TheLaw.Gameplay
                         }
                         break;
                     case DeployGoRequest dg:
-                        // 围棋·部署"棋子牌"（不耗 AP、每回合限 1 次、任意**空**格[非占用/非障碍/非墙体]；AP=0 豁免）
+                        // 围棋·部署"棋子牌"（不耗 AP、每回合限 1 次[能力「速攻」→2 次]、任意**空**格[非占用/非障碍/非墙体]；AP=0 豁免）
                         if (side == Side.Player && _state.IsStyleActive(StyleRegistry.Go)
-                            && _state.GoDeployCount < 1 && !_state.Pieces.ContainsKey(dg.cell) && !_state.IsBlocked(dg.cell))
+                            && _state.GoDeployCount < GoDeployLimit()
+                            && !_state.Pieces.ContainsKey(dg.cell) && !_state.IsBlocked(dg.cell))
                         {
                             _resolver.DeployGoPiece(dg.cell); // 内部含围杀检查
                         }
@@ -980,6 +995,19 @@ namespace TheLaw.Gameplay
 
         private int _waitingDiceMovePieceId = -1; // 骰子移动"选方向"等待（-1=未等待）
         private Side _waitingDiceMoveSide;
+        /// <summary>能力「出千」自选等待（2026-08-24：投掷请求挂起——弹 1-6 自选；不跨回合——回合开始清；瞬态不入档）。</summary>
+        private bool _diceRigPending;
+
+        /// <summary>围棋每回合部署次数上限（2026-08-24 能力「速攻」：1→2——规则单一来源在 GameState.GoDeployLimit）。</summary>
+        private int GoDeployLimit() => _state.GoDeployLimit();
+
+        /// <summary>出千自选结果（2026-08-24 前端回调：投掷自选面板选数后调用——校验 1-6 + 等待态 + 玩家回合；落账同普通投掷）。</summary>
+        public void OnDiceNumberSelected(int value)
+        {
+            if (!_diceRigPending || _state.Phase != BattlePhase.PlayerTurn) return;
+            _diceRigPending = false;
+            _resolver.RollDiceChosen(value); // 内部校验 1-6 并落账
+        }
 
         /// <summary>骰子移动启动（ExecuteRequest 重定向进入）：进入方向选择（上/下/左/右——点数步直线）。</summary>
         private void TryStartDiceMove(int pieceId, Side side)

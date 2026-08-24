@@ -130,12 +130,18 @@ namespace TheLaw.Gameplay
         public Side GoLastColor { get; internal set; }
         /// <summary>是否部署过围棋（首次=蓝；之后按 GoLastColor 切换）。</summary>
         public bool GoEverDeployed { get; internal set; }
-        /// <summary>本回合围棋已部署次数（每回合限 1 次——回合开始重置）。</summary>
+        /// <summary>本回合围棋已部署次数（回合开始重置；速攻能力 → 上限 2）。</summary>
         public int GoDeployCount { get; internal set; }
+        /// <summary>围棋价值加成（2026-08-24 能力「升值」：每次部署围棋 → 全场围棋价值+1 累计；**战斗级**——ResetForBattle 复原，新战斗归 0）。</summary>
+        public int GoValueBonus { get; internal set; }
 
         // ========== 玩法·代币（2026-08-24 设计定稿——仅玩家侧；**不跨战斗**）==========
         /// <summary>代币（初始 0；每回合开始 +1；购买消耗——不跨战斗：ResetForBattle 清）。</summary>
         public int TokenCount { get; internal set; }
+
+        // ========== 能力「宝牌」（2026-08-24 能力池 P1——整局级）==========
+        /// <summary>宝牌数字（1-9 选中；0=未选——获得能力后经前端数字选择面板写入；判定"数字对应价值的牌"）。</summary>
+        public int BaopaiNumber { get; internal set; }
 
         public List<RelicDef> Relics { get; internal set; } = new List<RelicDef>();
         /// <summary>能力事件三选一候选（2026-08-22：当前能力事件展示的 3 个候选——词条过滤随机抽取；事件进行中入档）。</summary>
@@ -219,6 +225,12 @@ namespace TheLaw.Gameplay
                 }
                 return bonus;
             }
+        }
+
+        /// <summary>围棋每回合部署次数上限（2026-08-24 能力「速攻」：1→2；规则单一来源——BattleFlow/Resolver 共用）。</summary>
+        public int GoDeployLimit()
+        {
+            return HasRelicEffect(RelicEffectType.GoDeployExtra) ? 2 : 1;
         }
 
         /// <summary>追加诊断记录（2026-08-21：超时降级等——环形缓冲，只写不读；存档可查）。</summary>
@@ -367,6 +379,7 @@ namespace TheLaw.Gameplay
             GoLastColor = default;     // 2026-08-24：围棋颜色随整局重置（首次蓝）
             GoEverDeployed = false;
             GoDeployCount = 0;
+            GoValueBonus = 0;          // 2026-08-24 能力「升值」：围棋价值加成随整局重置（战斗级——ResetForBattle 同清）
             DrawPile.Clear();
             PlayerAP = 0;
             PlayerAPMax = 1; // ⚠️ 2026-08-23 修复：AP 上限须随新局复位——此前漏复位（启动自动读档恢复旧档值 + 同进程多局累计 → 新局继承旧局能力叠加；实测第 5 局开局 5）；初始 1（L37）
@@ -400,6 +413,7 @@ namespace TheLaw.Gameplay
             FanCount = 0;
             MahjongWalls.Clear();
             ActiveStyles.Clear(); // 玩法激活随整局重置（跨关累积——ResetForBattle 不清）
+            BaopaiNumber = 0;     // 2026-08-24 能力「宝牌」：数字随整局重置（0=未选；整局级——ResetForBattle 保留）
             EditedCardQualifyId = 0; // 2026-08-23：E5 资格随整局重置
             CurrentFloor = 0;
             CurrentNodeIndex = 0;
@@ -457,6 +471,7 @@ namespace TheLaw.Gameplay
             GoLastColor = default;       // 围棋颜色（新战斗首次蓝）
             GoEverDeployed = false;
             GoDeployCount = 0;           // 围棋部署次数（战斗边界清）
+            GoValueBonus = 0;            // 2026-08-24 能力「升值」：战斗级——新战斗复原（部署→+1 全场叠加）
             // 麻将玩法状态每关清（牌山/番数/墙体随战斗重置）
             MahjongScore.Clear();
             FanCount = 0;
@@ -494,6 +509,8 @@ namespace TheLaw.Gameplay
                 TokenCount = TokenCount, // 2026-08-24 代币
                 GoLastColor = GoLastColor, GoDeployCount = GoDeployCount, // 2026-08-24 围棋
                 GoEverDeployed = GoEverDeployed,
+                GoValueBonus = GoValueBonus,       // 2026-08-24 能力「升值」（战斗级——读档续战一致）
+                BaopaiNumber = BaopaiNumber,       // 2026-08-24 能力「宝牌」数字（0=未选；整局级）
                 DrawPile = new List<Card>(DrawPile),
                 EnemyWavePool = new List<int>(EnemyWavePool),
                 CurrentPrograms = CurrentPrograms,
@@ -578,6 +595,8 @@ namespace TheLaw.Gameplay
             TokenCount = dto.TokenCount; // 2026-08-24 代币
             GoLastColor = dto.GoLastColor; GoDeployCount = dto.GoDeployCount; // 2026-08-24 围棋
             GoEverDeployed = dto.GoEverDeployed;
+            GoValueBonus = dto.GoValueBonus; // 2026-08-24 能力「升值」（旧档缺省 0）
+            BaopaiNumber = dto.BaopaiNumber; // 2026-08-24 能力「宝牌」（旧档缺省 0=未选）
             DrawPile = dto.DrawPile ?? new List<Card>();
             EnemyWavePool = dto.EnemyWavePool ?? new List<int>();
             ReAssignCardIdsAfterLoad(); // 2026-08-21：旧档兼容——牌实例 id 缺省 0 或重复 → 重分配（新档 id 已唯一则不动）
@@ -711,6 +730,8 @@ namespace TheLaw.Gameplay
         public Side GoLastColor;                // 围棋上次部署颜色（2026-08-24）
         public bool GoEverDeployed;             // 围棋是否部署过（2026-08-24）
         public int GoDeployCount;               // 围棋本回合部署次数（2026-08-24）
+        public int GoValueBonus;                // 围棋价值加成（2026-08-24 能力「升值」——战斗级）
+        public int BaopaiNumber;                // 宝牌数字（2026-08-24 能力「宝牌」——0=未选）
         public List<Card> DrawPile;      // 抽牌堆（牌——2026-08-20）
         public List<int> EnemyWavePool;
         public Dictionary<int, List<Template>> CurrentPrograms;

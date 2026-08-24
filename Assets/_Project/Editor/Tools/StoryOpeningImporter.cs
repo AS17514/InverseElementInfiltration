@@ -26,9 +26,10 @@ namespace TheLaw.EditorTools
         private static readonly HashSet<string> XeonDiffs = new HashSet<string> { "凝重", "坏笑", "常态", "惊讶", "恼火", "404" };
         private static readonly HashSet<string> StorySfx = new HashSet<string>
         {
-            AudioRefs.SfxStoryWallBreak,
-            AudioRefs.SfxStoryScrape,
-            AudioRefs.SfxStoryStatic,
+            // JSON 存常量名（SfxStoryWallBreak 等）；同时接受地址值（SFX/story_wall_break 等）
+            nameof(AudioRefs.SfxStoryWallBreak), AudioRefs.SfxStoryWallBreak,
+            nameof(AudioRefs.SfxStoryScrape), AudioRefs.SfxStoryScrape,
+            nameof(AudioRefs.SfxStoryStatic), AudioRefs.SfxStoryStatic,
         };
 
         [MenuItem("工具/导入开场剧情")]

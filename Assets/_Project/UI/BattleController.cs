@@ -79,6 +79,12 @@ namespace TheLaw.UI
             }
             _diceValueText = GetTmp(_grpFloorPlayDice, "Txt_DiceValue");
             _diceHintText = GetTmp(_grpFloorPlayDice, "Txt_DiceHint");
+            _diceFaces = new Image[6];
+            for (int i = 0; i < 6; i++)
+            {
+                var face = FindDeep(_grpFloorPlayDice.transform, "Img_DiceFace_" + (i + 1));
+                _diceFaces[i] = face != null ? face.GetComponent<Image>() : null;
+            }
         }
 
         /// <summary>骰子面板刷新：显隐（按玩法激活）+ 点数 + 按钮可用性 + 提示。</summary>
@@ -94,6 +100,13 @@ namespace TheLaw.UI
                 return;
             }
             if (_diceValueText != null) _diceValueText.text = _state.DiceValue.ToString();
+            if (_diceFaces != null)
+            {
+                for (int i = 0; i < _diceFaces.Length; i++)
+                {
+                    if (_diceFaces[i] != null) _diceFaces[i].gameObject.SetActive(_state.DiceValue == i + 1);
+                }
+            }
             bool canAct = _state.Phase == BattlePhase.PlayerTurn && !_executing && !_presentationPlaying && !_diceMoveSelecting;
             if (_rollDiceBtn != null) _rollDiceBtn.interactable = canAct;
             if (_diceMoveBtn != null) _diceMoveBtn.interactable = canAct && _state.DiceValue > 0;
@@ -219,10 +232,23 @@ namespace TheLaw.UI
         bool _diceMoveSelecting;       // 点数直线移动选方向中（场上高亮）
         int _diceMovePieceId = -1;     // 移动选择中的棋子
         readonly Dictionary<Vector2Int, Direction> _diceMoveDirections = new Dictionary<Vector2Int, Direction>(); // 可达格 → 方向
+        Image[] _diceFaces;                // Img_DiceFace_1~6（点数对应图——预制体已挂子图，代码按点数显隐）
+        // ====== Grp_Mode（玩法介绍按钮 + 玩法区——2026-08-26：介绍按钮 → FloorPlayDetailePanel；槽位填充玩法预制体/None；选中棋子整组隐藏）======
+        Transform _grpModeRoot;          // Grp_Mode（整组显隐）
+        Transform _grpIntroductionRoot;  // Grp_Introduction（3 个介绍按钮）
+        readonly List<Button> _introButtons = new List<Button>();
+        readonly List<TMP_Text> _introButtonTexts = new List<TMP_Text>();
+        readonly List<string> _modeActiveStyles = new List<string>(); // 当前激活玩法（按 StyleRegistry.All 固定顺序，≤3）
+        string _modeKey = "";            // 激活玩法集合指纹（槽位重建判变用）
+        int _modeBuildGeneration;        // 槽位重建代际（防陈旧协程写入）
+        readonly List<GameObject> _modeSlots = new List<GameObject>(); // Grp_Play 下槽位实例（玩法面板/None）
+        GameObject _grpPlayNoneTemplate; // Grp_Play_None 模板（Addressables 缓存）
+        readonly Dictionary<string, GameObject> _playPanelTemplates = new Dictionary<string, GameObject>(); // styleId → Grp_FloorPlay_*
         int _selectedPieceId = -1;
         // 敌方升变预告可能早于 Piece View 创建：按 pieceId 缓存，视觉出现后补应用。
         readonly Dictionary<int, PromoteAnnouncement> _pendingPromotionWarnings = new Dictionary<int, PromoteAnnouncement>();
         readonly BattleViewRegistry _pieceViews = new BattleViewRegistry();
+        readonly List<GameObject> _shockWallViews = new List<GameObject>(); // 震击墙视觉（2026-08-26）
 
         // 表现队列（帧缓冲合并同槽事件）
         readonly List<System.Func<IEnumerator>> _presentations = new List<System.Func<IEnumerator>>();
@@ -291,6 +317,8 @@ namespace TheLaw.UI
             _diceMoveDirections.Clear();
             _pendingForcedExecs.Clear();
             _pendingPromotionWarnings.Clear();
+            foreach (var go in _shockWallViews) if (go != null) Destroy(go);
+            _shockWallViews.Clear();
             if (_buyTokenBtn != null) _buyTokenBtn.onClick.RemoveListener(OnBuyTokenClicked);
             // 遗物按钮监听对称清理（L1——不依赖下个 BC 的 Init RemoveAllListeners 兜底）
             if (_relicBtn != null) _relicBtn.onClick.RemoveListener(ToggleRelicList);
@@ -549,6 +577,7 @@ namespace TheLaw.UI
                 }
             }
             ApplyPendingPromotionWarnings();
+            RebuildShockWalls(); // 2026-08-26：震击墙（开局/续战同步）
         }
 
         void Update()
@@ -1048,16 +1077,47 @@ namespace TheLaw.UI
             if (outline != null) outline.SetElementColor(ElementColors.ColorOf(piece.element));
         }
 
+        /// <summary>震击墙渲染（2026-08-26）：按 GameState.ShockWalls 生成深灰半透明方块（不可破坏墙；无美术前占位视觉——区别麻将墙暂无视觉）。</summary>
+        void RebuildShockWalls()
+        {
+            foreach (var go in _shockWallViews) if (go != null) Destroy(go);
+            _shockWallViews.Clear();
+            if (_state == null || _state.ShockWalls == null) return;
+            foreach (var cell in _state.ShockWalls)
+            {
+                var go = new GameObject($"ShockWall_{cell.x}_{cell.y}");
+                go.transform.position = PieceViewFactory.CellToWorld(cell);
+                var sr = go.AddComponent<SpriteRenderer>();
+                sr.sprite = ShockWallSprite();
+                sr.color = new Color(0.25f, 0.25f, 0.3f, 0.9f);
+                sr.sortingOrder = 300; // 棋子（400+）之下
+                _shockWallViews.Add(go);
+            }
+        }
+
+        static Sprite _shockWallSprite;
+        static Sprite ShockWallSprite()
+        {
+            if (_shockWallSprite != null) return _shockWallSprite;
+            var tex = new Texture2D(100, 100, TextureFormat.RGBA32, false);
+            var px = new Color[100 * 100];
+            for (int i = 0; i < px.Length; i++) px[i] = Color.white;
+            tex.SetPixels(px);
+            tex.Apply();
+            _shockWallSprite = Sprite.Create(tex, new Rect(0, 0, 100, 100), new Vector2(0.5f, 0.5f), 100f); // 1×1 单位
+            return _shockWallSprite;
+        }
+
         /// <summary>buff 变化（护盾/免费行动/临时能力）：目标是当前选中棋子 → 刷新信息面板（Txt_Other buff 区实时更新）。</summary>
         void OnBuffsChanged(object data)
         {
-            if (data is int pieceId && pieceId == _selectedPieceId && _selectedPieceId >= 0)
+            if (!(data is int pieceId)) return;
+            ApplyElementOutline(pieceId); // 2026-08-26：提纯/变换外力改写属性 → 五行描边实时刷新（后端逐棋发 BuffsChanged）
+            if (pieceId != _selectedPieceId || _selectedPieceId < 0) return;
+            var piece = _state.GetPiece(_selectedPieceId);
+            if (piece != null && _infoName != null)
             {
-                var piece = _state.GetPiece(_selectedPieceId);
-                if (piece != null && _infoName != null)
-                {
-                    FillInfo(piece.def, piece);
-                }
+                FillInfo(piece.def, piece);
             }
         }
 
@@ -1129,7 +1189,7 @@ namespace TheLaw.UI
 
         void EnsureGoRefs()
         {
-            if (_grpPlayRoot != null) return;
+            if (_grpPlayRoot != null && _grpFloorPlayGo != null) return; // 2026-08-26：Grp_Play 槽位重建后需能重新解析（原仅判 root——重建销毁面板后漏解析）
             _grpPlayRoot = FindSceneTransform("Grp_Play");
             if (_grpPlayRoot == null) return;
             var goPanel = _grpPlayRoot.Find("Grp_FloorPlay_Go");
@@ -1170,14 +1230,164 @@ namespace TheLaw.UI
             return null;
         }
 
-        /// <summary>关卡玩法容器显隐：未选中棋子 + 有激活玩法 → 显示（与棋子信息区 Grp_Piece 同位置切换——李毕契约）。</summary>
+        /// <summary>Grp_Mode 整体刷新：介绍按钮（未加载=禁用"未加载"）+ Grp_Play 槽位填充（玩法面板/None）+ 整组显隐（选中棋子隐藏——与棋子信息区同位置切换，李毕契约）。</summary>
         void RefreshGrpPlayVisibility()
         {
-            EnsureGoRefs();
-            if (_grpPlayRoot == null) return;
-            bool anyPlay = _state != null && (_state.IsStyleActive(StyleRegistry.Go) || _state.IsStyleActive(StyleRegistry.Token) || _state.IsStyleActive(StyleRegistry.Dice));
-            bool show = anyPlay && _selectedPieceId < 0;
-            if (_grpPlayRoot.gameObject.activeSelf != show) _grpPlayRoot.gameObject.SetActive(show);
+            RefreshFloorMode();
+        }
+
+        // ====== Grp_Mode（2026-08-26：玩法详情按钮 + 玩法区预制体填充）======
+        void EnsureGrpModeRefs()
+        {
+            if (_grpModeRoot != null && _grpIntroductionRoot != null && _introButtons.Count >= 3) return;
+            if (_grpModeRoot == null) _grpModeRoot = FindSceneTransform("Grp_Mode");
+            if (_grpIntroductionRoot == null && _grpModeRoot != null) _grpIntroductionRoot = _grpModeRoot.Find("Grp_Introduction");
+            if (_grpIntroductionRoot != null)
+            {
+                _introButtons.Clear();
+                _introButtonTexts.Clear();
+                for (int i = 0; i < 3; i++)
+                {
+                    var btnT = FindDeep(_grpIntroductionRoot, "Btn_DetailedIntroduction" + (i + 1));
+                    var btn = btnT != null ? btnT.GetComponent<Button>() : null;
+                    _introButtons.Add(btn);
+                    TMP_Text txt = btnT != null ? btnT.GetComponentInChildren<TMP_Text>(true) : null;
+                    _introButtonTexts.Add(txt);
+                    if (btn != null)
+                    {
+                        int idx = i;
+                        btn.onClick.RemoveListener(() => OnIntroButtonClicked(idx));
+                        btn.onClick.AddListener(() => OnIntroButtonClicked(idx));
+                    }
+                }
+            }
+        }
+
+        /// <summary>激活玩法列表（按 StyleRegistry.All 固定顺序，上限 3——第 2-4 关各一次玩法选择）。</summary>
+        List<string> GetActiveStylesOrdered()
+        {
+            var list = new List<string>(3);
+            if (_state == null) return list;
+            foreach (var style in StyleRegistry.All)
+            {
+                if (_state.IsStyleActive(style)) list.Add(style);
+                if (list.Count >= 3) break;
+            }
+            return list;
+        }
+
+        /// <summary>玩法面板预制体后缀（Element 面板名 = WuXing）。</summary>
+        static string PlayPanelPrefabSuffix(string styleId)
+        {
+            switch (styleId)
+            {
+                case StyleRegistry.Element: return "WuXing";
+                default: return styleId;
+            }
+        }
+
+        /// <summary>Grp_Mode 刷新：① 介绍按钮（已加载=玩法名可点 / 未加载=禁用+未加载）② 槽位重建（激活集合变化时）③ 整组显隐（选中棋子隐藏）。</summary>
+        void RefreshFloorMode()
+        {
+            EnsureGrpModeRefs();
+            _modeActiveStyles.Clear();
+            _modeActiveStyles.AddRange(GetActiveStylesOrdered());
+            for (int i = 0; i < 3; i++)
+            {
+                bool loaded = i < _modeActiveStyles.Count;
+                var btn = i < _introButtons.Count ? _introButtons[i] : null;
+                if (btn != null) btn.interactable = loaded;
+                var txt = i < _introButtonTexts.Count ? _introButtonTexts[i] : null;
+                if (txt != null) txt.text = loaded ? DisplayNames.OfStyle(_modeActiveStyles[i]) : "未加载";
+            }
+            string key = string.Join(",", _modeActiveStyles);
+            if (key != _modeKey)
+            {
+                _modeKey = key;
+                StartCoroutine(RebuildModeSlots(new List<string>(_modeActiveStyles), ++_modeBuildGeneration));
+            }
+            bool show = _selectedPieceId < 0;
+            if (_grpModeRoot != null && _grpModeRoot.gameObject.activeSelf != show)
+            {
+                _grpModeRoot.gameObject.SetActive(show);
+            }
+        }
+
+        /// <summary>重建 Grp_Play 槽位：按激活玩法顺序 3 槽——玩法面板 / Grp_Play_None 填补空缺（Addressables 加载模板，保持原名供 Find）。</summary>
+        System.Collections.IEnumerator RebuildModeSlots(List<string> active, int generation)
+        {
+            if (_grpPlayRoot == null) _grpPlayRoot = FindSceneTransform("Grp_Play");
+            if (_grpPlayRoot == null) yield break;
+            // 清空旧槽位（运行时重建——场景摆放实例同此替换，不落盘）
+            for (int i = _grpPlayRoot.childCount - 1; i >= 0; i--)
+            {
+                var child = _grpPlayRoot.GetChild(i);
+                if (child != null) Destroy(child.gameObject);
+            }
+            _modeSlots.Clear();
+            for (int i = 0; i < 3; i++)
+            {
+                if (generation != _modeBuildGeneration) yield break; // 陈旧代际：放弃
+                string style = i < active.Count ? active[i] : null;
+                GameObject template = null;
+                if (style != null)
+                {
+                    if (!_playPanelTemplates.TryGetValue(style, out template) || template == null)
+                    {
+                        var handle = UnityEngine.AddressableAssets.Addressables.LoadAssetAsync<GameObject>("Grp_FloorPlay_" + PlayPanelPrefabSuffix(style));
+                        yield return handle;
+                        if (handle.Status == UnityEngine.ResourceManagement.AsyncOperations.AsyncOperationStatus.Succeeded && handle.Result != null)
+                        {
+                            template = handle.Result;
+                            _playPanelTemplates[style] = template;
+                        }
+                    }
+                }
+                else
+                {
+                    if (_grpPlayNoneTemplate == null)
+                    {
+                        var handle = UnityEngine.AddressableAssets.Addressables.LoadAssetAsync<GameObject>("Grp_Play_None");
+                        yield return handle;
+                        if (handle.Status == UnityEngine.ResourceManagement.AsyncOperations.AsyncOperationStatus.Succeeded && handle.Result != null)
+                        {
+                            _grpPlayNoneTemplate = handle.Result;
+                        }
+                        template = _grpPlayNoneTemplate;
+                    }
+                    else
+                    {
+                        template = _grpPlayNoneTemplate;
+                    }
+                }
+                if (template == null) continue;
+                var inst = Instantiate(template, _grpPlayRoot);
+                inst.name = template.name; // 保持原名（Grp_FloorPlay_* / Grp_Play_None——按名 Find）
+                inst.transform.SetAsLastSibling();
+                _modeSlots.Add(inst);
+            }
+            RefreshFloorMode(); // 槽位就绪后再刷（key 已一致——不会重复重建；主要补显隐）
+        }
+
+        void OnIntroButtonClicked(int index)
+        {
+            if (index < 0 || index >= _modeActiveStyles.Count) return; // 未加载槽位按钮禁用——防御
+            OpenFloorPlayDetail(_modeActiveStyles[index]);
+        }
+
+        void OpenFloorPlayDetail(string styleId)
+        {
+            if (_uiManager == null) return;
+            var panel = _uiManager.GetPanel("FloorPlayDetaile");
+            if (panel is FloorPlayDetailePanel detail)
+            {
+                detail.Bind(DisplayNames.OfStyle(styleId), FloorPlayDetailePanel.GetDescription(styleId));
+                _uiManager.PushOverlay("FloorPlayDetaile");
+            }
+            else
+            {
+                Debug.LogWarning("[Battle] 玩法详情面板未注册——无法打开");
+            }
         }
 
         // ========== 玩法面板·代币（2026-08-24：Grp_FloorPlay_Token——购买弃牌区牌复制入手牌）==========
@@ -1757,6 +1967,10 @@ namespace TheLaw.UI
                 {
                     EnterDiceMoveSelect(); // 点数直线移动：场上高亮可达格 → 点格选方向（后端契约）
                 }
+                else if (s == "shock-walls")
+                {
+                    RebuildShockWalls(); // 2026-08-26：能力「震击」墙生成
+                }
             }
             RefreshDrawPile();
             RefreshScore(); // score / mahjong-hu 等 StateChanged 信号均可安全刷新
@@ -1787,6 +2001,7 @@ namespace TheLaw.UI
             RefreshEventAbilities();
             RefreshGoPanel();
             RefreshDicePanel(); // 玩法面板：骰子显隐/点数/提示
+            RefreshFloorMode(); // Grp_Mode：介绍按钮/槽位填充/整组显隐（2026-08-26）
         }
 
         /// <summary>
@@ -2115,6 +2330,7 @@ namespace TheLaw.UI
             _selectedPieceId = -1;
             ClearPieceInfo();
             ClearHighlights(); // 取消选中必清棋格提示（防残留误导）
+            RefreshFloorMode(); // 取消选中 → 恢复 Grp_Mode（玩法区/介绍按钮；2026-08-26）
         }
 
         // ========== 场上信息面板（Main 1 场景 UI 根下的 3D 文本）==========

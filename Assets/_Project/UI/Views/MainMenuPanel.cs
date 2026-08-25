@@ -160,6 +160,12 @@ namespace TheLaw.UI
             FinishIntro();
         }
 
+        /// <summary>转场前强制落终态（Bootstrap 主菜单→剧情用）：动画中 → 跳过；未播/已完 → 无操作。</summary>
+        public void CompleteIntro()
+        {
+            if (_introRunning) SkipIntro();
+        }
+
         /// <summary>跳过动画：直落终态（背景 808080、标题/副标题/按钮可见、BGM 满音量、可点）。</summary>
         private void SkipIntro()
         {

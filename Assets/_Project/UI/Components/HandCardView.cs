@@ -22,6 +22,7 @@ namespace TheLaw.UI
         private Sprite _slotBg; // 程序槽默认背景（Bg.png——2026-08-26）
         private Sprite _infoNone; // 类型占位图标（Info_None.png——2026-08-27）
         private Image _typeIcon;   // Img_InfoType（类型位：默认 None / 五行背景+字）
+        private TMP_Text _elementText; // 五行文字（Img_InfoType 无 TMP 子节点——运行时创建，2026-08-27）
         private Image _footprintImage; // Img_InfoFootprint（占地标识）
         private readonly Transform[] _slotDescriptions = new Transform[4];
         private readonly TMP_Text[] _slotDescriptionTexts = new TMP_Text[4];
@@ -58,23 +59,25 @@ namespace TheLaw.UI
                 {
                     _typeIcon.sprite = _slotBg != null ? _slotBg : _infoNone;
                     _typeIcon.color = Color.white;
-                    if (_typeText != null)
+                    var elementText = EnsureElementText();
+                    if (elementText != null)
                     {
-                        _typeText.text = ElementColors.NameOf(element);
-                        _typeText.color = ElementColors.ColorOf(element);
+                        elementText.text = ElementColors.NameOf(element);
+                        elementText.color = ElementColors.ColorOf(element);
+                        elementText.gameObject.SetActive(true);
                     }
                 }
                 else if (!string.IsNullOrEmpty(typeIconKey) && IconLibrary.TryGet(typeIconKey, out var typeSp))
                 {
                     _typeIcon.sprite = typeSp;
                     _typeIcon.color = Color.white;
-                    if (_typeText != null) _typeText.text = string.Empty;
+                    if (_elementText != null) _elementText.gameObject.SetActive(false);
                 }
                 else
                 {
                     _typeIcon.sprite = _infoNone;
                     _typeIcon.color = Color.white;
-                    if (_typeText != null) _typeText.text = string.Empty;
+                    if (_elementText != null) _elementText.gameObject.SetActive(false);
                 }
             }
             // 占地标识（Img_InfoFootprint）：1x1/1x2 图标；1x3 无图标不兜底（2026-08-27）
@@ -139,7 +142,6 @@ namespace TheLaw.UI
                 var fpNode = FindNode("Img_InfoFootprint");
                 _footprintImage = fpNode != null ? fpNode.GetComponent<Image>() : null;
             }
-
             for (var i = 0; i < 4; i++)
             {
                 if (_slotIcons[i] == null)
@@ -157,6 +159,28 @@ namespace TheLaw.UI
             }
             if (_slotBg == null && IconLibrary.TryGet("Bg", out var bg)) _slotBg = bg;
             if (_infoNone == null && IconLibrary.TryGet("Info_None", out var none)) _infoNone = none;
+        }
+
+        /// <summary>类型位五行文字（Img_InfoType 纯 Image 无文字子节点——运行时补，一次创建复用）。</summary>
+        private TMP_Text EnsureElementText()
+        {
+            if (_elementText != null) return _elementText;
+            if (_typeIcon == null) return null;
+            var textGo = new GameObject("Txt_Element", typeof(RectTransform), typeof(CanvasRenderer), typeof(TextMeshProUGUI));
+            textGo.transform.SetParent(_typeIcon.transform, false);
+            var rt = (RectTransform)textGo.transform;
+            rt.anchorMin = Vector2.zero;
+            rt.anchorMax = Vector2.one;
+            rt.offsetMin = Vector2.zero;
+            rt.offsetMax = Vector2.zero;
+            var tmp = textGo.GetComponent<TextMeshProUGUI>();
+            tmp.alignment = TextAlignmentOptions.Center;
+            tmp.enableAutoSizing = true;
+            tmp.fontSizeMin = 12f;
+            tmp.fontSizeMax = 64f;
+            tmp.raycastTarget = false;
+            _elementText = tmp;
+            return _elementText;
         }
 
         private static void ApplyChromeColor(Image image, Color color)

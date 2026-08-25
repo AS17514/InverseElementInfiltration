@@ -1656,6 +1656,8 @@ namespace TheLaw.UI
             }
             EnsureMahjongRefs();
             RefreshMahjongPanel(); // 2026-08-27 麻将：槽位就绪后补绑定（幂等）
+            EnsureDiceRefs();
+            RefreshDicePanel(); // 2026-08-27 骰子：槽位就绪后补绑定（幂等——修复"投掷不了"：激活时面板未实例化，重建完成后需补接线）
         }
 
         /// <summary>重建 Grp_Play 槽位：按激活玩法顺序 3 槽——玩法面板 / Grp_Play_None 填补空缺（Addressables 加载模板，保持原名供 Find）。</summary>

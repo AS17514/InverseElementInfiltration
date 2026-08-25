@@ -594,6 +594,7 @@ namespace TheLaw.Gameplay
                     TempAbilities = piece.tempAbilities.ConvertAll(a => a.Id),
                     IsDeployed = piece.isDeployed,
                     ShieldCount = piece.shieldCount,
+                    TempShield = piece.tempShield, // 2026-08-26 波次部署额外护盾（入档——续战一致）
                     WaveIndex = piece.waveIndex, // 波次标（2026-08-13 补——原 DTO 缺字段，读档后每波得分链路断）
                     Element = piece.element,     // 属性玩法（2026-08-20——读档恢复）
                     IsGo = piece.IsGo,           // 2026-08-24 围棋棋子
@@ -712,6 +713,7 @@ namespace TheLaw.Gameplay
                         programOverride = pdto.ProgramOverride,
                         isDeployed = pdto.IsDeployed,
                         shieldCount = pdto.ShieldCount,
+                        tempShield = pdto.TempShield, // 2026-08-26 额外护盾（旧档缺省 0）
                         waveIndex = pdto.WaveIndex, // 波次标（2026-08-13 补：第 3 关每波得分依赖——原 DTO 缺字段读档归 -1）
                         element = pdto.Element,     // 属性（2026-08-20——缺省 None）
                         IsGo = pdto.IsGo,           // 2026-08-24 围棋棋子
@@ -820,6 +822,7 @@ namespace TheLaw.Gameplay
         public List<int> TempAbilities;
         public bool IsDeployed;
         public int ShieldCount;
+        public int TempShield; // 2026-08-26 波次部署额外护盾（spawnShield——旧档缺省 0）
         public int WaveIndex; // 所属波次（2026-08-13 补——每波得分按此累计）
         public Element Element; // 属性玩法（2026-08-20）
         public bool IsGo; // 围棋棋子（2026-08-24——专用"棋子牌"部署，B1 定稿）

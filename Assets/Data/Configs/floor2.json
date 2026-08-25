@@ -1,9 +1,9 @@
 {
   "floorName": "floor2",
   "displayName": "第 2 层·得分试炼",
-  "description": "【测试配置 2026-08-26——数值待策划校准】胜利 = 击败所有波次 或 达成目标分（targetScore 60）；扣分机制关闭（第 3/4 关开）；敌方 AP 3；3 波（回合 1/4/7）固定阵容 + 自动升变预告；玩法事件（rule）第 2 关首次启用——玩家二选一激活玩法（前端二选一面板已接）",
+  "description": "【2026-08-26 策划新规则】胜利 = 击败所有波次 或 达成目标分 45；无扣分；敌方 AP 3；3 波（回合 1/4/7）：波 1 部署区随机 4 格生成 4 个初始棋子、波 2/3 部署区随机 4 格生成 4 个部署棋子（真随机·种子可复现）；升变规则同第 1 关（自动预告）；玩法事件二选一",
   "victoryRule": "ScoreTarget",
-  "targetScore": 60,
+  "targetScore": 45,
   "scoreDeductEnabled": false,
   "enemyMaxAP": 3,
   "eventSequence": [
@@ -21,27 +21,30 @@
   "waves": [
     {
       "startTurn": 1,
-      "pieceDefIds": ["Soldier", "Soldier", "Swordsman", "ShieldGuard"],
-      "positions": [{"dx":0,"dy":7},{"dx":2,"dy":7},{"dx":5,"dy":7},{"dx":7,"dy":7}],
+      "pool": "Initial",
+      "count": 4,
+      "randomCells": true,
       "isLastWave": false,
       "endCountdown": 0,
       "autoPromote": true
     },
     {
       "startTurn": 4,
-      "pieceDefIds": ["ShortArcher", "LightCavalry", "Ranger", "Knight"],
-      "positions": [{"dx":1,"dy":6},{"dx":3,"dy":6},{"dx":4,"dy":6},{"dx":6,"dy":6}],
+      "pool": "Deployable",
+      "count": 4,
+      "randomCells": true,
       "isLastWave": false,
       "endCountdown": 0,
       "autoPromote": true
     },
     {
       "startTurn": 7,
-      "pieceDefIds": ["Berserker", "Berserker", "Ranger", "Knight"],
-      "positions": [{"dx":0,"dy":7},{"dx":3,"dy":7},{"dx":5,"dy":7},{"dx":7,"dy":7}],
+      "pool": "Deployable",
+      "count": 4,
+      "randomCells": true,
       "isLastWave": true,
       "endCountdown": 3,
-      "autoPromote": false
+      "autoPromote": true
     }
   ]
 }

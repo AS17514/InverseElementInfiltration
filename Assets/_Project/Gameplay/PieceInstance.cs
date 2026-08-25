@@ -66,7 +66,7 @@ namespace TheLaw.Gameplay
             }
         }
 
-        /// <summary>护盾量 = 该棋子全部 ShieldBlock 能力（固有 + 临时）amount 之和。</summary>
+        /// <summary>护盾量 = 该棋子全部 ShieldBlock 能力（固有 + 临时）amount 之和 + 波次部署额外护盾（tempShield——2026-08-26 关 4 波 3）。</summary>
         public int GetShieldAmount()
         {
             int total = 0;
@@ -78,8 +78,11 @@ namespace TheLaw.Gameplay
                     total += ability.amount;
                 }
             }
-            return total;
+            return total + tempShield;
         }
+
+        /// <summary>波次部署额外护盾（2026-08-26：WaveDef.spawnShield 挂载——每场部署量；与能力护盾同参与抵挡；入档）。</summary>
+        public int tempShield;
 
         /// <summary>
         /// 程序三层查找：实例覆盖① > 种类级表② > Def 默认③。

@@ -57,6 +57,11 @@ MonoBehaviour:
     m_ReadOnly: 0
     m_SerializedLabels: []
     FlaggedDuringContentUpdateRestriction: 0
+  - m_GUID: 372b47868990b274ba3ed097e70b7b6b
+    m_Address: "Avatar_Xeon_\u5E38\u6001"
+    m_ReadOnly: 0
+    m_SerializedLabels: []
+    FlaggedDuringContentUpdateRestriction: 0
   - m_GUID: 3d8ce8b80c638d34083298f43a90c46e
     m_Address: Soldier
     m_ReadOnly: 0
@@ -82,6 +87,11 @@ MonoBehaviour:
     m_ReadOnly: 0
     m_SerializedLabels: []
     FlaggedDuringContentUpdateRestriction: 0
+  - m_GUID: 586fb61f44ff4574e909a1313f3113e5
+    m_Address: "Avatar_Xeon_\u574F\u7B11"
+    m_ReadOnly: 0
+    m_SerializedLabels: []
+    FlaggedDuringContentUpdateRestriction: 0
   - m_GUID: 6262947097d19564398298a198614c48
     m_Address: event_left
     m_ReadOnly: 0
@@ -94,6 +104,11 @@ MonoBehaviour:
     FlaggedDuringContentUpdateRestriction: 0
   - m_GUID: 7b0daee225a8abe45af48da57f8a8aec
     m_Address: Swordsman
+    m_ReadOnly: 0
+    m_SerializedLabels: []
+    FlaggedDuringContentUpdateRestriction: 0
+  - m_GUID: 7dde30dbef4eb804e8ad3fed8e95c0a6
+    m_Address: "Avatar_Xeon_\u60CA\u8BB6"
     m_ReadOnly: 0
     m_SerializedLabels: []
     FlaggedDuringContentUpdateRestriction: 0
@@ -169,6 +184,11 @@ MonoBehaviour:
     FlaggedDuringContentUpdateRestriction: 0
   - m_GUID: c659db84df3251f4896dd57ce5e14fbe
     m_Address: Wizard
+    m_ReadOnly: 0
+    m_SerializedLabels: []
+    FlaggedDuringContentUpdateRestriction: 0
+  - m_GUID: cf5d734ca4e36d740bea79f4e316be35
+    m_Address: "Avatar_3\u53F7_\u9ED8\u8BA4"
     m_ReadOnly: 0
     m_SerializedLabels: []
     FlaggedDuringContentUpdateRestriction: 0

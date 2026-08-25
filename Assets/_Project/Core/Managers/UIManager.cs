@@ -89,6 +89,7 @@ namespace TheLaw.Core
         /// <summary>覆盖型压栈：显示 overlay（置顶——盖住下层；不隐藏下层、不改 _current）。</summary>
         public void PushOverlay(string key)
         {
+            if (_overlayStack.Contains(key)) return; // 同 key 去重：防多层同 overlay 压栈（PopOverlay 弹错对象/泄漏）
             if (!_panels.TryGetValue(key, out var panel) || (UnityEngine.Object)panel == null)
             {
                 _panels.Remove(key);
@@ -137,6 +138,26 @@ namespace TheLaw.Core
                 {
                     mb.transform.SetAsLastSibling(); // 恢复的下层置顶（保证在残余兄弟之上）
                 }
+            }
+        }
+
+        /// <summary>按 key 定向弹栈（过渡专用——2026-08-26）：从栈中移除指定 overlay 并隐藏，其上层/下层条目保持。
+        /// ⚠️ 过渡期间可能有 Tutorial 等 overlay 压到 Loading 之上——End 必须弹 Loading 本身而非栈顶（防弹错对象致 Loading 滞留遮挡）。</summary>
+        public void PopOverlay(string key)
+        {
+            if (!_overlayStack.Contains(key)) return;
+            var list = new List<string>(_overlayStack);
+            list.Remove(key);
+            _overlayStack.Clear();
+            for (int i = list.Count - 1; i >= 0; i--) _overlayStack.Push(list[i]); // 保持原顺序（栈顶在末）
+            if (_panels.TryGetValue(key, out var panel) && (UnityEngine.Object)panel != null)
+            {
+                panel.Hide();
+                if (panel.IsPausing) GamePause.Pop();
+            }
+            else
+            {
+                _panels.Remove(key);
             }
         }
 

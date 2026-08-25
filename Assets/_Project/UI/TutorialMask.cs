@@ -35,6 +35,15 @@ namespace TheLaw.UI
 
         public bool IsReady => _material != null && _canvas != null;
 
+        /// <summary>当前挖孔联合矩形是否覆盖 ≥97% 屏幕（全屏级目标 = 无高亮意义）。</summary>
+        public bool CoversMostOfScreen()
+        {
+            Rect r = ComputeScreenRect();
+            float total = (float)Screen.width * Screen.height;
+            if (total <= 0f) return false;
+            return (r.width * r.height) / total >= 0.97f;
+        }
+
         /// <summary>整层显隐（无高亮步骤时整层隐藏，避免误压暗全屏）。</summary>
         public void SetVisible(bool on)
         {

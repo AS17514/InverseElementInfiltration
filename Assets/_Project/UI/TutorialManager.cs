@@ -326,8 +326,46 @@ namespace TheLaw.UI
             if (_mask == null)
             {
                 _mask = TutorialMask.Create(FindUICamera());
+                if (_mask != null)
+                {
+                    // ⚠️ 遮罩 Canvas 必须挂到 UI 根 Canvas 之下并 overrideSorting 置顶：
+                    // 否则它自己是"无父 + UI 层 + ScreenSpaceCamera"，会被 PanelBase.EnsureCanvas 误当 UI 根复用
+                    // → 后续面板全挂进遮罩 Canvas、遮罩被压在最底（层级全乱、压暗不可见）。
+                    var rootCanvas = FindRootUICanvas();
+                    var maskCanvas = _mask.GetComponent<Canvas>();
+                    if (rootCanvas != null && maskCanvas != null)
+                    {
+                        maskCanvas.overrideSorting = true;
+                        maskCanvas.sortingOrder = TutorialMask.SortingOrder;
+                        maskCanvas.transform.SetParent(rootCanvas.transform, false);
+                        var rt = maskCanvas.transform as RectTransform;
+                        if (rt != null)
+                        {
+                            rt.anchorMin = Vector2.zero;
+                            rt.anchorMax = Vector2.one;
+                            rt.offsetMin = Vector2.zero;
+                            rt.offsetMax = Vector2.zero;
+                        }
+                    }
+                }
             }
             if (_mask != null) _mask.SetVisible(true);
+        }
+
+        /// <summary>找 UI 根 Canvas（无父 + UI 层 + 非 BackgroundCanvas/非遮罩自身）。</summary>
+        static Canvas FindRootUICanvas()
+        {
+            foreach (var c in Object.FindObjectsOfType<Canvas>(true))
+            {
+                if (c.transform.parent == null &&
+                    c.gameObject.layer == LayerMask.NameToLayer("UI") &&
+                    c.gameObject.name != "BackgroundCanvas" &&
+                    c.gameObject.name != "TutorialMaskCanvas")
+                {
+                    return c;
+                }
+            }
+            return null;
         }
 
         static Camera FindUICamera()
@@ -374,13 +412,25 @@ namespace TheLaw.UI
                 if (t != null) resolved.Add(t);
                 else unresolved.Add(s);
             }
+            _pendingHighlights.Clear();
+            _pendingHighlights.AddRange(unresolved);
+
+            if (resolved.Count == 0)
+            {
+                // 目标全部未解析 → 遮罩整层隐藏（避免"全屏压暗无挖孔"黑屏）
+                if (_mask != null) _mask.SetVisible(false);
+                return;
+            }
             if (_mask != null)
             {
                 _mask.SetVisible(true);
                 _mask.SetTargets(resolved, _current != null ? _current.steps[_stepIndex].highlightPadding : 26f);
+                // 挖孔覆盖 ≥97% 屏幕（如误选全屏面板根节点）→ 无高亮意义，整层隐藏
+                if (_mask.CoversMostOfScreen())
+                {
+                    _mask.SetVisible(false);
+                }
             }
-            _pendingHighlights.Clear();
-            _pendingHighlights.AddRange(unresolved);
         }
 
         /// <summary>解析高亮目标：普通名/路径在面板内 FindDeep、场景内 GameObject.Find；"@xxx" 走动态解析。</summary>

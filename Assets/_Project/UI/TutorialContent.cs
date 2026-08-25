@@ -43,7 +43,7 @@ namespace TheLaw.UI
                         portraitKey = "常态",
                         layout = "bottomCenter",
                         text = "「伊甸」现在正在开发一款战棋的游戏，测试员你需要做的就是用你的想法，来侵蚀这个无聊的东西。看到了吗，我前面的就是刚刚破解出来的漏洞。",
-                        highlightTargets = new List<string> { "EventPanel" },
+                        highlightTargets = new List<string> { "Grp_EventOptions" },
                     },
                     new TutorialStep
                     {
@@ -52,7 +52,7 @@ namespace TheLaw.UI
                         portraitKey = "常态",
                         layout = "bottomCenter",
                         text = "这就是「伊甸」进行编辑的界面了，测试员，试着选择一个你想要的效果吧，这些效果会持续到整个游戏结束，要谨慎一点哦。",
-                        highlightTargets = new List<string> { "EventPanel" },
+                        highlightTargets = new List<string> { "Grp_EventOptions" },
                     },
                     new TutorialStep
                     {
@@ -250,7 +250,7 @@ namespace TheLaw.UI
                         portraitKey = "常态",
                         layout = "bottomCenter",
                         text = "我们已经更深入了，测试员，接下来我们需要去设定新的玩法。",
-                        highlightTargets = new List<string> { "EventPanel" },
+                        highlightTargets = new List<string> { "Grp_EventOptions" },
                     },
                     new TutorialStep
                     {
@@ -259,7 +259,7 @@ namespace TheLaw.UI
                         portraitKey = "常态",
                         layout = "bottomCenter",
                         text = "玩法的施加是对游戏内容最大的变动，接下来的每一次起始，测试员你都会见到这个界面，顾名思义，就是让你去给这个游戏施加玩法。",
-                        highlightTargets = new List<string> { "EventPanel" },
+                        highlightTargets = new List<string> { "Grp_EventOptions" },
                     },
                     new TutorialStep
                     {
@@ -268,7 +268,7 @@ namespace TheLaw.UI
                         portraitKey = "常态",
                         layout = "bottomCenter",
                         text = "单层选取的玩法效果会持续作用到后续的所有关卡中，而不同层选择的玩法会叠加，接下来就是你的领域了，测试员。",
-                        highlightTargets = new List<string> { "EventPanel" },
+                        highlightTargets = new List<string> { "Grp_EventOptions" },
                     },
                 },
             },

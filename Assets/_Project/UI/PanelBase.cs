@@ -19,6 +19,22 @@ namespace TheLaw.UI
 
         public virtual bool IsPausing => false; // 默认非暂停型；设置/确认等子类覆写 true
 
+        /// <summary>内容就绪状态：默认 true（同步面板）。异步加载内容的面板在构建开始时置 false，完成后 NotifyContentReady。</summary>
+        public bool IsContentReady { get; protected set; } = true;
+
+        /// <summary>内容完全就绪事件——面板异步加载完成后触发；PanelTransition 等待此信号再淡出 loading（2026-08-25 检查点机制）。</summary>
+        public event System.Action ContentReady;
+
+        /// <summary>标记内容就绪并广播（幂等）。公开——Bootstrap/管理器可在异步面板加载完成后显式发就绪契约。</summary>
+        public void NotifyContentReady()
+        {
+            if (!IsContentReady)
+            {
+                IsContentReady = true;
+                ContentReady?.Invoke();
+            }
+        }
+
         public virtual void Show()
         {
             bool wasActive = gameObject.activeSelf;
@@ -107,7 +123,8 @@ namespace TheLaw.UI
             {
                 if (c.transform.parent == null &&
                     c.gameObject.layer == uiLayer &&
-                    c.gameObject.name != "BackgroundCanvas")
+                    c.gameObject.name != "BackgroundCanvas" &&
+                    c.gameObject.name != "TutorialMaskCanvas") // 教程遮罩 Canvas 挂根下置顶，不得被误当 UI 根
                 {
                     return c;
                 }

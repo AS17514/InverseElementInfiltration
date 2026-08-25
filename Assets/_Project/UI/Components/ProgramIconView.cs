@@ -20,12 +20,14 @@ namespace TheLaw.UI
             CacheNodes();
             var visible = data != null && data.Visible;
             if (gameObject.activeSelf != visible) gameObject.SetActive(visible);
-            if (_iconImage != null && data != null)
+            if (_iconImage != null)
             {
-                if (data.IconSprite != null) _iconImage.sprite = data.IconSprite;
-                if (data.IconColor.HasValue) _iconImage.color = data.IconColor.Value;
+                // 有图标只显图标；无图标才用文字（2026-08-26 图标接入防重叠；null 清残留）
+                _iconImage.sprite = data != null ? data.IconSprite : null;
+                if (data != null && data.IconColor.HasValue) _iconImage.color = data.IconColor.Value;
             }
-            if (_typeText != null) _typeText.text = visible ? data.TypeLabel : string.Empty;
+            if (_typeText != null)
+                _typeText.text = visible && (data == null || data.IconSprite == null) ? data?.TypeLabel ?? string.Empty : string.Empty;
         }
 
         private void CacheNodes()

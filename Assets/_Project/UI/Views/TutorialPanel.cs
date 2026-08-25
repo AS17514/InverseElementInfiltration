@@ -358,30 +358,55 @@ namespace TheLaw.UI
         void FixPrefabRenderOrder()
         {
             _textBox = _grpText != null ? _grpText : (_txtText != null ? _txtText.rectTransform : null);
+
+            // 1) 头像框：锚点/枢轴归一为居中（布局预设按中心定位）
+            if (_grpPortrait != null)
+            {
+                _grpPortrait.anchorMin = new Vector2(0.5f, 0.5f);
+                _grpPortrait.anchorMax = new Vector2(0.5f, 0.5f);
+                _grpPortrait.pivot = new Vector2(0.5f, 0.5f);
+            }
+
+            // 2) 文本框（无 Grp_Text 时 = Txt_Text 本体）：居中锚点 + 宽度钳制（防溢出屏幕）+ 自动换行
+            if (_textBox != null && _txtText != null)
+            {
+                _textBox.anchorMin = new Vector2(0.5f, 0.5f);
+                _textBox.anchorMax = new Vector2(0.5f, 0.5f);
+                _textBox.pivot = new Vector2(0.5f, 0.5f);
+                if (_textBox.rect.width > 780f)
+                {
+                    _textBox.sizeDelta = new Vector2(720f, _textBox.sizeDelta.y);
+                }
+                _txtText.enableWordWrapping = true;
+                _txtText.raycastTarget = false;
+            }
+
+            // 3) 背景图 Img_TextBg：无论嵌在 TMP 内部还是同级——统一提到文字之下（同矩形、随框同步移动）
             if (_txtText != null)
             {
-                var bg = FindDeep<Image>(_txtText.transform, "Img_TextBg");
-                if (bg != null && bg.transform.parent == _txtText.transform)
+                var bg = FindDeep<Image>(transform, "Img_TextBg");
+                if (bg != null && bg.transform != _txtText.transform)
                 {
                     var txtRt = _txtText.rectTransform;
                     var bgRt = bg.rectTransform;
-                    bgRt.SetParent(txtRt.parent, false); // 提到 TMP 同级
+                    bgRt.SetParent(txtRt.parent, false);
                     bgRt.anchorMin = txtRt.anchorMin;
                     bgRt.anchorMax = txtRt.anchorMax;
                     bgRt.pivot = txtRt.pivot;
                     bgRt.anchoredPosition = txtRt.anchoredPosition;
                     bgRt.sizeDelta = txtRt.sizeDelta;
-                    bgRt.SetSiblingIndex(txtRt.GetSiblingIndex()); // 排 TMP 之前 → 背景在文字之下
+                    bgRt.SetSiblingIndex(txtRt.GetSiblingIndex()); // 排文字之前 → 背景在文字之下
                     _textBg = bgRt;
                     _textBgImage = bg;
-                    Debug.Log("[TutorialPanel] 背景图 Img_TextBg 已从 TMP 内部提出至其下（文字渲染于背景之上）");
+                    _textBgImage.raycastTarget = false;
+                    Debug.Log("[TutorialPanel] 背景图 Img_TextBg 已对齐文字框并置于其下（文字渲染于背景之上）");
                 }
                 else
                 {
                     _textBgImage = bg;
+                    if (_textBgImage != null) _textBgImage.raycastTarget = false;
                 }
             }
-            if (_textBgImage != null) _textBgImage.raycastTarget = false;
             if (_imgPortrait != null) _imgPortrait.raycastTarget = false;
         }
 
@@ -389,6 +414,17 @@ namespace TheLaw.UI
         {
             if (_built) return;
             _built = true;
+
+            // ⚠️ prefab 根未拉伸（size=0）会让子节点锚点全部失效 → 先强制根铺满 UI 根 Canvas
+            var rootRt = transform as RectTransform;
+            if (rootRt != null)
+            {
+                rootRt.anchorMin = Vector2.zero;
+                rootRt.anchorMax = Vector2.one;
+                rootRt.offsetMin = Vector2.zero;
+                rootRt.offsetMax = Vector2.zero;
+                rootRt.pivot = new Vector2(0.5f, 0.5f);
+            }
 
             _grpPortrait = FindDeep<RectTransform>(transform, "Grp_Portrait");
             _grpText = FindDeep<RectTransform>(transform, "Grp_Text");

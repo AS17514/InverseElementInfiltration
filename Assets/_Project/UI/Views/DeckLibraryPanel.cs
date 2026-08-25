@@ -227,6 +227,11 @@ namespace TheLaw.UI
                     img.sprite = tile;      // 麻将点数图（2026-08-26 图标接入）
                     img.color = Color.white;
                     portrait.gameObject.SetActive(true);
+                    if (valueText != null)
+                    {
+                        var vt = valueText.GetComponentInChildren<TMP_Text>(true);
+                        if (vt != null) vt.text = string.Empty; // 图标已含点数——文字清空防重叠
+                    }
                 }
                 else
                 {

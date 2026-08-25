@@ -69,6 +69,9 @@ namespace TheLaw.UI
         /// <summary>手牌重建后调用：重新收集卡片。instant=true 立即落位（无动画）；false 让布局插值滑动过渡。</summary>
         public void RefreshCards(bool instant = true)
         {
+            // 2026-08-26 修复：面板隐藏中 AddComponent 时 Awake 被推迟（_root 未赋值）——
+            // 手牌构建（LoadAndBuildHand）可能在面板显示前完成 → ApplyLayout 空引用炸协程。此处兜底补初始化。
+            if (_root == null) _root = (RectTransform)transform;
             _cards.Clear();
             foreach (Transform child in transform)
             {
@@ -154,6 +157,7 @@ namespace TheLaw.UI
 
         void ApplyLayout(bool instant)
         {
+            if (_root == null) return; // 面板隐藏中 AddComponent → Awake 推迟（激活后自动补齐，Update 每帧重试）
             int n = _cards.Count;
             if (n == 0) return;
 

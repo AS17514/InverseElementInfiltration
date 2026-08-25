@@ -41,6 +41,9 @@ namespace TheLaw.UI
         private Sprite _artAbility, _artEdit, _artMode; // 事件 CG（Addressables 懒加载缓存）
         private string _pendingArtKey;         // CG 未加载完时的待应用类型 key（加载完成后补应用）
         private Sprite _circleSmallEmpty, _circleSmallFilled, _circleBigEmpty, _circleBigFilled; // 进度节点素材（小/大 × 空/满）
+        private string _deferredEventId;       // 获得物品弹窗展示中延迟的事件 id（确认后才切下个事件——2026-08-25）
+        private TMP_Text _progressTitle;       // 顶栏 Txt_CurrentProgress——按层显示阶段名（白模-1 / Demo-2 / ALPHA-3 / BETA-4）
+        static readonly string[] ProgressPhases = { "白模", "Demo", "ALPHA", "BETA" }; // 四阶段（2026-08-25 用户定名）
         private int _pendingBuilds;            // 未完成的内容构建计数（选项区重建——普通/玩法/能力；内容就绪检查点）
         private bool _artPending;              // 事件 CG 未加载完成（待应用——内容就绪检查点等待其加载）
 
@@ -95,6 +98,7 @@ namespace TheLaw.UI
         private void Awake()
         {
             _title = transform.Find("Grp_TopBar/Txt_EventName")?.GetComponent<TMP_Text>();
+            _progressTitle = transform.Find("Grp_TopBar/Txt_CurrentProgress")?.GetComponent<TMP_Text>();
             _desc = transform.Find("Grp_EventContent/Grp_EventDesc/Txt_EventDesc")?.GetComponent<TMP_Text>();
             _optionsRoot = transform.Find("Grp_EventContent/Grp_EventDesc/Grp_EventOptions");
             // 2026-08-25：Img_EventArt 已套 Grp_EventArt 遮罩容器——硬路径 + FindDeep 兜底（层级再变不失效）
@@ -189,6 +193,11 @@ namespace TheLaw.UI
         {
             if (string.IsNullOrEmpty(eventId)) return;
             if (eventId == _currentEventId) return; // 幂等：同一事件重复推送跳过（防双消费双推进）
+            if (ItemGettingPanel.IsShowing)
+            {
+                _deferredEventId = eventId; // 获得物品弹窗未确认——延迟到下个事件（确认后才切换）
+                return;
+            }
             _currentEventId = eventId;
             _currentEvent = ConfigTable.FindByName<EventDefinition>(eventId);
             if (_currentEvent == null)
@@ -412,6 +421,12 @@ namespace TheLaw.UI
         void RefreshProgress()
         {
             if (_gameState == null) return;
+            // 顶栏阶段名：按当前层 → 白模-1 / Demo-2 / ALPHA-3 / BETA-4（2026-08-25）
+            if (_progressTitle != null)
+            {
+                int f = _gameState.CurrentFloor;
+                _progressTitle.text = f >= 0 && f < ProgressPhases.Length ? $"{ProgressPhases[f]}-{f + 1}" : "当前进度";
+            }
             var states = _gameState.NodeStates;
             if (states == null || states.Count == 0) return;
             for (int i = 0; i < states.Count; i++)
@@ -436,6 +451,7 @@ namespace TheLaw.UI
             if (string.IsNullOrEmpty(evId)) return;
             var ev = ConfigTable.FindByName<EventDefinition>(evId);
             if (ev == null || !ev.isRulePick) return; // 非玩法事件（防御——广播只应由玩法事件发出）
+            if (ItemGettingPanel.IsShowing) { _deferredEventId = evId; return; } // 弹窗未确认——延迟（2026-08-25）
             EnterRuleMode(evId, ev);
         }
 
@@ -515,6 +531,22 @@ namespace TheLaw.UI
             BuildRuleOptions();
         }
 
+        /// <summary>弹窗确认后冲刷延迟的事件（能力/玩法走状态回填、普通走 ShowEvent——各自入口在内部校验）。</summary>
+        void Update()
+        {
+            if (_deferredEventId != null && !ItemGettingPanel.IsShowing)
+            {
+                string evId = _deferredEventId;
+                _deferredEventId = null;
+                if (string.IsNullOrEmpty(evId) || _gameState == null) return;
+                var ev = ConfigTable.FindByName<EventDefinition>(evId);
+                if (ev == null) { ShowEvent(evId); return; } // 兜底普通路径（防卡）
+                if (ev.isAbilityPick) { ShowAbilityEventFromState(); return; }
+                if (ev.isRulePick) { ShowRuleEventFromState(); return; }
+                ShowEvent(evId);
+            }
+        }
+
         /// <summary>选择玩法候选：先上锁并隐藏面板（EventCompleted 同步推进——防残留/重复点击）→ Resolver 落账推进。</summary>
         void SelectRule(int index)
         {
@@ -534,6 +566,7 @@ namespace TheLaw.UI
             if (string.IsNullOrEmpty(evId)) return;
             var ev = ConfigTable.FindByName<EventDefinition>(evId);
             if (ev == null || !ev.isAbilityPick) return; // 非能力事件（防御——广播只应由能力事件发出）
+            if (ItemGettingPanel.IsShowing) { _deferredEventId = evId; return; } // 弹窗未确认——延迟（2026-08-25）
             EnterAbilityMode(evId, ev);
         }
 

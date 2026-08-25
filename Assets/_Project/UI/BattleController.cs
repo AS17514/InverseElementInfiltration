@@ -391,6 +391,7 @@ namespace TheLaw.UI
             _panel = panel;
             if (_panel == null) return;
             panel.ResetCheatCount(); // 2026-08-26 测试自动过关：Ctrl+设置×10 计数每场战斗重置（防跨场累计误触发）
+            panel.SetFloorName(Bootstrap.FloorDisplayName(state != null ? state.CurrentFloor : 0)); // 2026-08-26 左上角关卡名称（白模/Demo/ALPHA/BETA）
             _uiManager.RegisterPanel(panel); // 幂等覆盖（重复注册无害）
             PanelTransition.ShowWithLoading(_uiManager, "Battle");
             // ⚠️ 面板局内复用（UI 架构重构 §五）：旧 BC 的按钮监听残留在复用面板上——
@@ -1394,7 +1395,7 @@ namespace TheLaw.UI
                 if (_mahjongPanelCards[i] == null && _mahjongCardTemplate != null && i < _mahjongCardAnchors.Length && _mahjongCardAnchors[i] != null)
                 {
                     var anchor = _mahjongCardAnchors[i];
-                    var view = UIComponentFactory.CreateHandCard(_mahjongCardTemplate, anchor.parent, MahjongCardData(score[i]));
+                    var view = UIComponentFactory.CreateHandCard(_mahjongCardTemplate, anchor.parent, MahjongCardData(score[i], true)); // 牌山 1x2
                     var card = view.gameObject;
                     card.name = $"MahjongPanelCard_{i + 1}";
                     card.transform.position = anchor.position;
@@ -1407,16 +1408,18 @@ namespace TheLaw.UI
                 {
                     _mahjongPanelCards[i].SetActive(true);
                     var view = _mahjongPanelCards[i].GetComponent<HandCardView>();
-                    if (view != null) view.Bind(MahjongCardData(score[i]));
+                    if (view != null) view.Bind(MahjongCardData(score[i], true)); // 牌山 1x2
                 }
             }
             if (_huBtn != null) _huBtn.interactable = CanHu();
         }
 
-        /// <summary>麻将牌卡数据（牌山/手牌共用——复用 Piece_Handcard：名字=麻将、价值=点数、类型=麻）。</summary>
-        HandCardViewData MahjongCardData(int point)
+        /// <summary>麻将牌卡数据（牌山/手牌共用——复用 Piece_Handcard：名字=麻将、价值=点数）。
+        /// 占地：牌山 1x2，手牌麻将 1x1（2026-08-27）；类型位待麻将专用图（李毕重画中）——暂 None。</summary>
+        HandCardViewData MahjongCardData(int point, bool isWall = false)
         {
-            return new HandCardViewData(Color.white, "", "麻将", point.ToString(), "麻", null);
+            return new HandCardViewData(Color.white, "", "麻将", point.ToString(), "", null,
+                Element.None, isWall ? Footprint.Size1x2 : Footprint.Size1x1);
         }
 
         void OnHuClicked()
@@ -1613,6 +1616,17 @@ namespace TheLaw.UI
         {
             if (_mahjongWallPreview != null) Destroy(_mahjongWallPreview);
             _mahjongWallPreview = null;
+        }
+
+        /// <summary>数字选择面板（2026-08-27 能力交互）：出千 1-6（diceRig=true）→ OnDiceNumberSelected；宝牌 1-9 由 Bootstrap 全局弹（RelicObtained）。</summary>
+        void ShowSelectNumberPick(bool diceRig)
+        {
+            if (_uiManager == null) return;
+            var panel = _uiManager.GetPanel("SelectNumber") as SelectNumberPanel;
+            if (panel == null) return;
+            _uiManager.PushOverlay("SelectNumber"); // 先激活面板（协程依赖 active）再构建按钮
+            if (diceRig) panel.ShowDiceRigPick();
+            else panel.ShowBaopaiPick();
         }
 
         /// <summary>Grp_Mode 刷新：① 介绍按钮（已加载=玩法名可点 / 未加载=禁用+未加载）② 槽位重建（激活集合变化时）③ 整组显隐（选中棋子隐藏）。</summary>
@@ -2205,6 +2219,11 @@ namespace TheLaw.UI
             UpdateHandPositionByPhase();
             CancelDiceMoveSelect(); // 阶段切换：取消骰子方向选择态
             if (_state.Phase == BattlePhase.PlayerTurn) TryStartForcedExec(); // 插入执行：回合切换后（后端同守卫）触发
+            if (_uiManager != null)
+            {
+                var numPanel = _uiManager.GetPanel("SelectNumber");
+                if (numPanel != null && numPanel.IsVisible) _uiManager.PopOverlay("SelectNumber"); // 2026-08-27 数字选择未选作废（不跨回合）
+            }
 
             // 阶段展示信号：下一帧通知规则层（动画优先——无动画的阶段切换至少展示一帧）
             if (data is BattlePhase phase)
@@ -2298,6 +2317,10 @@ namespace TheLaw.UI
                 else if (s == "dice-move-select")
                 {
                     EnterDiceMoveSelect(); // 点数直线移动：场上高亮可达格 → 点格选方向（后端契约）
+                }
+                else if (s == "dice-rig-select")
+                {
+                    ShowSelectNumberPick(true); // 2026-08-27 出千：1-6 自选（后端契约）
                 }
                 else if (s == "shock-walls")
                 {
@@ -3145,8 +3168,9 @@ namespace TheLaw.UI
                         def,
                         GetEffectiveType(def),
                         GetEffectiveValue(def),
-                        GetDisplayProgram(def))
-                    : MahjongCardData(handCard.value); // 2026-08-27 麻将卡：复用卡模板（名字=麻将/价值=点数/类型=麻）
+                        GetDisplayProgram(def),
+                        handCard.element) // 2026-08-27：五行 → 类型位背景+字
+                    : MahjongCardData(handCard.value); // 2026-08-27 麻将卡：复用卡模板（名字=麻将/价值=点数）
                 GameObject card = null;
                 // 复用必须按实例 id 匹配：同 defId、同属性的重复牌也不能互换身份。
                 for (int j = 0; j < oldCards.Count; j++)

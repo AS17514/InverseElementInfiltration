@@ -127,12 +127,15 @@ namespace TheLaw.UI
             StartCoroutine(CreateItemGettingPanel());
             // ⑤a3b 玩法详情面板常驻创建（overlay——Grp_Mode 介绍按钮打开；2026-08-26）
             StartCoroutine(CreateFloorPlayDetailePanel());
+            // ⑤a3c 数字选择面板常驻创建（overlay——能力交互：宝牌 1-9 / 出千 1-6；2026-08-27）
+            StartCoroutine(CreateSelectNumberPanel());
             // ⑤a4 设置面板常驻创建（overlay——主菜单/战斗中入口复用；IsPausing 暂停型）
             StartCoroutine(CreateSettingsPanel());
             // ⑤a4b 牌库面板常驻创建（overlay——2026-08-25：牌库浏览 + 代币购买选牌复用）
             StartCoroutine(CreateDeckLibraryPanel());
             // ⑤a5 加载过渡面板常驻创建（overlay——面板切换过渡压栈；Key="Loading"）
             StartCoroutine(CreateLoadingPanel());
+            WireClearanceButton(); // 2026-08-26：战斗内查看通关条件按钮（BackgroundCanvas/Btn_ClearanceConditions）
             // ⑤b 开局初始化（新局状态——含基础牌组手牌填充，ResetForNewRun 内完成）
             _gameState.ResetForNewRun();
             // ⑥ 进主菜单（TODO: UI 层面板）
@@ -283,6 +286,8 @@ namespace TheLaw.UI
             EventCenter.Instance.AddEventListener(GameEvent.AbilityCandidatesDrawn, OnAbilityCandidatesDrawn);
             // 玩法事件（2026-08-25）：不发 EventOpened——Bootstrap 负责首发唤醒（面板懒加载后主动回填候选）
             EventCenter.Instance.AddEventListener(GameEvent.RuleCandidatesDrawn, OnRuleCandidatesDrawn);
+            // 能力交互·宝牌（2026-08-27）：RelicObtained → 含 Baopai 效果 → 弹 1-9 选数（全局——能力事件/战斗内均生效）
+            EventCenter.Instance.AddEventListener(GameEvent.RelicObtained, OnRelicObtained);
             // 战斗开始：TowerFlow 开战（Phase→Placement）→ 创建战斗控制器
             EventCenter.Instance.AddEventListener(GameEvent.PhaseChanged, OnPhaseChanged);
             // 存档对接后端（2026-08-23）：关键节点落档——事件打开/能力候选/开战检查点（退出与 Continue 依赖）
@@ -302,6 +307,7 @@ namespace TheLaw.UI
             EventCenter.Instance.RemoveEventListener(GameEvent.EditCandidatesDrawn, OnEditCandidatesDrawn);
             EventCenter.Instance.RemoveEventListener(GameEvent.AbilityCandidatesDrawn, OnAbilityCandidatesDrawn);
             EventCenter.Instance.RemoveEventListener(GameEvent.RuleCandidatesDrawn, OnRuleCandidatesDrawn);
+            EventCenter.Instance.RemoveEventListener(GameEvent.RelicObtained, OnRelicObtained); // 2026-08-27 宝牌选数
             EventCenter.Instance.RemoveEventListener(GameEvent.PhaseChanged, OnPhaseChanged);
             EventCenter.Instance.RemoveEventListener(GameEvent.EventOpened, OnEventOpenedForSave);
             EventCenter.Instance.RemoveEventListener(GameEvent.AbilityCandidatesDrawn, OnAbilityCandidatesForSave);
@@ -1099,6 +1105,103 @@ namespace TheLaw.UI
             var controller = battleGo.AddComponent<BattleController>();
             controller.Init(flow, _gameState, _uiManager, panel); // 绑定面板（不创建——面板局内复用）
             controller.OnExitRequested += ConfirmExitToMenu; // 战斗面板退出按钮 → 确认弹窗（保存返回主菜单）
+            StartCoroutine(ShowClearanceAtBattleStart()); // 2026-08-26：战斗开始弹通关条件确认窗
+        }
+
+        // ========== 通关条件（2026-08-26：战斗开始确认弹窗 + 战斗内 Btn_ClearanceConditions 查看）==========
+
+        private static readonly string[] FloorNames = { "白模", "Demo", "ALPHA", "BETA" }; // 关卡顺序名（1-4 关）
+
+        /// <summary>关卡显示名（CurrentFloor 0 起：白模/Demo/ALPHA/BETA）。</summary>
+        public static string FloorDisplayName(int floor)
+        {
+            if (floor >= 0 && floor < FloorNames.Length) return FloorNames[floor];
+            return $"第 {floor + 1} 关";
+        }
+
+        /// <summary>战斗开始确认弹窗：等战斗面板显示后弹出通关条件（每次进战斗一次）。</summary>
+        private System.Collections.IEnumerator ShowClearanceAtBattleStart()
+        {
+            float t = 0f;
+            while (_battlePanel == null || !_battlePanel.gameObject.activeInHierarchy)
+            {
+                t += Time.unscaledDeltaTime;
+                if (t > 3f) yield break; // 面板异常时不阻塞流程
+                yield return null;
+            }
+            yield return null; // 面板布局/过渡落定后再弹
+            if (CurrentBattleFlow != null) ShowClearanceConditions();
+        }
+
+        /// <summary>弹出通关条件确认窗（战斗开始自动 + Btn_ClearanceConditions 复用）。</summary>
+        private void ShowClearanceConditions()
+        {
+            if (_confirmPanel == null)
+            {
+                Debug.LogWarning("[Bootstrap] 确认面板未就绪——跳过通关条件弹窗");
+                return;
+            }
+            _confirmPanel.ShowConfirm(BuildClearanceText(), null, null);
+        }
+
+        /// <summary>按当前关配置拼通关条件文本（只读 FloorConfig）。</summary>
+        private string BuildClearanceText()
+        {
+            var cfg = _gameState != null ? _gameState.CurrentFloorConfig : null;
+            string name = FloorDisplayName(_gameState != null ? _gameState.CurrentFloor : 0);
+            var lines = new System.Collections.Generic.List<string> { $"{name} · 通关条件" };
+            if (cfg == null)
+            {
+                lines.Add("（本关配置缺失）");
+                return string.Join("\n", lines);
+            }
+            switch (cfg.victoryRule)
+            {
+                case VictoryRule.WipeOut:
+                    lines.Add("胜利：击败敌方全部棋子（守完所有波次）");
+                    break;
+                case VictoryRule.ScoreTarget:
+                    lines.Add(cfg.targetScore > 0 ? $"胜利：总得分达到 {cfg.targetScore}（或击败所有波次）" : "胜利：击败所有波次");
+                    break;
+                case VictoryRule.PerWaveScore:
+                    lines.Add(cfg.targetScore > 0 ? $"胜利：每波得分达标，且总得分 ≥ {cfg.targetScore}" : "胜利：每波得分达标");
+                    break;
+                case VictoryRule.Both:
+                    lines.Add($"胜利：守完波次全灭敌方，且总得分 ≥ {cfg.targetScore}");
+                    break;
+            }
+            if (cfg.waveDefs != null && cfg.waveDefs.Count > 0)
+            {
+                lines.Add($"敌方共 {cfg.waveDefs.Count} 波");
+                var last = cfg.waveDefs[cfg.waveDefs.Count - 1];
+                if (last.endCountdown > 0) lines.Add($"末波后 {last.endCountdown} 回合强制结算");
+            }
+            if (cfg.scoreDeductEnabled) lines.Add("注意：我方棋子被敌方击败会扣分");
+            return string.Join("\n", lines);
+        }
+
+        /// <summary>战斗内查看按钮接线（BackgroundCanvas/Btn_ClearanceConditions——仅战斗中有效）。</summary>
+        private void WireClearanceButton()
+        {
+            var bg = GameObject.Find("BackgroundCanvas");
+            if (bg == null)
+            {
+                Debug.LogWarning("[Bootstrap] 未找到 BackgroundCanvas——通关条件按钮未接线");
+                return;
+            }
+            var btn = bg.transform.Find("Btn_ClearanceConditions")?.GetComponent<UnityEngine.UI.Button>();
+            if (btn == null)
+            {
+                Debug.LogWarning("[Bootstrap] 未找到 Btn_ClearanceConditions（BackgroundCanvas 直接子节点）——跳过接线");
+                return;
+            }
+            btn.onClick.RemoveAllListeners();
+            btn.onClick.AddListener(() =>
+            {
+                if (CurrentBattleFlow == null) return; // 仅战斗中可查看
+                UiSfx.Play();
+                ShowClearanceConditions();
+            });
         }
 
         /// <summary>获取物品弹窗常驻创建（RelicObtained → PushOverlay 提示；仅确认关闭）。</summary>
@@ -1121,6 +1224,33 @@ namespace TheLaw.UI
                 panel.Init(_uiManager);
                 panel.gameObject.SetActive(false); // 常驻隐藏（介绍按钮 PushOverlay 显示）
             });
+        }
+
+        /// <summary>数字选择面板常驻创建（能力交互：宝牌 1-9 / 出千 1-6；PushOverlay 显示；点背景关闭；2026-08-27）。</summary>
+        private System.Collections.IEnumerator CreateSelectNumberPanel()
+        {
+            yield return LoadPanelAsync<SelectNumberPanel>(panel =>
+            {
+                _uiManager.RegisterPanel(panel);
+                panel.Init(_uiManager, _resolver, () => CurrentBattleFlow);
+                panel.gameObject.SetActive(false); // 常驻隐藏（能力交互 PushOverlay 显示）
+            });
+        }
+
+        /// <summary>能力交互·宝牌（2026-08-27）：获得含「宝牌」效果的能力遗物 → 弹 1-9 选数面板（SetBaopaiNumber 落账——后端校验持有+1-9）。</summary>
+        private void OnRelicObtained(object data)
+        {
+            if (!(data is RelicDef relic) || relic.effects == null) return;
+            bool hasBaopai = false;
+            foreach (var e in relic.effects)
+            {
+                if (e != null && e.type == RelicEffectType.Baopai) { hasBaopai = true; break; }
+            }
+            if (!hasBaopai) return;
+            var panel = _uiManager != null ? _uiManager.GetPanel("SelectNumber") as SelectNumberPanel : null;
+            if (panel == null) return;
+            _uiManager.PushOverlay("SelectNumber");
+            panel.ShowBaopaiPick();
         }
 
         /// <summary>设置面板常驻创建（overlay——主菜单入口；IsPausing 暂停型冻结后台）。</summary>

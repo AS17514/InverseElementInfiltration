@@ -86,7 +86,6 @@ namespace TheLaw.UI
             ec.AddEventListener(GameEvent.AbilityCandidatesDrawn, OnAbilityCandidates);
             ec.AddEventListener(GameEvent.RuleCandidatesDrawn, OnRuleCandidates);
             ec.AddEventListener(GameEvent.RelicObtained, OnRelicObtained);
-            ec.AddEventListener(GameEvent.EditCandidatesDrawn, OnEditCandidates);
             ec.AddEventListener(GameEvent.StateChanged, OnStateChanged);
             ec.AddEventListener(GameEvent.PhaseChanged, OnPhaseChanged);
         }
@@ -99,7 +98,6 @@ namespace TheLaw.UI
             ec.RemoveEventListener(GameEvent.AbilityCandidatesDrawn, OnAbilityCandidates);
             ec.RemoveEventListener(GameEvent.RuleCandidatesDrawn, OnRuleCandidates);
             ec.RemoveEventListener(GameEvent.RelicObtained, OnRelicObtained);
-            ec.RemoveEventListener(GameEvent.EditCandidatesDrawn, OnEditCandidates);
             ec.RemoveEventListener(GameEvent.StateChanged, OnStateChanged);
             ec.RemoveEventListener(GameEvent.PhaseChanged, OnPhaseChanged);
         }
@@ -150,13 +148,6 @@ namespace TheLaw.UI
             }
         }
 
-        void OnEditCandidates(object data)
-        {
-            if (!_runStarted) return;
-            if (_shown.Contains("edit_intro")) return;
-            ShowSequence("edit_intro");
-        }
-
         void OnStateChanged(object data)
         {
             if (!(data is string key)) return;
@@ -202,6 +193,7 @@ namespace TheLaw.UI
             _active = true;
             EnsurePanelPushed();
             EnsureMask();
+            if (_mask != null) _mask.SetBlocking(true); // 教程期间阻挡下层面板交互（挖孔内放行）
             ShowCurrent();
         }
 
@@ -274,7 +266,11 @@ namespace TheLaw.UI
                 _ui.PopOverlay();
                 _panelPushed = false;
             }
-            if (_mask != null) _mask.SetVisible(false);
+            if (_mask != null)
+            {
+                _mask.SetVisible(false);
+                _mask.SetBlocking(false); // 教程结束恢复交互
+            }
             if (!string.IsNullOrEmpty(_pendingId))
             {
                 string id = _pendingId;
@@ -346,6 +342,7 @@ namespace TheLaw.UI
 
         void Update()
         {
+            TryTriggerEditIntro(); // 编辑教程触发点 = 进入棋子编辑面板后（轮询可见，非候选事件）
             if (!_active) return;
             if (_pendingHighlights.Count > 0)
             {
@@ -359,6 +356,17 @@ namespace TheLaw.UI
         }
 
         float _retryTimer;
+
+        /// <summary>编辑教程：棋子编辑面板（PieceEdit）可见时触发（用户定案：进入面板后，而非三选一候选时）。</summary>
+        void TryTriggerEditIntro()
+        {
+            if (!_runStarted || _shown.Contains("edit_intro")) return;
+            var mb = _ui != null ? _ui.GetPanel("PieceEdit") as MonoBehaviour : null;
+            if (mb != null && mb.gameObject.activeInHierarchy)
+            {
+                ShowSequence("edit_intro");
+            }
+        }
 
         void ApplyResolvedHighlights()
         {

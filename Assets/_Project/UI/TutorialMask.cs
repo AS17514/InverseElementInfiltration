@@ -24,15 +24,27 @@ namespace TheLaw.UI
 
         Image _image;
         Material _material;
+        TutorialInputBlock _block; // 输入阻挡层（内部持有）
+        TutorialInputBlock Block { set => _block = value; }
         readonly List<Transform> _targets = new List<Transform>();
         float _padding = 20f;
         float _darkAlpha = 0.95f; // 压暗强度（用户定案 0.95）
         bool _holeEnabled = true;
+        Rect _holeRect = Rect.zero; // 当前挖孔（屏幕像素，含 padding）——输入阻挡用
+        bool _blocking; // 教程激活期间阻挡下层交互（挖孔内放行）
 
         public float Padding => _padding;
         public float DarkAlpha => _darkAlpha;
 
         public bool IsReady => _material != null && _image != null;
+
+        /// <summary>是否开启输入阻挡（教程激活期间 true）。</summary>
+        public bool IsBlocking => _blocking;
+        public void SetBlocking(bool on) => _blocking = on;
+
+        /// <summary>当前挖孔矩形（屏幕像素，含 padding）；无挖孔时为零矩形。</summary>
+        public Rect HoleScreenRect => _holeRect;
+        public bool HasHole => _holeRect.width > 0f && _holeRect.height > 0f;
 
         /// <summary>整层显隐（无高亮步骤时整层隐藏，避免误压暗全屏）。</summary>
         public void SetVisible(bool on)
@@ -53,8 +65,21 @@ namespace TheLaw.UI
             var img = go.GetComponent<Image>();
             img.raycastTarget = false; // 不挡点击
 
+            // 输入阻挡层（无渲染 Graphic）：教程激活时挡下层点击，挖孔内放行
+            var blockGo = new GameObject("TutorialInputBlock", typeof(RectTransform), typeof(CanvasRenderer), typeof(TutorialInputBlock));
+            blockGo.transform.SetParent(go.transform, false);
+            var brt = blockGo.GetComponent<RectTransform>();
+            brt.anchorMin = Vector2.zero;
+            brt.anchorMax = Vector2.one;
+            brt.offsetMin = Vector2.zero;
+            brt.offsetMax = Vector2.zero;
+            var block = blockGo.GetComponent<TutorialInputBlock>();
+            block.raycastTarget = true;
+            block.color = new Color(1f, 1f, 1f, 0f);
+
             var mask = go.AddComponent<TutorialMask>();
             mask._image = img;
+            mask.Block = block;
             mask._material = new Material(Shader.Find(ShaderName));
             if (mask._material == null)
             {
@@ -149,9 +174,11 @@ namespace TheLaw.UI
             if (r.width <= 0f || r.height <= 0f)
             {
                 _material.SetFloat(PropHoleEnabled, 0f); // 目标不可见（屏幕外）→ 全屏压暗
+                _holeRect = Rect.zero;
                 return;
             }
             r = new Rect(r.xMin - _padding, r.yMin - _padding, r.width + _padding * 2f, r.height + _padding * 2f);
+            _holeRect = r;
             _material.SetVector(PropHoleCenter, r.center);
             _material.SetVector(PropHoleSize, r.size);
         }
@@ -281,6 +308,7 @@ namespace TheLaw.UI
         void OnDestroy()
         {
             if (_material != null) Destroy(_material);
+            if (_block != null) _block.Bind(null);
         }
     }
 }

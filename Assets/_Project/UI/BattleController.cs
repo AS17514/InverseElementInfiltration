@@ -2326,6 +2326,12 @@ namespace TheLaw.UI
                 {
                     RebuildShockWalls(); // 2026-08-26：能力「震击」墙生成
                 }
+                else if (s == "request-rejected")
+                {
+                    // 2026-08-26 后端拒绝信号：执行请求被拒（行动经济已行动等）→ 结束前端执行等待态
+                    // （防 _executing 悬挂 → 全场点击被吞/棋子点不了；FinishExec 清选中/高亮/选格态）
+                    FinishExec();
+                }
                 else if (s == "mahjong-score" || s == "mahjong-wall" || s == "mahjong-hu")
                 {
                     RefreshMahjongPanel();   // 2026-08-27 麻将：牌山/番数/和牌按钮

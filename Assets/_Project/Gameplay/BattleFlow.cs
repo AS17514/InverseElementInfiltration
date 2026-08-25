@@ -471,6 +471,9 @@ namespace TheLaw.Gameplay
                 if (side == Side.Player && _state.Phase == BattlePhase.PlayerTurn
                     && _state.PlayerAP <= 0 && !IsExemptFromApCost(request, request.free, qualifiedUse))
                 {
+                    // ⚠️ 2026-08-26 拒绝信号：AP 耗尽拒绝行动（点棋子执行最常触发）——前端须收尾执行等待态
+                    // （防 _executing 悬挂 → 全场点击被吞/棋子点不了/玩法按钮置灰）
+                    EventCenter.Instance.EventTrigger(GameEvent.StateChanged, "request-rejected");
                     return; // AP 耗尽——拒绝普通行动，等待玩家手动"结束回合"
                 }
 
@@ -525,9 +528,18 @@ namespace TheLaw.Gameplay
                         }
                         break;
                     case ExecuteRequest execute:
+                        // ⚠️ 2026-08-26 拒绝信号：执行请求棋子不存在/非本方 → 前端收尾执行等待态（防悬挂）
+                        if (_state.GetPiece(execute.pieceId)?.side != side)
+                        {
+                            EventCenter.Instance.EventTrigger(GameEvent.StateChanged, "request-rejected");
+                        }
                         if (_state.GetPiece(execute.pieceId)?.side == side)
                         {
-                            if (_state.GetPiece(execute.pieceId).IsGo) { break; } // 2026-08-24 围棋不可行动（含骰子移动重定向——均拒绝）
+                            if (_state.GetPiece(execute.pieceId).IsGo)
+                            {
+                                EventCenter.Instance.EventTrigger(GameEvent.StateChanged, "request-rejected"); // 2026-08-26 拒绝信号：围棋不可行动（同悬挂风险）
+                                break; // 2026-08-24 围棋不可行动（含骰子移动重定向——均拒绝）
+                            }
                             // ⚠️ 2026-08-24 骰子玩法：全场"点数直线移动"buff——点某棋子执行时重定向
                             // （不进入普通执行/扣 AP 逻辑；执行点数步直线移动后取消全场 buff）
                             if (side == Side.Player && _state.IsStyleActive(StyleRegistry.Dice) && _state.DiceMovePending)
@@ -544,6 +556,9 @@ namespace TheLaw.Gameplay
                                 if (_state.ActionEconomyActed.Contains(execute.pieceId))
                                 {
                                     Debug.LogWarning($"[BattleFlow] 行动经济：该棋子本回合已执行过行动——拒绝（piece={execute.pieceId}）");
+                                    // ⚠️ 2026-08-26 拒绝信号：前端执行等待态悬挂（_executing 卡 true → 全场点击被吞、棋子点不了）——
+                                    // 拒绝必须通知前端收尾（前端监听 StateChanged("request-rejected") → FinishExec 清执行态）
+                                    EventCenter.Instance.EventTrigger(GameEvent.StateChanged, "request-rejected");
                                     break; // 已行动过——拒绝本次普通执行
                                 }
                             }
@@ -695,6 +710,14 @@ namespace TheLaw.Gameplay
         private bool IsExemptFromApCost(Request request, bool requestFree, bool qualifiedUse)
         {
             if (requestFree || qualifiedUse) return true;
+            // ⚠️ 2026-08-26 行动经济「高效指挥」：普通执行免 AP（每棋每回合一次）——AP=0 时仍可执行，
+            // 不必结束回合（此前缺口：AP 预检拦死 → AP 耗尽只能结束回合，与"免费执行"语义矛盾）；
+            // 该棋本回合已行动过 → 不豁免（预检拒绝 → request-rejected 信号 → 前端收尾，ExecutePiece 内已行动检查双兜底）
+            if (request is ExecuteRequest execute && _state.ActionEconomyActive
+                && !_state.ActionEconomyActed.Contains(execute.pieceId))
+            {
+                return true;
+            }
             return request is DeployGoRequest || request is BuyTokenRequest || request is DiceMoveRequest || request is BuyGoRequest; // 2026-08-24 买子
         }
 

@@ -1654,10 +1654,6 @@ namespace TheLaw.UI
             {
                 _grpModeRoot.gameObject.SetActive(show);
             }
-            EnsureMahjongRefs();
-            RefreshMahjongPanel(); // 2026-08-27 麻将：槽位就绪后补绑定（幂等）
-            EnsureDiceRefs();
-            RefreshDicePanel(); // 2026-08-27 骰子：槽位就绪后补绑定（幂等——修复"投掷不了"：激活时面板未实例化，重建完成后需补接线）
         }
 
         /// <summary>重建 Grp_Play 槽位：按激活玩法顺序 3 槽——玩法面板 / Grp_Play_None 填补空缺（Addressables 加载模板，保持原名供 Find）。</summary>
@@ -1715,6 +1711,13 @@ namespace TheLaw.UI
                 if (style == StyleRegistry.Mahjong) EnsureMahjongRefs(); // 2026-08-27 麻将面板接线
             }
             RefreshFloorMode(); // 槽位就绪后再刷（key 已一致——不会重复重建；主要补显隐）
+            // ⚠️ 2026-08-26 修复（a9b8db1 回归）：玩法面板补绑放在**协程内**（槽位实例化完成后）——
+            // 不能放 RefreshFloorMode 内：RefreshDicePanel 内部会回调 RefreshGrpPlayVisibility → RefreshFloorMode
+            // → 与 RefreshFloorMode→RefreshDicePanel 构成**同步无限递归**（StackOverflow——实测 21:16 爆栈刷屏）
+            EnsureMahjongRefs();
+            RefreshMahjongPanel();
+            EnsureDiceRefs();
+            RefreshDicePanel();
         }
 
         void OnIntroButtonClicked(int index)

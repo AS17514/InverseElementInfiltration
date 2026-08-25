@@ -49,8 +49,9 @@ namespace TheLaw.UI
             }
             if (_nameText != null) _nameText.text = data?.VerticalName ?? string.Empty;
             if (_valueText != null) _valueText.text = data?.ValueText ?? string.Empty;
-            // 类型位（Img_InfoType）：默认 None 图标；五行 → 程序块背景 + 五行文字 + 元素色（2026-08-27）
+            // 类型位（Img_InfoType）：五行 > 专用类型图标（麻将）> None 占位（2026-08-27）
             var element = data != null ? data.Element : Element.None;
+            var typeIconKey = data != null ? data.TypeIconKey : string.Empty;
             if (_typeIcon != null)
             {
                 if (element != Element.None)
@@ -62,6 +63,12 @@ namespace TheLaw.UI
                         _typeText.text = ElementColors.NameOf(element);
                         _typeText.color = ElementColors.ColorOf(element);
                     }
+                }
+                else if (!string.IsNullOrEmpty(typeIconKey) && IconLibrary.TryGet(typeIconKey, out var typeSp))
+                {
+                    _typeIcon.sprite = typeSp;
+                    _typeIcon.color = Color.white;
+                    if (_typeText != null) _typeText.text = string.Empty;
                 }
                 else
                 {

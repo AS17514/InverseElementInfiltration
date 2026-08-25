@@ -215,29 +215,20 @@ namespace TheLaw.UI
             if (nameText != null) nameText.GetComponent<TMP_Text>().text = "麻将";
             var valueText = FindDeep(view.transform, "Img_InfoValue");
             if (valueText != null) { var t = valueText.GetComponentInChildren<TMP_Text>(true); if (t != null) t.text = card.value.ToString(); }
-            var typeText = FindDeep(view.transform, "Img_InfoType");
-            if (typeText != null) { var t = typeText.GetComponentInChildren<TMP_Text>(true); if (t != null) t.text = "麻"; }
-            var portrait = FindDeep(view.transform, "Grp_InfoPortrait");
-            if (portrait != null)
+            var typeNode = FindDeep(view.transform, "Img_InfoType");
+            if (typeNode != null)
             {
-                var portraitImg = FindDeep(portrait, "Img_InfoPortrait");
-                var img = portraitImg != null ? portraitImg.GetComponent<Image>() : null;
-                if (img != null && IconLibrary.TryGet("mahjong_" + card.value, out var tile))
+                var typeImg = typeNode.GetComponent<Image>();
+                if (typeImg != null && IconLibrary.TryGet("mahjong_type_" + card.value, out var tileType))
                 {
-                    img.sprite = tile;      // 麻将点数图（2026-08-26 图标接入）
-                    img.color = Color.white;
-                    portrait.gameObject.SetActive(true);
-                    if (valueText != null)
-                    {
-                        var vt = valueText.GetComponentInChildren<TMP_Text>(true);
-                        if (vt != null) vt.text = string.Empty; // 图标已含点数——文字清空防重叠
-                    }
-                }
-                else
-                {
-                    portrait.gameObject.SetActive(false); // 无图回退原文本形态
+                    typeImg.sprite = tileType; // 类型位 = 麻将点数图标（2026-08-27）
+                    typeImg.color = Color.white;
+                    var t = typeNode.GetComponentInChildren<TMP_Text>(true);
+                    if (t != null) t.text = string.Empty;
                 }
             }
+            var portrait = FindDeep(view.transform, "Grp_InfoPortrait");
+            if (portrait != null) portrait.gameObject.SetActive(false); // 类型位已承载点数图——立绘隐藏
             if (clickable)
             {
                 var btn = view.gameObject.GetComponent<Button>();

@@ -15,6 +15,9 @@ namespace TheLaw.UI
         {
             // 基础信息图标（占地标识 / 类型占位——2026-08-27）
             "InfoFootprint_1x1", "InfoFootprint_1x2", "Info_None",
+            // 麻将类型位图标（点数——2026-08-27）
+            "mahjong_type_1", "mahjong_type_2", "mahjong_type_3", "mahjong_type_4", "mahjong_type_5",
+            "mahjong_type_6", "mahjong_type_7", "mahjong_type_8", "mahjong_type_9",
             // 程序块槽位背景（默认底图——手牌/构筑卡 Img_InfoProgram 无模块图标时显示）
             "Bg",
             // 程序块·移动（4 族）

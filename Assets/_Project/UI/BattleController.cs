@@ -1415,11 +1415,11 @@ namespace TheLaw.UI
         }
 
         /// <summary>麻将牌卡数据（牌山/手牌共用——复用 Piece_Handcard：名字=麻将、价值=点数）。
-        /// 占地：牌山 1x2，手牌麻将 1x1（2026-08-27）；类型位待麻将专用图（李毕重画中）——暂 None。</summary>
+        /// 占地：牌山 1x2，手牌麻将 1x1；类型位 = 麻将点数图标（2026-08-27）。</summary>
         HandCardViewData MahjongCardData(int point, bool isWall = false)
         {
             return new HandCardViewData(Color.white, "", "麻将", point.ToString(), "", null,
-                Element.None, isWall ? Footprint.Size1x2 : Footprint.Size1x1);
+                Element.None, isWall ? Footprint.Size1x2 : Footprint.Size1x1, "mahjong_type_" + point);
         }
 
         void OnHuClicked()

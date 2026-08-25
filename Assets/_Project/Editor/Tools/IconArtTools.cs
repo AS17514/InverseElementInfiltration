@@ -18,6 +18,7 @@ namespace TheLaw.EditorTools
             "Assets/Art/ProgramBlock",
             "Assets/Art/Characters/Special",
             "Assets/Art/BaseInfoBlock",
+            "Assets/Art/Mahjong",
         };
         const string GroupName = "Art";
 

@@ -81,16 +81,18 @@ namespace TheLaw.UI
         public new string PortraitKey { get; }
         public string VerticalName { get; }
         public Element Element { get; }
+        public string TypeIconKey { get; }
         public IReadOnlyList<ProgramSlotViewData> ProgramSlots { get; }
 
         public HandCardViewData(Color backgroundColor, string portraitKey, string verticalName, string valueText,
             string typeLabel, IReadOnlyList<ProgramSlotViewData> programSlots,
-            Element element = Element.None, Footprint footprint = Footprint.Size1x1)
+            Element element = Element.None, Footprint footprint = Footprint.Size1x1, string typeIconKey = null)
             : base(backgroundColor, valueText, typeLabel, portraitKey, footprint, ToIcons(programSlots))
         {
             PortraitKey = portraitKey ?? string.Empty;
             VerticalName = verticalName ?? string.Empty;
             Element = element;
+            TypeIconKey = typeIconKey ?? string.Empty;
             ProgramSlots = programSlots ?? new List<ProgramSlotViewData>();
         }
 

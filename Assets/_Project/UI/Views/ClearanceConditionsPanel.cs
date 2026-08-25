@@ -21,6 +21,7 @@ namespace TheLaw.UI
         private TMP_Text _titleText;
         private TMP_Text _infoText;
         private Button _confirmBtn;
+        private bool _layoutFixed; // 退化 rect 兜底已执行（李毕拼好布局后不触发）
 
         public void Init(UIManager uiManager)
         {
@@ -42,8 +43,45 @@ namespace TheLaw.UI
 
         public void Bind(ClearanceViewData data)
         {
+            EnsureTextRects(); // 2026-08-26：prefab 文本节点 0 尺寸兜底（Bind 时布局已定，可算父区尺寸）
             if (_titleText != null) _titleText.text = data?.Title ?? string.Empty;
             if (_infoText != null) _infoText.text = data?.Body ?? string.Empty;
+        }
+
+        /// <summary>prefab 未拼位兜底（测试反馈：Txt_Title/Txt_Info 尺寸 0 文字不可见）：
+        /// 仅当文本 Rect 退化（锚点重合且尺寸≈0）时按父容器自动摆位；李毕拼好布局后不生效。</summary>
+        void EnsureTextRects()
+        {
+            if (_layoutFixed) return;
+            _layoutFixed = true;
+            EnsureRect(_titleText, true);
+            EnsureRect(_infoText, false);
+        }
+
+        void EnsureRect(TMP_Text txt, bool isTitle)
+        {
+            if (txt == null) return;
+            var rt = txt.rectTransform;
+            if (rt.anchorMin != rt.anchorMax) return; // 已拉伸布局，无需兜底
+            if (rt.sizeDelta.sqrMagnitude > 1f) return; // 已有尺寸，无需兜底
+            var parent = rt.parent as RectTransform;
+            float w = parent != null && parent.rect.width > 1f ? parent.rect.width - 40f : 760f;
+            float h = parent != null && parent.rect.height > 1f ? parent.rect.height : 480f;
+            rt.anchorMin = new Vector2(0.5f, 1f);
+            rt.anchorMax = new Vector2(0.5f, 1f);
+            rt.pivot = new Vector2(0.5f, 1f);
+            if (isTitle)
+            {
+                rt.anchoredPosition = new Vector2(0f, -12f);
+                rt.sizeDelta = new Vector2(w, 56f);
+                txt.alignment = TextAlignmentOptions.Center;
+            }
+            else
+            {
+                rt.anchoredPosition = new Vector2(0f, -84f);
+                rt.sizeDelta = new Vector2(w, Mathf.Max(120f, h - 100f));
+                txt.alignment = TextAlignmentOptions.TopLeft;
+            }
         }
 
         /// <summary>弹出（PushOverlay 覆盖显示 + 世界冻结）；确认/点背景关闭。</summary>

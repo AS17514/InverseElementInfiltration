@@ -66,6 +66,7 @@ namespace TheLaw.UI
         private BattleResultPanel _battleResultPanel; // 结算面板（战斗结束 overlay——常驻，自身监听 StateChanged）
         private ConfirmPanel _confirmPanel; // 通用确认弹窗（常驻——退出确认等场景复用）
         private ClearanceConditionsPanel _clearancePanel; // 通关条件面板（常驻——战斗开始/战斗中按钮复用；2026-08-26）
+        private UnityEngine.UI.Button _clearanceBtn; // 场景 BackgroundCanvas/Btn_ClearanceConditions（2026-08-26 接线）
         private StoryPanel _storyPanel; // 开场剧情面板（新游戏先播；播完销毁进新局）
         private bool _storyPlaying; // 剧情播放中（防重）
         private TutorialManager _tutorialManager; // 新手教程管理器（观察事件 → 角色说话 + 遮罩高亮）
@@ -1107,6 +1108,7 @@ namespace TheLaw.UI
             var controller = battleGo.AddComponent<BattleController>();
             controller.Init(flow, _gameState, _uiManager, panel); // 绑定面板（不创建——面板局内复用）
             controller.OnExitRequested += ConfirmExitToMenu; // 战斗面板退出按钮 → 确认弹窗（保存返回主菜单）
+            WireClearanceButton(); // 2026-08-26 反馈兜底：进战斗再确保按钮接线（场景改动/时序不依赖）
             StartCoroutine(ShowClearanceAtBattleStart()); // 2026-08-26：战斗开始弹通关条件确认窗
         }
 
@@ -1151,28 +1153,39 @@ namespace TheLaw.UI
             _clearancePanel.Show(ClearanceTextBuilder.Build(_gameState));
         }
 
-        /// <summary>战斗内查看按钮接线（BackgroundCanvas/Btn_ClearanceConditions——仅战斗中有效）。</summary>
+        /// <summary>战斗内查看按钮接线（BackgroundCanvas/Btn_ClearanceConditions——仅战斗中有效；2026-08-26 反馈修复：改按名深搜，兼容任意层级）。</summary>
         private void WireClearanceButton()
         {
+            if (_clearanceBtn != null) return; // 已接线（幂等）
             var bg = GameObject.Find("BackgroundCanvas");
             if (bg == null)
             {
                 Debug.LogWarning("[Bootstrap] 未找到 BackgroundCanvas——通关条件按钮未接线");
                 return;
             }
-            var btn = bg.transform.Find("Btn_ClearanceConditions")?.GetComponent<UnityEngine.UI.Button>();
+            UnityEngine.UI.Button btn = null;
+            foreach (var b in bg.GetComponentsInChildren<UnityEngine.UI.Button>(true))
+            {
+                if (b.name == "Btn_ClearanceConditions") { btn = b; break; }
+            }
             if (btn == null)
             {
-                Debug.LogWarning("[Bootstrap] 未找到 Btn_ClearanceConditions（BackgroundCanvas 直接子节点）——跳过接线");
+                Debug.LogWarning("[Bootstrap] 未找到 Btn_ClearanceConditions（BackgroundCanvas 内任意层级）——跳过接线");
                 return;
             }
+            _clearanceBtn = btn;
             btn.onClick.RemoveAllListeners();
             btn.onClick.AddListener(() =>
             {
-                if (CurrentBattleFlow == null) return; // 仅战斗中可查看
+                if (CurrentBattleFlow == null)
+                {
+                    Debug.Log("[Bootstrap] 通关条件按钮点击但当前不在战斗——忽略");
+                    return;
+                }
                 UiSfx.Play();
                 ShowClearanceConditions();
             });
+            Debug.Log("[Bootstrap] 通关条件按钮已接线（Btn_ClearanceConditions）");
         }
 
         /// <summary>获取物品弹窗常驻创建（RelicObtained → PushOverlay 提示；仅确认关闭）。</summary>

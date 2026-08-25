@@ -962,6 +962,7 @@ namespace TheLaw.UI
                 _uiManager.RegisterPanel(panel);
                 panel.Init(_gameState);
                 panel.OnCandidateConfirmed += OnEditCandidateConfirmed;
+                panel.NotifyContentReady(); // 内容就绪契约：过渡不依赖超时兜底
                 PanelTransition.ShowWithLoading(_uiManager, "EditCandidatePanel");
                 Debug.Log("[Bootstrap] 编辑候选面板已显示");
             }, sessionBound: true);
@@ -1001,7 +1002,8 @@ namespace TheLaw.UI
                 _uiManager.RegisterPanel(panel);
                 panel.Init(_editorSession, _gameState);
                 panel.SetEditableDefId(editableDefId);
-                _uiManager.ShowPanel("PieceEdit");
+                panel.NotifyContentReady(); // 内容就绪契约：过渡不依赖超时兜底
+                PanelTransition.ShowWithLoading(_uiManager, "PieceEdit");
                 Debug.Log("[Bootstrap] 棋子编辑界面已显示（事件模式）");
             }, sessionBound: true);
         }
@@ -1020,7 +1022,7 @@ namespace TheLaw.UI
             }
             else
             {
-                _uiManager.ShowPanel("DeckBuild");
+                PanelTransition.ShowWithLoading(_uiManager, "DeckBuild");
             }
         }
 
@@ -1032,7 +1034,8 @@ namespace TheLaw.UI
                 _deckBuildPanel = panel;
                 _uiManager.RegisterPanel(panel);
                 panel.Init(_resolver, _gameState);
-                _uiManager.ShowPanel("DeckBuild");
+                panel.NotifyContentReady(); // 内容就绪契约：过渡不依赖超时兜底
+                PanelTransition.ShowWithLoading(_uiManager, "DeckBuild");
                 Debug.Log("[Bootstrap] 牌组构筑界面已显示（事件模式）");
             }, sessionBound: true);
         }

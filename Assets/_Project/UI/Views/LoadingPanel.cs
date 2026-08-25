@@ -48,6 +48,7 @@ namespace TheLaw.UI
             base.Show();    // SetActive(true) + RefreshLayout + OnShow + 面板打开碰撞音
             if (_fade != null) _fade.Kill();
             _fade = DOTween.To(() => _cg.alpha, v => _cg.alpha = v, 1f, fadeInSeconds)
+                .SetUpdate(true) // realtime——不受 timeScale=0 冻结（防淡入卡半透明滞留）
                 .OnComplete(() => OnFadeInComplete?.Invoke());
             StartDots();
         }
@@ -59,7 +60,8 @@ namespace TheLaw.UI
             StopDots();
             if (_fade != null) _fade.Kill();
             _fadingOut = true;
-            _fade = DOTween.To(() => _cg.alpha, v => _cg.alpha = v, 0f, fadeOutSeconds).OnComplete(() =>
+            _fade = DOTween.To(() => _cg.alpha, v => _cg.alpha = v, 0f, fadeOutSeconds).SetUpdate(true) // realtime
+                .OnComplete(() =>
             {
                 _fadingOut = false;
                 gameObject.SetActive(false);

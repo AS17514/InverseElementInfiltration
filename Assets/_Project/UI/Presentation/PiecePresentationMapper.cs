@@ -35,7 +35,42 @@ namespace TheLaw.UI
             return new ProgramCardViewData(
                 ProgramTypeLabel(template),
                 PieceValue.GetValue(template).ToString(),
-                ProgramDescription(template));
+                ProgramDescription(template),
+                ProgramIconSprite(template));
+        }
+
+        /// <summary>程序块图标键（Addressables 地址）。移动按 4 族、攻击按 5 方式；效果不画（2026-08-26 定案）。</summary>
+        public static string ProgramIconKey(Template template)
+        {
+            switch (template)
+            {
+                case AttackTemplate atk:
+                    switch (atk.mode)
+                    {
+                        case AttackMode.MeleeAOE: return "attack_melee_aoe";
+                        case AttackMode.DirectFire: return "attack_direct";
+                        case AttackMode.Arcing: return "attack_arcing";
+                        case AttackMode.Spell: return "attack_spell";
+                        default: return "attack_melee";
+                    }
+                case MoveTemplate mv:
+                    if (mv.jumpOffsets != null && mv.jumpOffsets.Count > 0) return "move_jump";
+                    switch (mv.id)
+                    {
+                        case 3: case 5: case 6: case 7: case 8: case 13: case 20: return "move_area";
+                        case 14: case 19: return "move_combo";
+                        case 15: case 16: case 17: case 18: return "move_jump";
+                        default: return "move_step";
+                    }
+                default:
+                    return null; // 效果/跳过：无图标（效果不画）
+            }
+        }
+
+        public static Sprite ProgramIconSprite(Template template)
+        {
+            var key = ProgramIconKey(template);
+            return key != null && IconLibrary.TryGet(key, out var sprite) ? sprite : null;
         }
 
         public static string PieceTypeLabel(PieceType type)
@@ -86,7 +121,7 @@ namespace TheLaw.UI
             for (var i = 0; i < count; i++)
             {
                 var template = program[i];
-                result.Add(new ProgramIconViewData(ProgramTypeLabel(template), template != null));
+                result.Add(new ProgramIconViewData(ProgramTypeLabel(template), template != null, ProgramIconSprite(template)));
             }
             return result;
         }
@@ -102,7 +137,8 @@ namespace TheLaw.UI
                 result.Add(new ProgramSlotViewData(
                     ProgramTypeLabel(template),
                     ProgramDescription(template),
-                    template != null));
+                    template != null,
+                    ProgramIconSprite(template)));
             }
             return result;
         }

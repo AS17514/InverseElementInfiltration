@@ -27,6 +27,11 @@ MonoBehaviour:
     m_ReadOnly: 0
     m_SerializedLabels: []
     FlaggedDuringContentUpdateRestriction: 0
+  - m_GUID: 0bc091c4738c9914cb8e818a02d56694
+    m_Address: attack_direct
+    m_ReadOnly: 0
+    m_SerializedLabels: []
+    FlaggedDuringContentUpdateRestriction: 0
   - m_GUID: 0ed63bb4a72ce1641a02b847bd4f8bc4
     m_Address: ChessPlayer3_09_GreenDisplay
     m_ReadOnly: 0
@@ -57,6 +62,11 @@ MonoBehaviour:
     m_ReadOnly: 0
     m_SerializedLabels: []
     FlaggedDuringContentUpdateRestriction: 0
+  - m_GUID: 2d577502ebc6e5943b69d0932d5a5923
+    m_Address: attack_melee_aoe
+    m_ReadOnly: 0
+    m_SerializedLabels: []
+    FlaggedDuringContentUpdateRestriction: 0
   - m_GUID: 372b47868990b274ba3ed097e70b7b6b
     m_Address: "Avatar_Xeon_\u5E38\u6001"
     m_ReadOnly: 0
@@ -69,6 +79,11 @@ MonoBehaviour:
     FlaggedDuringContentUpdateRestriction: 0
   - m_GUID: 3dfaa4efca454be4c8c3be303fec15f5
     m_Address: event_circle_big_filled
+    m_ReadOnly: 0
+    m_SerializedLabels: []
+    FlaggedDuringContentUpdateRestriction: 0
+  - m_GUID: 423bccb84b942fc49b99f36f166aab74
+    m_Address: mahjong_8
     m_ReadOnly: 0
     m_SerializedLabels: []
     FlaggedDuringContentUpdateRestriction: 0
@@ -92,8 +107,23 @@ MonoBehaviour:
     m_ReadOnly: 0
     m_SerializedLabels: []
     FlaggedDuringContentUpdateRestriction: 0
+  - m_GUID: 5a1b919aa1a2e5e4db502020cf70fa78
+    m_Address: move_combo
+    m_ReadOnly: 0
+    m_SerializedLabels: []
+    FlaggedDuringContentUpdateRestriction: 0
   - m_GUID: 6262947097d19564398298a198614c48
     m_Address: event_left
+    m_ReadOnly: 0
+    m_SerializedLabels: []
+    FlaggedDuringContentUpdateRestriction: 0
+  - m_GUID: 63a32535e7038af41a5eb3e1e7bca62b
+    m_Address: mahjong_3
+    m_ReadOnly: 0
+    m_SerializedLabels: []
+    FlaggedDuringContentUpdateRestriction: 0
+  - m_GUID: 693f11ef2ffd6b14486c4f6d7f41ad0a
+    m_Address: GoPiece
     m_ReadOnly: 0
     m_SerializedLabels: []
     FlaggedDuringContentUpdateRestriction: 0
@@ -102,13 +132,43 @@ MonoBehaviour:
     m_ReadOnly: 0
     m_SerializedLabels: []
     FlaggedDuringContentUpdateRestriction: 0
+  - m_GUID: 6ea9e89605e54834187275fd4022a37b
+    m_Address: attack_spell
+    m_ReadOnly: 0
+    m_SerializedLabels: []
+    FlaggedDuringContentUpdateRestriction: 0
+  - m_GUID: 76b6d61d43bed8b4e8fa932b4ae69097
+    m_Address: mahjong_7
+    m_ReadOnly: 0
+    m_SerializedLabels: []
+    FlaggedDuringContentUpdateRestriction: 0
+  - m_GUID: 795c84750d30b6544889b77d081b79d3
+    m_Address: attack_melee
+    m_ReadOnly: 0
+    m_SerializedLabels: []
+    FlaggedDuringContentUpdateRestriction: 0
   - m_GUID: 7b0daee225a8abe45af48da57f8a8aec
     m_Address: Swordsman
     m_ReadOnly: 0
     m_SerializedLabels: []
     FlaggedDuringContentUpdateRestriction: 0
+  - m_GUID: 7ca995e996f2fdb41baed9c4b47cdb0f
+    m_Address: mahjong_6
+    m_ReadOnly: 0
+    m_SerializedLabels: []
+    FlaggedDuringContentUpdateRestriction: 0
   - m_GUID: 7dde30dbef4eb804e8ad3fed8e95c0a6
     m_Address: "Avatar_Xeon_\u60CA\u8BB6"
+    m_ReadOnly: 0
+    m_SerializedLabels: []
+    FlaggedDuringContentUpdateRestriction: 0
+  - m_GUID: 7f7e7c933b235da44b9e4a7a76476180
+    m_Address: mahjong_9
+    m_ReadOnly: 0
+    m_SerializedLabels: []
+    FlaggedDuringContentUpdateRestriction: 0
+  - m_GUID: 812ff5c628e97f048a5c98f0811743a0
+    m_Address: move_jump
     m_ReadOnly: 0
     m_SerializedLabels: []
     FlaggedDuringContentUpdateRestriction: 0
@@ -152,8 +212,18 @@ MonoBehaviour:
     m_ReadOnly: 0
     m_SerializedLabels: []
     FlaggedDuringContentUpdateRestriction: 0
+  - m_GUID: a25268be7d8a52147a6c16611f586c64
+    m_Address: move_step
+    m_ReadOnly: 0
+    m_SerializedLabels: []
+    FlaggedDuringContentUpdateRestriction: 0
   - m_GUID: a45cc684260f36245a273780e66c6e2b
     m_Address: ChessPlayer3_07_DigitDisplay
+    m_ReadOnly: 0
+    m_SerializedLabels: []
+    FlaggedDuringContentUpdateRestriction: 0
+  - m_GUID: a874f76020531f54abba4ac76e0606ee
+    m_Address: attack_arcing
     m_ReadOnly: 0
     m_SerializedLabels: []
     FlaggedDuringContentUpdateRestriction: 0
@@ -169,6 +239,21 @@ MonoBehaviour:
     FlaggedDuringContentUpdateRestriction: 0
   - m_GUID: aa558760eaf32554fb26fac9fa204d0e
     m_Address: "Xeon_\u51DD\u91CD"
+    m_ReadOnly: 0
+    m_SerializedLabels: []
+    FlaggedDuringContentUpdateRestriction: 0
+  - m_GUID: ab24cfe850c5569489b1ff8f988f05ed
+    m_Address: move_area
+    m_ReadOnly: 0
+    m_SerializedLabels: []
+    FlaggedDuringContentUpdateRestriction: 0
+  - m_GUID: ac00aea4253e5da4d8e534616ed80fcd
+    m_Address: mahjong_2
+    m_ReadOnly: 0
+    m_SerializedLabels: []
+    FlaggedDuringContentUpdateRestriction: 0
+  - m_GUID: b8434ec982e5abc45a70d54cf9d3083e
+    m_Address: mahjong_1
     m_ReadOnly: 0
     m_SerializedLabels: []
     FlaggedDuringContentUpdateRestriction: 0
@@ -227,6 +312,11 @@ MonoBehaviour:
     m_ReadOnly: 0
     m_SerializedLabels: []
     FlaggedDuringContentUpdateRestriction: 0
+  - m_GUID: f39b621d11830384eb86c8ace8a62399
+    m_Address: mahjong_4
+    m_ReadOnly: 0
+    m_SerializedLabels: []
+    FlaggedDuringContentUpdateRestriction: 0
   - m_GUID: f45a35264cba84d47990e222a541a219
     m_Address: ShieldGuard
     m_ReadOnly: 0
@@ -244,6 +334,11 @@ MonoBehaviour:
     FlaggedDuringContentUpdateRestriction: 0
   - m_GUID: fc3b0aacb1c485c4bb2f572734b3a89d
     m_Address: event_bg
+    m_ReadOnly: 0
+    m_SerializedLabels: []
+    FlaggedDuringContentUpdateRestriction: 0
+  - m_GUID: fc4989a4f1b8e974188be015ae4c2f63
+    m_Address: mahjong_5
     m_ReadOnly: 0
     m_SerializedLabels: []
     FlaggedDuringContentUpdateRestriction: 0

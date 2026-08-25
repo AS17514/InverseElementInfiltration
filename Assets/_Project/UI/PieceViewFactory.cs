@@ -142,6 +142,10 @@ namespace TheLaw.UI
             {
                 return sprite;
             }
+            if (def == null && IconLibrary.TryGet("GoPiece", out var goSprite) && goSprite != null)
+            {
+                return goSprite; // 围棋立绘（代码内建 def——IconLibrary 预载，2026-08-26）
+            }
             return CreatePortraitSprite(); // 占位兜底（美术缺失/未预载完）
         }
 

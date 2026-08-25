@@ -370,6 +370,7 @@ namespace TheLaw.UI
             // 防御：面板未就绪（Bootstrap 保证——不应发生）——先检查再订阅（验收 B：防防御路径订阅残留）
             _panel = panel;
             if (_panel == null) return;
+            panel.ResetCheatCount(); // 2026-08-26 测试自动过关：Ctrl+设置×10 计数每场战斗重置（防跨场累计误触发）
             _uiManager.RegisterPanel(panel); // 幂等覆盖（重复注册无害）
             PanelTransition.ShowWithLoading(_uiManager, "Battle");
             // ⚠️ 面板局内复用（UI 架构重构 §五）：旧 BC 的按钮监听残留在复用面板上——

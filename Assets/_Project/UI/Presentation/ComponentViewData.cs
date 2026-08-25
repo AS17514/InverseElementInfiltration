@@ -43,12 +43,14 @@ namespace TheLaw.UI
         public string TypeLabel { get; }
         public string ValueText { get; }
         public string Description { get; }
+        public Sprite IconSprite { get; }
 
-        public ProgramCardViewData(string typeLabel, string valueText, string description)
+        public ProgramCardViewData(string typeLabel, string valueText, string description, Sprite iconSprite = null)
         {
             TypeLabel = typeLabel ?? string.Empty;
             ValueText = valueText ?? string.Empty;
             Description = description ?? string.Empty;
+            IconSprite = iconSprite;
         }
     }
 

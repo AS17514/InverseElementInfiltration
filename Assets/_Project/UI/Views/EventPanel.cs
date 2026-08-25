@@ -40,6 +40,14 @@ namespace TheLaw.UI
         private Vector2 _defaultArtPos, _defaultArtSize; // prefab 默认 CG 的 anchoredPosition/sizeDelta（恢复用）
         private Sprite _artAbility, _artEdit, _artMode; // 事件 CG（Addressables 懒加载缓存）
         private string _pendingArtKey;         // CG 未加载完时的待应用类型 key（加载完成后补应用）
+        private Sprite _circleSmallEmpty, _circleSmallFilled, _circleBigEmpty, _circleBigFilled; // 进度节点素材（小/大 × 空/满）
+        private int _pendingBuilds;            // 未完成的内容构建计数（选项区重建——普通/玩法/能力；内容就绪检查点）
+        private bool _artPending;              // 事件 CG 未加载完成（待应用——内容就绪检查点等待其加载）
+
+        // ====== 内容就绪检查点（2026-08-25：过渡 loading 等此信号再淡出——防止事件内容未加载完就揭盖）======
+        void BeginContent() { _pendingBuilds++; IsContentReady = false; }
+        void EndContent() { if (_pendingBuilds > 0) _pendingBuilds--; TryNotifyReady(); }
+        void TryNotifyReady() { if (_pendingBuilds == 0 && !_artPending) NotifyContentReady(); }
 
         private TMP_Text _title;
         private TMP_Text _desc;
@@ -64,6 +72,7 @@ namespace TheLaw.UI
         protected override void RefreshLayout()
         {
             base.RefreshLayout();
+            RefreshProgress(); // 2026-08-25：每次显示/重建顺带刷左侧进度节点（素材未就绪时跳过，加载完成后补刷）
             var desc = _optionsRoot != null ? _optionsRoot.parent as RectTransform : null;
             if (desc == null)
             {
@@ -114,6 +123,8 @@ namespace TheLaw.UI
             StartCoroutine(LoadOptionTemplate());
             // 预加载事件 CG（event_ability/event_edit/event_mode——Addressables 地址 = 文件名）
             StartCoroutine(LoadEventArtSprites());
+            // 预加载进度节点素材（小/大 × 空/满——Addressables 地址 = 文件名）
+            StartCoroutine(LoadProgressSprites());
         }
 
         /// <summary>按名深度查找（面板层级布局变化时兜底——与 BattleController/PieceEditPanel 同模式）。</summary>
@@ -195,6 +206,7 @@ namespace TheLaw.UI
                 EnterAbilityMode(_currentEventId, _currentEvent);
                 return;
             }
+            BeginContent(); // 内容就绪检查点：普通事件开始构建
             _isAbilityPick = false;
             if (_exitBtn != null) _exitBtn.interactable = true; // 普通事件恢复退出按钮（能力模式已禁用——不能直接完成绕过选择）
             // 2026-08-25：事件小文本覆盖（EventTexts——docx 来源；未登记事件回退定义原文本）
@@ -249,6 +261,7 @@ namespace TheLaw.UI
                     option.available ? () => OnOptionClicked(index) : null);
             }
             RefreshLayout(); // 2026-08-23 时序修复：选项就位后再刷新布局（Grp_EventOptions 已准备好）
+            EndContent(); // 内容就绪检查点：普通事件选项构建完成（同步路径）
         }
 
         System.Collections.IEnumerator BuildOptionsWhenReady()
@@ -317,6 +330,8 @@ namespace TheLaw.UI
                 _artImage.sprite = _defaultArt;
                 if (rt != null) { rt.anchoredPosition = _defaultArtPos; rt.sizeDelta = _defaultArtSize; }
                 _pendingArtKey = null;
+                _artPending = false; // 默认 CG：无待应用
+                TryNotifyReady();
                 return;
             }
             _pendingArtKey = key;
@@ -330,6 +345,12 @@ namespace TheLaw.UI
                     rt.sizeDelta = new Vector2(cfg.W, cfg.H);
                 }
                 _pendingArtKey = null;
+                _artPending = false; // CG 已应用（同步路径）
+                TryNotifyReady();
+            }
+            else
+            {
+                _artPending = true; // CG 未加载完——内容就绪检查点等加载完成补应用
             }
         }
 
@@ -359,6 +380,50 @@ namespace TheLaw.UI
             else Debug.LogWarning("[EventPanel] 事件 CG 加载失败：event_mode");
 
             if (!string.IsNullOrEmpty(_pendingArtKey)) ApplyEventArt(_pendingArtKey);
+        }
+
+        /// <summary>预加载进度节点素材（event_circle_{small,big}_{empty,filled}）；就绪后按当前状态补刷。</summary>
+        System.Collections.IEnumerator LoadProgressSprites()
+        {
+            var se = UnityEngine.AddressableAssets.Addressables.LoadAssetAsync<Sprite>("event_circle_small_empty");
+            yield return se;
+            if (se.Status == UnityEngine.ResourceManagement.AsyncOperations.AsyncOperationStatus.Succeeded) _circleSmallEmpty = se.Result;
+
+            var sf = UnityEngine.AddressableAssets.Addressables.LoadAssetAsync<Sprite>("event_circle_small_filled");
+            yield return sf;
+            if (sf.Status == UnityEngine.ResourceManagement.AsyncOperations.AsyncOperationStatus.Succeeded) _circleSmallFilled = sf.Result;
+
+            var be = UnityEngine.AddressableAssets.Addressables.LoadAssetAsync<Sprite>("event_circle_big_empty");
+            yield return be;
+            if (be.Status == UnityEngine.ResourceManagement.AsyncOperations.AsyncOperationStatus.Succeeded) _circleBigEmpty = be.Result;
+
+            var bf = UnityEngine.AddressableAssets.Addressables.LoadAssetAsync<Sprite>("event_circle_big_filled");
+            yield return bf;
+            if (bf.Status == UnityEngine.ResourceManagement.AsyncOperations.AsyncOperationStatus.Succeeded) _circleBigFilled = bf.Result;
+
+            RefreshProgress();
+        }
+
+        /// <summary>
+        /// 左侧进度节点刷新（2026-08-25）：按 GameState 当前层 NodeStates 换图——Completed = 对应尺寸 filled、
+        /// 其余 = 对应尺寸 empty（明暗由素材本身表达，不再颜色叠加）；非当前层节点不动。
+        /// 节点命名 Img_Node_{层}_{序号}（1 起）；大节点（战斗关）判定 sizeDelta.y ≥ 50。
+        /// </summary>
+        void RefreshProgress()
+        {
+            if (_gameState == null) return;
+            var states = _gameState.NodeStates;
+            if (states == null || states.Count == 0) return;
+            for (int i = 0; i < states.Count; i++)
+            {
+                var img = FindDeep(transform, $"Img_Node_{_gameState.CurrentFloor + 1}_{i + 1}")?.GetComponent<Image>();
+                if (img == null) continue; // 节点缺失容错（命名不符/未摆放）
+                bool isBig = img.rectTransform != null && img.rectTransform.sizeDelta.y >= 50f;
+                Sprite target = states[i] == NodeState.Completed
+                    ? (isBig ? _circleBigFilled : _circleSmallFilled)
+                    : (isBig ? _circleBigEmpty : _circleSmallEmpty);
+                if (target != null) img.sprite = target;
+            }
         }
 
         // ========== 玩法事件二选一（2026-08-25：isRulePick 专用分支——复用事件面板/选项模板）==========
@@ -396,6 +461,7 @@ namespace TheLaw.UI
             _abilitySelectionLocked = false;
             _isRulePick = true;
             _ruleSelectionLocked = false;
+            BeginContent(); // 内容就绪检查点：玩法事件开始构建
             if (_title != null) _title.text = string.IsNullOrEmpty(ev.title) ? "未知事件" : ev.title; // 中文兜底（防资产名泄漏）
             if (_desc != null) _desc.text = EventTexts.DescFor(_currentEventId, _currentEvent);
             if (_exitBtn != null) _exitBtn.interactable = false; // 玩法模式禁用退出（不能"直接完成"绕过玩法选择）
@@ -434,6 +500,7 @@ namespace TheLaw.UI
                     () => SelectRule(index));
             }
             RefreshLayout(); // 2026-08-23 时序修复：候选就位后再刷新布局（Grp_EventOptions 已准备好）
+            EndContent(); // 内容就绪检查点：玩法候选构建完成（同步路径）
         }
 
         System.Collections.IEnumerator BuildRuleOptionsWhenReady()
@@ -492,6 +559,7 @@ namespace TheLaw.UI
             _abilitySelectionLocked = false;
             _isRulePick = false;
             _ruleSelectionLocked = false;
+            BeginContent(); // 内容就绪检查点：能力事件开始构建
             // 2026-08-25：事件小文本覆盖 + 刷新次数动态注入（docx 斜体 <i> 由 EventTexts 提供）
             if (_title != null) _title.text = EventTexts.TitleFor(eventId, ev);
             if (_desc != null) _desc.text = EventTexts.DescFor(eventId, ev, AbilityRefreshTotal());
@@ -548,6 +616,7 @@ namespace TheLaw.UI
                     left > 0 ? () => RefreshAbility(index) : null); // 剩余次数用尽：不挂长按（长按无效）
             }
             RefreshLayout(); // 2026-08-23 时序修复：候选就位后再刷新布局（Grp_EventOptions 已准备好）
+            EndContent(); // 内容就绪检查点：能力候选构建完成（同步路径）
         }
 
         System.Collections.IEnumerator BuildAbilityOptionsWhenReady()

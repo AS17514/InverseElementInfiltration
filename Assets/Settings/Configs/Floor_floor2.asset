@@ -14,54 +14,51 @@ MonoBehaviour:
   m_EditorClassIdentifier: 
   _id: 2089890494
   victoryRule: 1
-  targetScore: 60
+  targetScore: 45
   scoreDeductEnabled: 0
   waveDefs:
   - startTurn: 1
-    pieceDefIds: 558e774d558e774dc1f3047c55604d26
-    randomPool: 0
+    pieceDefIds: 
+    randomPool: 1
     poolType: 0
-    count: 0
-    positions:
-    - {x: 0, y: 7}
-    - {x: 2, y: 7}
-    - {x: 5, y: 7}
-    - {x: 7, y: 7}
+    count: 4
+    positions: []
     isLastWave: 0
     endCountdown: 0
     promotions: []
     autoPromote: 1
     waveScoreTarget: 0
+    groups: []
+    randomCells: 1
+    spawnShield: 0
   - startTurn: 4
-    pieceDefIds: 126165472fc65f4700a52e355c32174d
-    randomPool: 0
-    poolType: 0
-    count: 0
-    positions:
-    - {x: 1, y: 6}
-    - {x: 3, y: 6}
-    - {x: 4, y: 6}
-    - {x: 6, y: 6}
+    pieceDefIds: 
+    randomPool: 1
+    poolType: 1
+    count: 4
+    positions: []
     isLastWave: 0
     endCountdown: 0
     promotions: []
     autoPromote: 1
     waveScoreTarget: 0
+    groups: []
+    randomCells: 1
+    spawnShield: 0
   - startTurn: 7
-    pieceDefIds: 5ee95e115ee95e1100a52e355c32174d
-    randomPool: 0
-    poolType: 0
-    count: 0
-    positions:
-    - {x: 0, y: 7}
-    - {x: 3, y: 7}
-    - {x: 5, y: 7}
-    - {x: 7, y: 7}
+    pieceDefIds: 
+    randomPool: 1
+    poolType: 1
+    count: 4
+    positions: []
     isLastWave: 1
     endCountdown: 3
     promotions: []
-    autoPromote: 0
+    autoPromote: 1
     waveScoreTarget: 0
+    groups: []
+    randomCells: 1
+    spawnShield: 0
   enemyMaxAP: 3
   eventSequence:
   - rule

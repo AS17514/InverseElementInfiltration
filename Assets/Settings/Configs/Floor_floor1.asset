@@ -32,6 +32,9 @@ MonoBehaviour:
     promotions: []
     autoPromote: 1
     waveScoreTarget: 0
+    groups: []
+    randomCells: 0
+    spawnShield: 0
   - startTurn: 4
     pieceDefIds: 
     randomPool: 1
@@ -47,6 +50,9 @@ MonoBehaviour:
     promotions: []
     autoPromote: 1
     waveScoreTarget: 0
+    groups: []
+    randomCells: 0
+    spawnShield: 0
   - startTurn: 7
     pieceDefIds: 
     randomPool: 1
@@ -62,6 +68,9 @@ MonoBehaviour:
     promotions: []
     autoPromote: 1
     waveScoreTarget: 0
+    groups: []
+    randomCells: 0
+    spawnShield: 0
   enemyMaxAP: 2
   eventSequence:
   - ability

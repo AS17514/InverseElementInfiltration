@@ -13,70 +13,62 @@ MonoBehaviour:
   m_Name: Floor_floor4
   m_EditorClassIdentifier: 
   _id: 2123445732
-  victoryRule: 2
+  victoryRule: 3
   targetScore: 100
-  scoreDeductEnabled: 1
+  scoreDeductEnabled: 0
   waveDefs:
   - startTurn: 1
     pieceDefIds: 
     randomPool: 1
     poolType: 0
-    count: 4
-    positions:
-    - {x: 0, y: 7}
-    - {x: 2, y: 7}
-    - {x: 5, y: 7}
-    - {x: 7, y: 7}
+    count: 6
+    positions: []
     isLastWave: 0
     endCountdown: 0
     promotions: []
     autoPromote: 1
-    waveScoreTarget: 0
+    waveScoreTarget: 12
+    groups: []
+    randomCells: 1
+    spawnShield: 0
   - startTurn: 4
-    pieceDefIds: c1f3047c55604d262fc65f4700a52e35
+    pieceDefIds: 
     randomPool: 0
     poolType: 0
     count: 0
-    positions:
-    - {x: 1, y: 6}
-    - {x: 2, y: 6}
-    - {x: 5, y: 6}
-    - {x: 6, y: 6}
+    positions: []
     isLastWave: 0
     endCountdown: 0
     promotions: []
     autoPromote: 1
-    waveScoreTarget: 0
+    waveScoreTarget: 25
+    groups:
+    - randomPool: 1
+      poolType: 1
+      count: 6
+      pieceDefIds: 
+      deployArea: 0
+    - randomPool: 1
+      poolType: 1
+      count: 2
+      pieceDefIds: 
+      deployArea: 1
+    randomCells: 1
+    spawnShield: 0
   - startTurn: 7
-    pieceDefIds: 5ee95e1100a52e355c32174d1b57317c
-    randomPool: 0
-    poolType: 0
-    count: 0
-    positions:
-    - {x: 0, y: 7}
-    - {x: 3, y: 7}
-    - {x: 5, y: 7}
-    - {x: 6, y: 7}
-    isLastWave: 0
-    endCountdown: 0
+    pieceDefIds: 
+    randomPool: 1
+    poolType: 1
+    count: 4
+    positions: []
+    isLastWave: 1
+    endCountdown: 3
     promotions: []
     autoPromote: 1
-    waveScoreTarget: 0
-  - startTurn: 10
-    pieceDefIds: 04258145042581452a1c18424b4d5944
-    randomPool: 0
-    poolType: 0
-    count: 0
-    positions:
-    - {x: 0, y: 6}
-    - {x: 1, y: 7}
-    - {x: 6, y: 7}
-    - {x: 7, y: 6}
-    isLastWave: 1
-    endCountdown: 4
-    promotions: []
-    autoPromote: 0
-    waveScoreTarget: 0
+    waveScoreTarget: 30
+    groups: []
+    randomCells: 1
+    spawnShield: 1
   enemyMaxAP: 4
   eventSequence:
   - rule

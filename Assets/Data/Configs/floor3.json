@@ -1,10 +1,10 @@
 {
   "floorName": "floor3",
   "displayName": "第 3 层·每波达标",
-  "description": "【测试配置 2026-08-26——数值待策划校准】胜利 = 击败所有波次 且（目标分 80 达成 或 每波得分均达标 6/10/14/20）；【扣分机制启用（scoreDeductEnabled=true）】——我方棋子被敌方棋子击败 → 本关总得分 - 该棋子价值（clamp 0，测试者可通过故意送子观察）；敌方 AP 3；4 波（回合 1/4/7/10）固定阵容 + 前 3 波自动升变预告；玩法事件二选一激活玩法",
+  "description": "【2026-08-26 策划新规则】胜利 = 击败所有波次的前提下：每波得分均达标（8/20/15） 或 未每波达标但总目标分 64 达成；无扣分；敌方 AP 3；3 波（回合 1/4/7）：波 1 部署区随机 4 格生成 4 个初始棋子、波 2 部署区随机 6 格生成 6 个部署棋子、波 3 部署区随机 4 格生成 4 个部署棋子（真随机·种子可复现）；升变规则同第 1 关",
   "victoryRule": "PerWaveScore",
-  "targetScore": 80,
-  "scoreDeductEnabled": true,
+  "targetScore": 64,
+  "scoreDeductEnabled": false,
   "enemyMaxAP": 3,
   "eventSequence": [
     "rule",
@@ -21,39 +21,33 @@
   "waves": [
     {
       "startTurn": 1,
-      "pieceDefIds": ["Soldier", "Swordsman", "ShieldGuard", "ShortArcher"],
-      "positions": [{"dx":0,"dy":7},{"dx":2,"dy":7},{"dx":5,"dy":7},{"dx":7,"dy":7}],
+      "pool": "Initial",
+      "count": 4,
+      "randomCells": true,
       "isLastWave": false,
       "endCountdown": 0,
       "autoPromote": true,
-      "waveScoreTarget": 6
+      "waveScoreTarget": 8
     },
     {
       "startTurn": 4,
-      "pieceDefIds": ["Ranger", "LightCavalry", "Berserker", "Knight"],
-      "positions": [{"dx":1,"dy":6},{"dx":2,"dy":6},{"dx":5,"dy":6},{"dx":6,"dy":6}],
+      "pool": "Deployable",
+      "count": 6,
+      "randomCells": true,
       "isLastWave": false,
       "endCountdown": 0,
       "autoPromote": true,
-      "waveScoreTarget": 10
+      "waveScoreTarget": 20
     },
     {
       "startTurn": 7,
-      "pieceDefIds": ["Ranger", "Berserker", "LightCavalry", "Knight"],
-      "positions": [{"dx":0,"dy":7},{"dx":3,"dy":7},{"dx":4,"dy":7},{"dx":7,"dy":7}],
-      "isLastWave": false,
-      "endCountdown": 0,
-      "autoPromote": true,
-      "waveScoreTarget": 14
-    },
-    {
-      "startTurn": 10,
-      "pieceDefIds": ["Assassin", "Wizard", "Cannoner", "Knight"],
-      "positions": [{"dx":1,"dy":6},{"dx":2,"dy":7},{"dx":5,"dy":7},{"dx":6,"dy":6}],
+      "pool": "Deployable",
+      "count": 4,
+      "randomCells": true,
       "isLastWave": true,
-      "endCountdown": 4,
-      "autoPromote": false,
-      "waveScoreTarget": 20
+      "endCountdown": 3,
+      "autoPromote": true,
+      "waveScoreTarget": 15
     }
   ]
 }

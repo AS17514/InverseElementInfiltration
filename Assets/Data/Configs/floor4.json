@@ -1,10 +1,10 @@
 {
   "floorName": "floor4",
   "displayName": "第 4 层·最终战",
-  "description": "【测试配置 2026-08-26——数值待策划校准】胜利 = 最后一波棋子全部击败 且 达成目标分 100（双条件）；【扣分机制启用】；敌方 AP 4（最强）；4 波（回合 1/4/7/10）——波 1 随机初始（种子可复现）、波 4 升变精英（刺客×2/术士/炮手）；前 3 波自动升变预告；玩法事件二选一（第 4 关激活第 3 个玩法——验证已激活玩法不再出现）",
-  "victoryRule": "Both",
+  "description": "【2026-08-26 策划新规则】胜利标准同第 3 关：击败所有波次前提下——每波得分均达标（12/25/30） 或 总目标分 100 达成；无扣分；敌方 AP 4；3 波（回合 1/4/7）：波 1 部署区随机 6 格生成 6 个初始棋子、波 2 部署区随机 6 格 6 个部署棋子 + 非双方部署区随机 2 格 2 个部署棋子（共 8）、波 3 部署区随机 4 格 4 个部署棋子且额外获得护盾 1；升变规则同第 1 关",
+  "victoryRule": "PerWaveScore",
   "targetScore": 100,
-  "scoreDeductEnabled": true,
+  "scoreDeductEnabled": false,
   "enemyMaxAP": 4,
   "eventSequence": [
     "rule",
@@ -22,35 +22,43 @@
     {
       "startTurn": 1,
       "pool": "Initial",
-      "count": 4,
-      "positions": [{"dx":0,"dy":7},{"dx":2,"dy":7},{"dx":5,"dy":7},{"dx":7,"dy":7}],
+      "count": 6,
+      "randomCells": true,
       "isLastWave": false,
       "endCountdown": 0,
-      "autoPromote": true
+      "autoPromote": true,
+      "waveScoreTarget": 12
     },
     {
       "startTurn": 4,
-      "pieceDefIds": ["Swordsman", "ShieldGuard", "LightCavalry", "Ranger"],
-      "positions": [{"dx":1,"dy":6},{"dx":2,"dy":6},{"dx":5,"dy":6},{"dx":6,"dy":6}],
+      "randomCells": true,
+      "groups": [
+        {
+          "pool": "Deployable",
+          "count": 6,
+          "deployArea": "enemy-deploy"
+        },
+        {
+          "pool": "Deployable",
+          "count": 2,
+          "deployArea": "midfield"
+        }
+      ],
       "isLastWave": false,
       "endCountdown": 0,
-      "autoPromote": true
+      "autoPromote": true,
+      "waveScoreTarget": 25
     },
     {
       "startTurn": 7,
-      "pieceDefIds": ["Berserker", "Ranger", "Knight", "Marksman"],
-      "positions": [{"dx":0,"dy":7},{"dx":3,"dy":7},{"dx":5,"dy":7},{"dx":6,"dy":7}],
-      "isLastWave": false,
-      "endCountdown": 0,
-      "autoPromote": true
-    },
-    {
-      "startTurn": 10,
-      "pieceDefIds": ["Assassin", "Assassin", "Wizard", "Cannoner"],
-      "positions": [{"dx":0,"dy":6},{"dx":1,"dy":7},{"dx":6,"dy":7},{"dx":7,"dy":6}],
+      "pool": "Deployable",
+      "count": 4,
+      "randomCells": true,
+      "spawnShield": 1,
       "isLastWave": true,
-      "endCountdown": 4,
-      "autoPromote": false
+      "endCountdown": 3,
+      "autoPromote": true,
+      "waveScoreTarget": 30
     }
   ]
 }

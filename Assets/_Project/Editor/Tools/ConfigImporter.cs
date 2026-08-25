@@ -392,7 +392,27 @@ namespace TheLaw.EditorTools
                     promotions = ParsePromotions(w.promotions), // 波次升变预告（2026-08-12：DTO 补字段——此前只能手动配资产，与"JSON 是权威源"公约冲突）
                     autoPromote = w.autoPromote, // 自动预告模式（2026-08-19）
                     waveScoreTarget = w.waveScoreTarget, // 每波达标线（2026-08-19 计分规则；0=未配置）
+                    randomCells = w.randomCells, // 2026-08-26 区域内随机空格部署（策划第 2-4 关"部署区随机 N 个空格"）
+                    spawnShield = w.spawnShield, // 2026-08-26 部署棋子上场额外护盾（关 4 波 3）
                 };
+                // 多部署组（2026-08-26：同波多组——每组独立池/数量/区域；空 = 顶层单组字段向后兼容）
+                wave.groups = new List<WaveGroupDef>();
+                foreach (var g2 in w.groups ?? new List<WaveGroupJson>())
+                {
+                    var gd = new WaveGroupDef
+                    {
+                        pieceDefIds = ResolvePieceIds(g2.pieceDefIds),
+                        count = g2.count,
+                        deployArea = ParseDeployArea(g2.deployArea),
+                    };
+                    if (!string.IsNullOrEmpty(g2.pool))
+                    {
+                        if (g2.pool == "Initial") { gd.randomPool = true; gd.poolType = PieceType.Initial; }
+                        else if (g2.pool == "Deployable") { gd.randomPool = true; gd.poolType = PieceType.Deployable; }
+                        else { Debug.LogWarning($"[配置导入器] 未知随机池类型：{g2.pool}（组级忽略——按固定阵容）"); }
+                    }
+                    wave.groups.Add(gd);
+                }
                 // 随机池（2026-08-19：Initial/Deployable——从该类棋子随机抽 count 个，可重复）
                 if (!string.IsNullOrEmpty(w.pool))
                 {
@@ -729,6 +749,16 @@ namespace TheLaw.EditorTools
             return result == Direction.None ? Direction.Up : result;
         }
 
+        /// <summary>部署区域解析（2026-08-26：wave 组级 deployArea——"midfield"=非双方部署区；缺省=敌方部署区）。</summary>
+        private static DeployArea ParseDeployArea(string s)
+        {
+            if (string.Equals(s, "midfield", System.StringComparison.OrdinalIgnoreCase))
+            {
+                return DeployArea.Midfield;
+            }
+            return DeployArea.EnemyDeploy;
+        }
+
         private static int StableHash(string s)
         {
             uint hash = 2166136261;
@@ -804,7 +834,13 @@ namespace TheLaw.EditorTools
 
         private class MapJson { public string mapName; public string displayName; public string description; public List<string> floors; }
         private class FloorJson { public string floorName; public string displayName; public string description; public string victoryRule; public int targetScore; public bool scoreDeductEnabled; public int enemyMaxAP; public List<string> eventSequence; public List<string> eventPoolIds; public List<WaveJson> waves; }
-        private class WaveJson { public int startTurn; public List<string> pieceDefIds; public string pool; public int count; public List<PointJson> positions; public bool isLastWave; public int endCountdown; public List<WavePromotionJson> promotions; public bool autoPromote; public int waveScoreTarget; }
+        private class WaveJson
+        {
+            public int startTurn; public List<string> pieceDefIds; public string pool; public int count; public List<PointJson> positions;
+            public bool isLastWave; public int endCountdown; public List<WavePromotionJson> promotions; public bool autoPromote; public int waveScoreTarget;
+            public bool randomCells; public int spawnShield; public List<WaveGroupJson> groups; // 2026-08-26 多组部署/随机空格/部署护盾
+        }
+        private class WaveGroupJson { public List<string> pieceDefIds; public string pool; public int count; public string deployArea; } // 2026-08-26 组级：池/数量/区域（enemy-deploy|midfield）
         private class WavePromotionJson { public int pieceIndexInWave; public string toDefId; }
         private class RelicsJson { public List<RelicJson> relics; }
         private class RelicJson { public string relicName; public string displayName; public string description; public List<string> tags; public List<RelicEffectJson> effects; public List<AbilityJson> abilities; }

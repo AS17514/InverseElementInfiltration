@@ -1288,57 +1288,58 @@ namespace TheLaw.Gameplay
                 }
                 var deployedThisWave = new List<PieceInstance>();
                 bool anyDeployed = false;
-                // 阵容：固定列表 或 随机池（2026-08-19——从初始/部署类棋子随机抽 count 个，可重复；RandomManager 可复现）
-                var defIds = wave.pieceDefIds;
-                if (wave.randomPool)
+                // 波次阵容：多部署组（2026-08-26 策划第 2-4 关新规则——groups 非空走组：每组独立池/数量/区域[部署区/非部署区随机空格]；
+                // 空 = 顶层单组兼容：随机池或固定阵容 + 固定站位/顺序找位——旧配置零改动）
+                var groupDefs = BuildWaveGroups(wave);
+                var usedCells = new HashSet<Vector2Int>(); // 本波已选格（随机空格防同波踩重）
+                foreach (var g in groupDefs)
                 {
-                    var candidates = new List<int>();
-                    foreach (var def in ConfigTable.All<PieceDef>())
+                    var defIds = g.pieceDefIds;
+                    if (g.randomPool)
                     {
-                        if (_state.GetEffectiveType(def.Id) == wave.poolType)
+                        var candidates = new List<int>();
+                        foreach (var def in ConfigTable.All<PieceDef>())
                         {
-                            candidates.Add(def.Id);
+                            if (_state.GetEffectiveType(def.Id) == g.poolType)
+                            {
+                                candidates.Add(def.Id);
+                            }
+                        }
+                        if (candidates.Count == 0)
+                        {
+                            Debug.LogWarning($"[BattleFlow] 波次随机池为空（{g.poolType}）——本组不部署");
+                            defIds = new List<int>();
+                        }
+                        else
+                        {
+                            defIds = new List<int>();
+                            for (int i = 0; i < Mathf.Max(0, g.count); i++)
+                            {
+                                defIds.Add(candidates[RandomManager.Instance.Range(0, candidates.Count)]);
+                            }
                         }
                     }
-                    if (candidates.Count == 0)
+                    int slot = 0;
+                    foreach (var defId in defIds)
                     {
-                        Debug.LogWarning($"[BattleFlow] 波次随机池为空（{wave.poolType}）——本波不部署");
-                        defIds = new List<int>();
-                    }
-                    else
-                    {
-                        defIds = new List<int>();
-                        for (int i = 0; i < Mathf.Max(0, wave.count); i++)
-                        {
-                            defIds.Add(candidates[RandomManager.Instance.Range(0, candidates.Count)]);
-                        }
-                    }
-                }
-                int slot = 0;
-                foreach (var defId in defIds)
-                {
-                    // 固定站位（与阵容顺序对应）；空 = 部署区自动找位；固定位被占用 → 找替代格（2026-08-24 策划新语义——不再跳过）
-                    var cell = wave.positions.Count > 0
-                        ? (slot < wave.positions.Count ? wave.positions[slot] : new Vector2Int(-1, -1))
-                        : FindDeployCell(Side.Enemy);
-                    slot++;
-                    if (cell.x < 0)
-                    {
-                        break; // 固定站位耗尽 / 部署区无空位
-                    }
-                    if (wave.positions.Count > 0 && (_state.Pieces.ContainsKey(cell) || _state.Obstacles.Contains(cell)))
-                    {
-                        // ⚠️ 2026-08-24 策划新语义：该出棋子的位置被占 → 敌方部署区选别的空格；部署区满 → 部署区外一排找，以此类推
-                        cell = FindAlternateDeployCell(Side.Enemy);
+                        var cell = ResolveWaveDeployCell(wave, g, slot, usedCells);
+                        slot++;
                         if (cell.x < 0)
                         {
-                            break; // 全棋盘无空位（罕见）
+                            break; // 固定站位耗尽 / 区域无空位
                         }
+                        var deployAction = new DeployAction(defId, Side.Enemy, cell) { waveIndex = _deployedWaveIndex }; // 打波次标（每波得分）
+                        _resolver.Resolve(deployAction);
+                        var piece = _state.GetPieceAt(cell);
+                        if (wave.spawnShield > 0 && piece != null)
+                        {
+                            // 2026-08-26 关 4 波 3：部署棋子额外获得护盾——tempShield 持久（入档/升变保留）+ 同步当前护盾量（承伤抵挡立即生效）
+                            piece.tempShield += wave.spawnShield;
+                            piece.shieldCount = piece.GetShieldAmount();
+                        }
+                        deployedThisWave.Add(piece);
+                        anyDeployed = true;
                     }
-                    var deployAction = new DeployAction(defId, Side.Enemy, cell) { waveIndex = _deployedWaveIndex }; // 打波次标（每波得分）
-                    _resolver.Resolve(deployAction);
-                    deployedThisWave.Add(_state.GetPieceAt(cell));
-                    anyDeployed = true;
                 }
                 if (!anyDeployed)
                 {
@@ -1400,6 +1401,94 @@ namespace TheLaw.Gameplay
                 }
             }
         }
+
+        // ========== 2026-08-26 波次部署·多组/随机空格/区域（策划第 2-4 关新规则：部署区随机 N 空格/非部署区随机/护盾）==========
+
+        /// <summary>波次部署组列表：wave.groups 非空 → 用组；空 → 顶层单组包装（随机池/固定阵容 + 敌方部署区）——旧配置零改动。</summary>
+        private static List<WaveGroupDef> BuildWaveGroups(WaveDef wave)
+        {
+            if (wave.groups != null && wave.groups.Count > 0)
+            {
+                return wave.groups;
+            }
+            return new List<WaveGroupDef>
+            {
+                new WaveGroupDef
+                {
+                    randomPool = wave.randomPool,
+                    poolType = wave.poolType,
+                    count = wave.count,
+                    pieceDefIds = wave.pieceDefIds,
+                    deployArea = DeployArea.EnemyDeploy,
+                }
+            };
+        }
+
+        /// <summary>波次部署落点：单组兼容（顶层 positions 固定位 + 被占替代格——旧语义）；否则 randomCells → 区域内随机空格；否则区域内顺序找位。</summary>
+        private Vector2Int ResolveWaveDeployCell(WaveDef wave, WaveGroupDef g, int slot, HashSet<Vector2Int> usedCells)
+        {
+            bool singleLegacy = wave.groups == null || wave.groups.Count == 0;
+            if (singleLegacy && wave.positions.Count > 0)
+            {
+                var cell = slot < wave.positions.Count ? wave.positions[slot] : new Vector2Int(-1, -1);
+                if (cell.x >= 0 && (_state.Pieces.ContainsKey(cell) || _state.Obstacles.Contains(cell)))
+                {
+                    // ⚠️ 2026-08-24 策划新语义：该出棋子的位置被占 → 敌方部署区选别的空格；部署区满 → 部署区外一排找，以此类推
+                    cell = FindAlternateDeployCell(Side.Enemy);
+                }
+                return cell;
+            }
+            if (wave.randomCells)
+            {
+                return FindRandomDeployCell(g.deployArea, usedCells);
+            }
+            return FindDeployCellArea(g.deployArea);
+        }
+
+        /// <summary>区域内随机空格（2026-08-26：收集区域空格 → RandomManager 随机抽——种子可复现；排除棋盘占用/障碍/本波已选）。</summary>
+        private Vector2Int FindRandomDeployCell(DeployArea area, HashSet<Vector2Int> usedCells)
+        {
+            var free = new List<Vector2Int>();
+            for (int y = AreaMinY(area); y <= AreaMaxY(area); y++)
+            {
+                for (int x = 0; x < 8; x++)
+                {
+                    var cell = new Vector2Int(x, y);
+                    if (!_state.Pieces.ContainsKey(cell) && !_state.Obstacles.Contains(cell) && !usedCells.Contains(cell))
+                    {
+                        free.Add(cell);
+                    }
+                }
+            }
+            if (free.Count == 0)
+            {
+                return new Vector2Int(-1, -1);
+            }
+            var pick = free[RandomManager.Instance.Range(0, free.Count)];
+            usedCells.Add(pick);
+            return pick;
+        }
+
+        /// <summary>区域内顺序找位（非随机——randomCells=false；EnemyDeploy 保持 y6-7 顺序，与旧 FindDeployCell 一致）。</summary>
+        private Vector2Int FindDeployCellArea(DeployArea area)
+        {
+            for (int y = AreaMinY(area); y <= AreaMaxY(area); y++)
+            {
+                for (int x = 0; x < 8; x++)
+                {
+                    var cell = new Vector2Int(x, y);
+                    if (!_state.Pieces.ContainsKey(cell) && !_state.Obstacles.Contains(cell))
+                    {
+                        return cell;
+                    }
+                }
+            }
+            return new Vector2Int(-1, -1); // 区域无空位
+        }
+
+        private static int AreaMinY(DeployArea area) => area == DeployArea.Midfield ? 2 : 6;
+
+        private static int AreaMaxY(DeployArea area) => area == DeployArea.Midfield ? 5 : 7;
 
         private Vector2Int FindDeployCell(Side side)
         {

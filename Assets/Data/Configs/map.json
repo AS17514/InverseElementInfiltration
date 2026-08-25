@@ -1,8 +1,11 @@
 {
   "mapName": "TestMap",
   "displayName": "测试地图",
-  "description": "测试用地图——仅第 1 层，验证爬塔流程最小可玩",
+  "description": "测试用地图——第 1~4 层全流程（2026-08-26 挂上测试配置第 2-4 层：玩法事件二选一/扣分机制/每波达标/最终战双条件；数值待策划校准）",
   "floors": [
-    "floor1"
+    "floor1",
+    "floor2",
+    "floor3",
+    "floor4"
   ]
 }

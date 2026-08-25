@@ -1,0 +1,47 @@
+{
+  "floorName": "floor2",
+  "displayName": "第 2 层·得分试炼",
+  "description": "【测试配置 2026-08-26——数值待策划校准】胜利 = 击败所有波次 或 达成目标分（targetScore 60）；扣分机制关闭（第 3/4 关开）；敌方 AP 3；3 波（回合 1/4/7）固定阵容 + 自动升变预告；玩法事件（rule）第 2 关首次启用——玩家二选一激活玩法（前端二选一面板已接）",
+  "victoryRule": "ScoreTarget",
+  "targetScore": 60,
+  "scoreDeductEnabled": false,
+  "enemyMaxAP": 3,
+  "eventSequence": [
+    "rule",
+    "ability",
+    "edit",
+    "deck"
+  ],
+  "eventPoolIds": [
+    "rule_pool",
+    "ability_pool",
+    "edit_pool",
+    "deck_pool"
+  ],
+  "waves": [
+    {
+      "startTurn": 1,
+      "pieceDefIds": ["Soldier", "Soldier", "Swordsman", "ShieldGuard"],
+      "positions": [{"dx":0,"dy":7},{"dx":2,"dy":7},{"dx":5,"dy":7},{"dx":7,"dy":7}],
+      "isLastWave": false,
+      "endCountdown": 0,
+      "autoPromote": true
+    },
+    {
+      "startTurn": 4,
+      "pieceDefIds": ["ShortArcher", "LightCavalry", "Ranger", "Knight"],
+      "positions": [{"dx":1,"dy":6},{"dx":3,"dy":6},{"dx":4,"dy":6},{"dx":6,"dy":6}],
+      "isLastWave": false,
+      "endCountdown": 0,
+      "autoPromote": true
+    },
+    {
+      "startTurn": 7,
+      "pieceDefIds": ["Berserker", "Berserker", "Ranger", "Knight"],
+      "positions": [{"dx":0,"dy":7},{"dx":3,"dy":7},{"dx":5,"dy":7},{"dx":7,"dy":7}],
+      "isLastWave": true,
+      "endCountdown": 3,
+      "autoPromote": false
+    }
+  ]
+}

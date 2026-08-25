@@ -2,6 +2,7 @@ using System.IO;
 using UnityEditor;
 using UnityEditor.AddressableAssets;
 using UnityEditor.AddressableAssets.Settings;
+using UnityEditor.AddressableAssets.Settings.GroupSchemas;
 using UnityEngine;
 
 namespace TheLaw.EditorTools
@@ -65,7 +66,13 @@ namespace TheLaw.EditorTools
             var group = settings.FindGroup(GroupName);
             if (group == null)
             {
-                group = settings.CreateGroup(GroupName, false, false, true, null);
+                group = settings.CreateGroup(GroupName, false, false, true, null,
+                    new System.Type[] { typeof(BundledAssetGroupSchema), typeof(ContentUpdateGroupSchema) });
+            }
+            else
+            {
+                if (!group.HasSchema<BundledAssetGroupSchema>()) group.AddSchema<BundledAssetGroupSchema>();
+                if (!group.HasSchema<ContentUpdateGroupSchema>()) group.AddSchema<ContentUpdateGroupSchema>();
             }
             return group;
         }

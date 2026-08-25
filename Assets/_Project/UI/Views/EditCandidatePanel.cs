@@ -19,6 +19,17 @@ namespace TheLaw.UI
         private readonly List<Vector3> _baseScales = new List<Vector3>();
         private bool _locked;
 
+        private void Awake()
+        {
+            // 2026-08-26 修复：prefab 内候选卡默认激活（未绑定的白卡）——实例化到绑定之间会露"白模"闪帧；
+            // 实例化即隐藏，OnShow 绑定数据后再按候选数量激活。
+            ResolveCards();
+            for (int i = 0; i < _cards.Count; i++)
+            {
+                if (_cards[i] != null) _cards[i].gameObject.SetActive(false);
+            }
+        }
+
         public void Init(GameState state)
         {
             _state = state;

@@ -31,6 +31,14 @@ namespace TheLaw.UI
         public RectTransform HandRoot { get; private set; }
         public GameObject HandCardTemplate { get; private set; }
 
+        private void Awake()
+        {
+            // 2026-08-26 修复：面板节点必须在实例化时解析（预加载面板不经过 Show）。
+            // BattleController.Init 的 RefreshAll/RebuildHand 与按钮接线依赖这些引用——
+            // 若只等 OnShow 才 ResolveNodes，Init 先于解析执行 → 手牌区空（有数据不渲染）、抽牌/阶段按钮不接线。
+            ResolveNodes();
+        }
+
         protected override void OnShow()
         {
             if (PhaseButton == null) ResolveNodes();

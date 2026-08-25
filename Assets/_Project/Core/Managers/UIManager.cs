@@ -17,6 +17,10 @@ namespace TheLaw.Core
         private readonly Stack<string> _overlayStack = new Stack<string>(); // 覆盖层栈（结算/弹窗）
         private string _current; // 当前显示的切换型面板（null=无）
 
+        /// <summary>overlay 面板排序（2026-08-27 手牌层级修复）：战斗内子 Canvas 排序 手牌50/列表60——兄弟顺序压不过；
+        /// overlay 统一提到 100（手牌/列表之上，Tooltip 1000 之下）。</summary>
+        private const int OverlaySortingOrder = 100;
+
         /// <summary>当前切换型面板 key（null=无——启动前/隐藏后）。面板切换过渡（PanelTransition）依赖。</summary>
         public string CurrentKey => _current;
 
@@ -102,6 +106,30 @@ namespace TheLaw.Core
             if (panel is MonoBehaviour mb && mb.transform != null)
             {
                 mb.transform.SetAsLastSibling();
+                EnsureOverlayCanvas(mb.gameObject); // 2026-08-27：手牌(50)/列表(60) 是 overrideSorting 子 Canvas——兄弟序压不过，overlay 自身提 sortingOrder
+            }
+        }
+
+        /// <summary>overlay 面板挂子 Canvas（继承根 Canvas 渲染配置）并置 sortingOrder=100，盖过战斗内手牌/列表层。</summary>
+        static void EnsureOverlayCanvas(GameObject go)
+        {
+            var canvas = go.GetComponent<Canvas>();
+            if (canvas == null)
+            {
+                var root = go.transform.parent != null ? go.transform.parent.GetComponentInParent<Canvas>() : null;
+                canvas = go.AddComponent<Canvas>();
+                if (root != null)
+                {
+                    canvas.renderMode = root.renderMode;
+                    canvas.worldCamera = root.worldCamera;
+                    canvas.planeDistance = root.planeDistance;
+                }
+            }
+            canvas.overrideSorting = true;
+            canvas.sortingOrder = OverlaySortingOrder;
+            if (go.GetComponent<UnityEngine.UI.GraphicRaycaster>() == null)
+            {
+                go.AddComponent<UnityEngine.UI.GraphicRaycaster>();
             }
         }
 

@@ -88,6 +88,7 @@ namespace TheLaw.UI
                 var face = FindDeep(_grpFloorPlayDice.transform, "Img_DiceFace_" + (i + 1));
                 _diceFaces[i] = face != null ? face.GetComponent<Image>() : null;
             }
+            Debug.Log($"[Dice] EnsureDiceRefs: panel={(_grpFloorPlayDice != null ? "ok" : "MISSING")} rollBtn={(_rollDiceBtn != null ? "ok" : "null")} moveBtn={(_diceMoveBtn != null ? "ok" : "null")} faces={( _diceFaces != null ? "6" : "null")}");
         }
 
         /// <summary>骰子面板刷新：显隐（按玩法激活）+ 点数 + 按钮可用性 + 提示。</summary>
@@ -111,6 +112,7 @@ namespace TheLaw.UI
                 }
             }
             bool canAct = _state.Phase == BattlePhase.PlayerTurn && !_executing && !_presentationPlaying && !_diceMoveSelecting;
+            Debug.Log($"[Dice] RefreshDicePanel active={active} canAct={canAct} phase={_state.Phase} exec={_executing} pres={_presentationPlaying} diceSel={_diceMoveSelecting} rollInteractable={(_rollDiceBtn != null ? _rollDiceBtn.interactable.ToString() : "null")}");
             if (_rollDiceBtn != null) _rollDiceBtn.interactable = canAct;
             if (_diceMoveBtn != null) _diceMoveBtn.interactable = canAct && _state.DiceValue > 0;
             if (_diceHintText != null)
@@ -127,6 +129,7 @@ namespace TheLaw.UI
         void OnRollDiceClicked()
         {
             if (_flow == null || _state == null) return;
+            Debug.Log($"[Dice] OnRollDiceClicked phase={_state.Phase} exec={_executing} pres={_presentationPlaying} diceSel={_diceMoveSelecting} AP={_state.PlayerAP} diceStyle={_state.IsStyleActive(StyleRegistry.Dice)}");
             if (_state.Phase != BattlePhase.PlayerTurn || _executing || _presentationPlaying || _diceMoveSelecting) return;
             _flow.OnPlayerRequestRollDice(new RollDiceRequest()); // 执行类行动 1 AP——后端校验/落账
             RefreshDicePanel();

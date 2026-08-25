@@ -25,7 +25,17 @@ namespace TheLaw.UI
 
         protected override void OnPopulateMesh(VertexHelper vh)
         {
-            vh.Clear(); // 无网格：纯阻挡，不渲染
+            // ⚠️ 必须有网格：空网格会被 CanvasRenderer 裁剪（cull=true）→ GraphicRaycaster 直接跳过 → 挡不住点击。
+            // 填充全屏透明四边形：alpha=0 不可见，但参与射线检测。
+            vh.Clear();
+            Rect r = GetPixelAdjustedRect();
+            Color c = color;
+            vh.AddVert(new Vector3(r.xMin, r.yMin), c, Vector2.zero);
+            vh.AddVert(new Vector3(r.xMax, r.yMin), c, Vector2.one);
+            vh.AddVert(new Vector3(r.xMax, r.yMax), c, Vector2.one);
+            vh.AddVert(new Vector3(r.xMin, r.yMax), c, Vector2.zero);
+            vh.AddTriangle(0, 1, 2);
+            vh.AddTriangle(2, 3, 0);
         }
     }
 }

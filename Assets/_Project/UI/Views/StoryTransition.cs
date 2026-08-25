@@ -1,120 +1,120 @@
 using System.Collections;
+using System.Collections.Generic;
+using DG.Tweening;
 using UnityEngine;
 using UnityEngine.UI;
 
 namespace TheLaw.UI
 {
     /// <summary>
-    /// 主菜单 → 开场剧情 运镜过渡（2026-08-25）：
-    /// 前提：主菜单与剧情面板背景为同一张图、同一颜色叠加（0.5 灰）——过渡 = 剧情背景矩形从主菜单背景矩形
-    /// 缓动到剧情 prefab 定义的矩形（运镜），主菜单根 CanvasGroup 缓出、剧情根缓入。
-    /// 运镜终点 = 剧情 prefab 实例 Img_Bg 的初始矩形（改 prefab 即可控制终点）。
-    /// 全程可跳过：任意键/鼠标点击 → 直接置终态（剧情面板加载完毕状态）。
-    /// 挂点：Bootstrap.PlayOpeningStoryThenStartNewGame（主菜单→新局首播剧情）。
-    /// 独立脚本：不依赖 PanelBase/UIManager 内部结构（仅按名找 Img_Bg / 根 CanvasGroup）。
+    /// 主菜单 → 开场剧情 运镜过渡（2026-08-26 v6）：
+    /// 前提（prefab 配合）：剧情面板 Img_Bg 初始位置调成与主菜单 Img_Bg 一致（同取景 → 显示即无缝）。
+    /// 时序：主菜单控件淡出（剧情面板未显示——淡出可见）→ 剧情面板显示（同图同位无缝接管）→
+    ///       DOTween 运镜到 home → 剧情控件渐入。全程可跳过。
+    /// home 为 2026-08-25 记录的剧情 prefab 原值——若以后改剧情终点，同步更新下方常量。
+    /// 挂点：Bootstrap.PlayOpeningStoryThenStartNewGame（调用方先 CompleteIntro 落主菜单动画终态）。
     /// </summary>
     public static class StoryTransition
     {
-        /// <summary>运镜时长（秒）——用户拍板 1.2s，OutQuad。</summary>
-        public const float MoveSeconds = 1.2f;
+        /// <summary>运镜时长（秒）——2026-08-26 定 3s，OutQuad。</summary>
+        public const float MoveSeconds = 3f;
 
-        /// <summary>主菜单缓出/剧情缓入交叉时长（秒）。</summary>
-        public const float FadeSeconds = 0.3f;
+        /// <summary>主菜单控件淡出时长（秒）——2026-08-26 定 1s。</summary>
+        public const float FadeSeconds = 1f;
 
-        private struct BgRect
+        /// <summary>剧情控件渐入时长（秒）——2026-08-26 定 1s。</summary>
+        public const float ContentFadeSeconds = 1f;
+
+        /// <summary>剧情背景 home（2026-08-25 记录自 StoryPanel.prefab Img_Bg——anchor 0,0 / pivot 0.5）。</summary>
+        private static readonly Vector2 HomePos = new Vector2(292.26f, 77.092f);
+        private static readonly Vector2 HomeSize = new Vector2(3255.475f, 2005.8152f);
+
+        /// <summary>执行转场（协程）。全程可跳过。</summary>
+        public static IEnumerator Play(Transform menuRoot, StoryPanel storyPanel)
         {
-            public Vector2 anchorMin;
-            public Vector2 anchorMax;
-            public Vector2 anchoredPosition;
-            public Vector2 sizeDelta;
-
-            public static BgRect From(RectTransform rt)
-            {
-                return new BgRect
-                {
-                    anchorMin = rt.anchorMin,
-                    anchorMax = rt.anchorMax,
-                    anchoredPosition = rt.anchoredPosition,
-                    sizeDelta = rt.sizeDelta,
-                };
-            }
-
-            public void ApplyTo(RectTransform rt)
-            {
-                rt.anchorMin = anchorMin;
-                rt.anchorMax = anchorMax;
-                rt.anchoredPosition = anchoredPosition;
-                rt.sizeDelta = sizeDelta;
-            }
-
-            public static BgRect Lerp(BgRect a, BgRect b, float t)
-            {
-                return new BgRect
-                {
-                    anchorMin = Vector2.Lerp(a.anchorMin, b.anchorMin, t),
-                    anchorMax = Vector2.Lerp(a.anchorMax, b.anchorMax, t),
-                    anchoredPosition = Vector2.Lerp(a.anchoredPosition, b.anchoredPosition, t),
-                    sizeDelta = Vector2.Lerp(a.sizeDelta, b.sizeDelta, t),
-                };
-            }
-        }
-
-        /// <summary>执行主菜单→剧情运镜过渡（协程）。任一节点缺失 → 直接跳过过渡（面板照常切换）。</summary>
-        public static IEnumerator Play(Transform menuRoot, Transform storyRoot)
-        {
-            if (menuRoot == null || storyRoot == null) yield break;
-
-            var menuBg = FindDeep<Image>(menuRoot, "Img_Bg");
+            if (menuRoot == null || storyPanel == null) yield break;
+            var storyRoot = storyPanel.transform;
             var storyBg = FindDeep<Image>(storyRoot, "Img_Bg");
-            if (menuBg == null || storyBg == null) yield break; // 背景节点缺失——跳过运镜
+            if (storyBg == null)
+            {
+                storyPanel.Show(); // 背景缺失——直接显示剧情（跳过运镜）
+                yield break;
+            }
 
-            // 剧情背景 home 矩形 = prefab 实例初始值（改 prefab 即改运镜终点）
-            var storyHome = BgRect.From(storyBg.rectTransform);
-            // 运镜起点 = 主菜单背景当前矩形（同图同色 → 无缝衔接）
-            var menuRect = BgRect.From(menuBg.rectTransform);
-            menuRect.ApplyTo(storyBg.rectTransform); // 剧情背景先落在主菜单背景位置（视觉上完全一致）
-
-            var menuCg = menuRoot.GetComponent<CanvasGroup>();
-            if (menuCg == null) menuCg = menuRoot.gameObject.AddComponent<CanvasGroup>();
-            var storyCg = storyRoot.GetComponent<CanvasGroup>();
-            if (storyCg == null) storyCg = storyRoot.gameObject.AddComponent<CanvasGroup>();
-
-            menuCg.alpha = 1f;
-            menuCg.blocksRaycasts = false; // 过渡期间主菜单按钮不可点（跳过由输入轮询负责）
-            storyCg.alpha = 0f;
-            storyCg.blocksRaycasts = false;
+            // 主菜单非背景对象（标题/副标题/按钮组）——淡出期间剧情面板未显示，淡出可见
+            var fadeGroups = new List<CanvasGroup>();
+            CollectGroup(menuRoot, "Txt_Title", fadeGroups);
+            CollectGroup(menuRoot, "Txt_Subtitle", fadeGroups);
+            CollectGroup(menuRoot, "Grp_MenuOptions", fadeGroups);
+            foreach (var g in fadeGroups) g.alpha = 1f;
+            var contentRoot = FindDeep<Transform>(storyRoot, "Img_TxtBg");
 
             bool skipped = false;
 
-            // 阶段A：交叉淡入淡出（主菜单缓出 + 剧情缓入——同图同位，视觉无跳变）
+            // 阶段A：主菜单控件淡出（背景保持）
             float t = 0f;
             while (t < FadeSeconds)
             {
                 if (AnyInputDown()) { skipped = true; break; }
                 t += Time.unscaledDeltaTime;
                 float e = EaseOutQuad(Mathf.Clamp01(t / FadeSeconds));
-                menuCg.alpha = 1f - e;
-                storyCg.alpha = e;
+                foreach (var g in fadeGroups) g.alpha = 1f - e;
                 yield return null;
             }
 
-            // 阶段B：运镜（剧情背景 主菜单矩形 → prefab 矩形）
+            // 剧情面板显示（背景同图同位 → 无缝接管画面）
+            storyPanel.Show();
+
+            // 阶段B：DOTween 运镜（剧情背景 → home；位置+尺寸，初始=主菜单同款 → 纯平移）
+            var rt = storyBg.rectTransform;
+            var startPos = rt.anchoredPosition;
+            var startSize = rt.sizeDelta;
+            var twPos = DOTween.To(() => startPos, v => rt.anchoredPosition = v, HomePos, MoveSeconds).SetEase(Ease.OutQuad).SetUpdate(true);
+            var twSize = DOTween.To(() => startSize, v => rt.sizeDelta = v, HomeSize, MoveSeconds).SetEase(Ease.OutQuad).SetUpdate(true);
+
             float mt = 0f;
             while (!skipped && mt < MoveSeconds)
             {
                 if (AnyInputDown()) { skipped = true; break; }
                 mt += Time.unscaledDeltaTime;
-                float e = EaseOutQuad(Mathf.Clamp01(mt / MoveSeconds));
-                BgRect.Lerp(menuRect, storyHome, e).ApplyTo(storyBg.rectTransform);
+                yield return null;
+            }
+            if (twPos.IsActive()) twPos.Kill();
+            if (twSize.IsActive()) twSize.Kill();
+            rt.anchoredPosition = HomePos; // 跳过 = 直接落终态
+            rt.sizeDelta = HomeSize;
+
+            // 阶段C：剧情控件渐入
+            CanvasGroup contentCg = null;
+            if (contentRoot != null)
+            {
+                contentRoot.gameObject.SetActive(true);
+                contentCg = contentRoot.GetComponent<CanvasGroup>();
+                if (contentCg == null) contentCg = contentRoot.gameObject.AddComponent<CanvasGroup>();
+                contentCg.alpha = 0f;
+            }
+            float ct = 0f;
+            while (ct < ContentFadeSeconds)
+            {
+                if (AnyInputDown()) { skipped = true; break; }
+                ct += Time.unscaledDeltaTime;
+                if (contentCg != null) contentCg.alpha = EaseOutQuad(Mathf.Clamp01(ct / ContentFadeSeconds));
                 yield return null;
             }
 
-            // 终态（跳过 = 直接到这里）：剧情背景到位、双面板透明度终值
-            storyHome.ApplyTo(storyBg.rectTransform);
-            menuCg.alpha = 1f; // 复原（紧接着由调用方 HidePanel 隐藏——隐藏后 alpha 无关，避免下次显示时不可见）
-            menuCg.blocksRaycasts = true;
-            storyCg.alpha = 1f;
-            storyCg.blocksRaycasts = true;
+            // 终态
+            if (contentCg != null) contentCg.alpha = 1f;
+            foreach (var g in fadeGroups) g.alpha = 1f; // 复原（紧接着由调用方 HidePanel 隐藏——避免下次显示时不可见）
+        }
+
+        /// <summary>收集主菜单需渐隐的分组（CanvasGroup 不存在则补建）。</summary>
+        private static void CollectGroup(Transform root, string name, List<CanvasGroup> list)
+        {
+            var tr = FindDeep<Transform>(root, name);
+            if (tr == null) return;
+            var cg = tr.GetComponent<CanvasGroup>();
+            if (cg == null) cg = tr.gameObject.AddComponent<CanvasGroup>();
+            list.Add(cg);
         }
 
         private static float EaseOutQuad(float t)
@@ -122,7 +122,6 @@ namespace TheLaw.UI
             return 1f - (1f - t) * (1f - t);
         }
 
-        /// <summary>任意键/鼠标/触摸按下（转场可跳过）。</summary>
         private static bool AnyInputDown()
         {
             var kb = UnityEngine.InputSystem.Keyboard.current;

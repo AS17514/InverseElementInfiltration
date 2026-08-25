@@ -100,6 +100,16 @@ namespace TheLaw.UI
             if (_boundClick != null && _button != null) _button.onClick.RemoveListener(_boundClick);
         }
 
+        /// <summary>
+        /// 2026-08-26 修复：事件面板隐藏时（选项区先实例化、SetActive(true) 在后）新建的选项
+        /// TMP Awake 延迟执行 —— textInfo 未分配，Bind 时按真实行数定高会 NRE。
+        /// 面板激活后 TMP 初始化完成，此处补测真实行数（否则停留在兜底 1 行高度，多行描述被裁）。
+        /// </summary>
+        private void OnEnable()
+        {
+            if (_title != null || _content != null) ApplyHeightByContent();
+        }
+
         private void CacheNodes()
         {
             if (_button == null) _button = GetComponent<Button>();
@@ -134,11 +144,14 @@ namespace TheLaw.UI
             rt.sizeDelta = new Vector2(rt.sizeDelta.x, height);
         }
 
-        /// <summary>TMP 真实渲染行数（与最终换行一致；无文本节点兜底 1 行）。</summary>
+        /// <summary>TMP 真实渲染行数（与最终换行一致；无文本节点/未初始化兜底 1 行）。
+        /// 2026-08-26：面板 inactive 下实例化的 TMP Awake 延迟 → textInfo 为 null——ForceMeshUpdate 不会分配它；
+        /// 兜底 1 行避免 NRE，激活后由 OnEnable 补测真实高度。</summary>
         int MeasuredLines()
         {
             if (_content == null) return 1;
             _content.ForceMeshUpdate();
+            if (_content.textInfo == null) return 1;
             return Mathf.Max(1, _content.textInfo.lineCount);
         }
     }

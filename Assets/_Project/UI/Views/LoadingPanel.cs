@@ -18,7 +18,7 @@ namespace TheLaw.UI
         public override string Key => "Loading";
 
         [SerializeField] private float fadeInSeconds = 0.2f;
-        [SerializeField] private float fadeOutSeconds = 0.2f;
+        [SerializeField] private float fadeOutSeconds = 0.5f; // 淡出加长——0.2s 在 1s 保持后几乎不可感知（用户反馈"直接隐藏"）
         [SerializeField] private float dotIntervalSeconds = 0.4f;
 
         private CanvasGroup _cg;
@@ -54,10 +54,11 @@ namespace TheLaw.UI
 
         public override void Hide()
         {
-            if (_fadingOut || !gameObject.activeSelf) return;
-            _fadingOut = true;
+            if (!gameObject.activeSelf) return;
+            // ⚠️ 不用 _fadingOut 早退：上次淡出若被中断（tween 被清）残留 true 会让后续 Hide 静默跳过 → 面板被瞬时隐藏；改为重启淡出
             StopDots();
             if (_fade != null) _fade.Kill();
+            _fadingOut = true;
             _fade = DOTween.To(() => _cg.alpha, v => _cg.alpha = v, 0f, fadeOutSeconds).OnComplete(() =>
             {
                 _fadingOut = false;

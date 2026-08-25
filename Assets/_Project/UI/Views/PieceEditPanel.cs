@@ -425,6 +425,19 @@ namespace TheLaw.UI
                 int tb = b is MoveTemplate ? 0 : b is AttackTemplate ? 1 : b is EffectTemplate ? 2 : 3;
                 return ta.CompareTo(tb);
             });
+            // ⚠️ 2026-08-26 临时诊断（排查程序库空白——定位后删除）：模板库注册量/类型构成/模块候选/本库构建量
+            {
+                int mv = 0, atk = 0, eff = 0, other = 0;
+                foreach (var t in TemplateLibrary.All())
+                {
+                    if (t is MoveTemplate) mv++;
+                    else if (t is AttackTemplate) atk++;
+                    else if (t is EffectTemplate) eff++;
+                    else other++;
+                }
+                int emc = _state != null && _state.EditModuleCandidates != null ? _state.EditModuleCandidates.Count : -1;
+                Debug.Log($"[DBG-PROG] selected={_selectedDefId} TL.total={mv + atk + eff + other} move={mv} attack={atk} effect={eff} other={other} EditModuleCandidates={emc} libBuilt={_programLibrary.Count}");
+            }
         }
 
         // ====== 左列：棋子列表（Piece_Card prefab + ToggleGroup 单选 + 程序图标区） ======

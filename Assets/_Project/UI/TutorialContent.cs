@@ -54,16 +54,7 @@ namespace TheLaw.UI
                         text = "这就是「伊甸」进行编辑的界面了，测试员，试着选择一个你想要的效果吧，这些效果会持续到整个游戏结束，要谨慎一点哦。",
                         highlightTargets = new List<string> { "Grp_EventOptions" },
                     },
-                    new TutorialStep
-                    {
-                        id = "event_intro_3",
-                        speaker = "Xeon",
-                        portraitKey = "常态",
-                        layout = "bottomCenter",
-                        text = "这就是遗物，遗物是……（文案待策划补全）",
-                        waitEvent = "RelicObtained",
-                        highlightTargets = new List<string> { "RelicObtained" }, // TODO: 高亮遗物栏节点名待李毕确认
-                    },
+                    // 2026-08-26 策划定案：删去获得遗物后的介绍步（原 event_intro_3）
                 },
             },
 
@@ -204,7 +195,7 @@ namespace TheLaw.UI
                         id = "battle_intro_4",
                         speaker = "Xeon",
                         portraitKey = "常态",
-                        layout = "topCenter",
+                        layout = "bottomCenter", // 文字放底部：避免挡住中盘棋子高亮（测试员反馈）
                         text = "接着测试员你可以试试看点击你已经部署的棋子，在你的右侧会显示这颗棋子的具体信息。看到另一边闪着红光的棋子了吗，你也可以点击他们查看敌方的棋子信息。",
                         highlightTargets = new List<string> { "@firstPlayerPiece" },
                     },
@@ -213,7 +204,7 @@ namespace TheLaw.UI
                         id = "battle_intro_5",
                         speaker = "Xeon",
                         portraitKey = "常态",
-                        layout = "topCenter",
+                        layout = "rightMid", // 文字放右侧：避免盖住左侧栏目（Grp_L）高亮
                         text = "棋盘左侧是这次棋局的规则和状态，测试员可以随时查看在这个棋盘上的基础规则和附加规则、双方得分以及测试员已经获得的能力。",
                         highlightTargets = new List<string> { "@leftInfo" },
                     },
@@ -223,6 +214,7 @@ namespace TheLaw.UI
                         speaker = "Xeon",
                         portraitKey = "常态",
                         layout = "topCenter",
+                        highlightPadding = 40f, // 底部角落目标较小，放大挖孔便于观察
                         text = "左下角和右下角测试员可以查看本回合还剩下多少行动点、牌组和重新抽牌。",
                         highlightTargets = new List<string> { "@bottomLeft", "@bottomRight" },
                     },

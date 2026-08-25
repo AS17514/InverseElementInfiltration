@@ -26,7 +26,7 @@ namespace TheLaw.UI
         Material _material;
         readonly List<Transform> _targets = new List<Transform>();
         float _padding = 20f;
-        float _darkAlpha = 0.9f; // 压暗强度（用户定案 0.9）
+        float _darkAlpha = 0.95f; // 压暗强度（用户定案 0.95）
         bool _holeEnabled = true;
 
         public float Padding => _padding;

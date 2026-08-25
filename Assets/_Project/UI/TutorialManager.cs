@@ -432,11 +432,15 @@ namespace TheLaw.UI
                 case "firstPlayerPiece":
                     return FindFirstPiece();
                 case "leftInfo":
-                    return FindDeepAnyPanel("Battle", "Grp_LeftInfo", "Grp_Info", "Grp_RuleInfo", "Grp_Status", "Grp_Rules", "Grp_Left");
+                    // 左侧规则/得分栏是场景对象 Grp_L（不在 BattlePanel 内）
+                    return FindAnyScene("Grp_L")
+                        ?? FindDeepAnyPanel("Battle", "Grp_LeftInfo", "Grp_Info", "Grp_RuleInfo", "Grp_Status", "Grp_Rules", "Grp_Left");
                 case "bottomLeft":
-                    return FindDeepAnyPanel("Battle", "Grp_AP", "Grp_ActionPoint", "Grp_BottomLeft", "Grp_APArea");
+                    return FindDeepAnyPanel("Battle", "Grp_AP", "Grp_ActionPoint", "Grp_BottomLeft", "Grp_APArea")
+                        ?? FindAnyScene("Grp_AP");
                 case "bottomRight":
-                    return FindDeepAnyPanel("Battle", "Grp_Deck", "Grp_DrawPile", "Grp_BottomRight", "Grp_Redraw");
+                    return FindDeepAnyPanel("Battle", "Grp_DrawPile", "Grp_Deck", "Grp_BottomRight", "Grp_Redraw", "Btn_Graveyard")
+                        ?? FindAnyScene("Grp_DrawPile", "Btn_Graveyard");
                 default:
                     return null;
             }

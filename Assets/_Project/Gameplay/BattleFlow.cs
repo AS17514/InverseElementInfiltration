@@ -490,9 +490,10 @@ namespace TheLaw.Gameplay
                             && (side == Side.Enemy || IsDeployAllowed(deployDef, _state.Phase));
                         if (deployValid)
                         {
-                            // ⚠️ 2026-08-24 代币玩法：购买的"初始棋子"复制可**不耗 AP** 部署（口述定稿——C5；IsDeployAllowed 已放行）
-                            bool freeDeploy = side == Side.Player && _state.IsStyleActive(StyleRegistry.Token)
-                                && deployDef != null && _state.GetEffectiveType(deployDef.Id) == PieceType.Initial;
+                            // ⚠️ 2026-08-26 语义扩展（用户定案）：初始棋子**任何途径**获得后战斗中可免费部署（延续起始摆位——
+            // 原仅代币玩法 C5 特例；属性/事件等途径获得的初始牌不再卡手）
+            bool freeDeploy = side == Side.Player && deployDef != null
+                && _state.GetEffectiveType(deployDef.Id) == PieceType.Initial;
                             var deployAction = new DeployAction(deploy.pieceDefId, side, deploy.cell) { cardInstanceId = deploy.cardInstanceId }; // 2026-08-21：精确消费实例 id
                             _resolver.Resolve(deployAction);
                             DeductActionPoint(request.free || qualifiedUse || freeDeploy, side); // 2026-08-23 E5：打出资格牌免费（不扣 AP）
@@ -717,6 +718,15 @@ namespace TheLaw.Gameplay
                 && !_state.ActionEconomyActed.Contains(execute.pieceId))
             {
                 return true;
+            }
+            // ⚠️ 2026-08-26 初始棋子部署免费（延续起始摆位语义——任何途径获得的初始牌都可免费摆上场；含 AP=0 豁免）
+            if (request is DeployRequest deployReq)
+            {
+                var deployDef = ConfigTable.Find<PieceDef>(deployReq.pieceDefId);
+                if (deployDef != null && _state.GetEffectiveType(deployDef.Id) == PieceType.Initial)
+                {
+                    return true;
+                }
             }
             return request is DeployGoRequest || request is BuyTokenRequest || request is DiceMoveRequest || request is BuyGoRequest; // 2026-08-24 买子
         }
@@ -1570,8 +1580,9 @@ namespace TheLaw.Gameplay
             }
             if (phase == BattlePhase.PlayerTurn && _state.GetEffectiveType(def.Id) != PieceType.Deployable)
             {
-                // ⚠️ 2026-08-24 代币玩法：购买的"初始棋子"复制可在战斗中部署（免费——口述定稿）
-                if (!(_state.IsStyleActive(StyleRegistry.Token) && _state.GetEffectiveType(def.Id) == PieceType.Initial))
+                // ⚠️ 2026-08-26 语义扩展（用户定案）：初始棋子战斗中可部署（延续起始摆位——属性/代币/事件等
+                // 途径获得的初始牌不再卡手；原仅代币玩法 C5 特例，现推广到全部来源）
+                if (_state.GetEffectiveType(def.Id) != PieceType.Initial)
                 {
                     return false; // 部署阶段只能放部署棋子（升变棋子靠升变操作上场）
                 }

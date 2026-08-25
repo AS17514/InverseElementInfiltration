@@ -681,7 +681,7 @@ namespace TheLaw.UI
             }
             else
             {
-                AudioManager.Instance.PlayBGM(TheLaw.Core.AudioRefs.BgmMenu, 3f); // 主菜单 BGM（冷启动开场动画 3s 渐入；返回主菜单走默认 0.8s）
+                // 主菜单 BGM 由 MainMenuPanel 开场动画在副标题出现时开始 3s 缓入（2026-08-26）；返回主菜单路径各自走默认 0.8s
                 StartCoroutine(LoadMainMenu());
             }
         }

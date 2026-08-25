@@ -140,13 +140,15 @@ namespace TheLaw.UI
             if (_subtitleGroup != null) _subtitleGroup.alpha = 0f;
             if (_menuGroup != null) _menuGroup.alpha = 0f;
             CreateBlocker(); // 动画期阻射线（按钮保持可用态——点击 = 跳过）
+            // 黑屏阶段立即 Play()（音量 0——播放初始化/解码卡顿被黑屏盖住）；fadeDelay=1.9s 后（=副标题出现时）开始 3s 淡入
+            AudioManager.Instance.PlayBGM(TheLaw.Core.AudioRefs.BgmMenu, 3f, 1.9f);
 
-            yield return new WaitForSecondsRealtime(0.4f); // 黑屏静默（BGM 3s 渐入进行中）
+            yield return new WaitForSecondsRealtime(0.4f); // 黑屏静默
             if (!_introRunning) yield break;
 
             // ① 主标题渐入（2s，OutCubic）
             if (_titleGroup != null) FadeGroup(_titleGroup, 0f, 1f, 2f, Ease.OutCubic);
-            // ② 副标题：1.5s 后起（与标题重叠 0.5s），渐入 2s
+            // ② 副标题：1.5s 后起（与标题重叠 0.5s），渐入 2s——此时 BGM 淡入已由延迟调度开始（黑屏已 Play）
             yield return new WaitForSecondsRealtime(1.5f);
             if (!_introRunning) yield break;
             if (_subtitleGroup != null) FadeGroup(_subtitleGroup, 0f, 1f, 2f, Ease.OutCubic);
@@ -185,6 +187,7 @@ namespace TheLaw.UI
             if (_subtitleGroup != null) _subtitleGroup.alpha = 1f;
             if (_menuGroup != null) _menuGroup.alpha = 1f;
             FinishIntro();
+            AudioManager.Instance.PlayBGM(TheLaw.Core.AudioRefs.BgmMenu, 3f); // 跳过早于副标题时 BGM 尚未启动——先启动（异步）
             AudioManager.Instance.CompleteBGMCrossfade(); // BGM 直落满音量（不等 3s 渐入）
         }
 

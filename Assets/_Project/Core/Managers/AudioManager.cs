@@ -77,7 +77,7 @@ namespace TheLaw.Core
 
         /// <summary>播放/切换 BGM（Addressables 地址）。同曲不重复切；异步加载完成后交叉淡化。</summary>
         /// <param name="fadeSeconds">淡化时长（秒）；&lt;0 = 默认 BgmFadeDuration（0.8s）——开场动画长渐入传正值。</param>
-        public void PlayBGM(string address, float fadeSeconds = -1f)
+        public void PlayBGM(string address, float fadeSeconds = -1f, float fadeDelay = 0f)
         {
             if (string.IsNullOrEmpty(address)) return;
             GetOrLoadClip(address, clip =>
@@ -85,8 +85,15 @@ namespace TheLaw.Core
                 if (clip == null) return;
                 var active = _bgmUseA ? _bgmA : _bgmB;
                 if (active.isPlaying && active.clip == clip) return; // 同曲不重复切
-                CrossfadeTo(clip, fadeSeconds);
+                CrossfadeTo(clip, fadeSeconds, fadeDelay);
             });
+        }
+
+        /// <summary>预加载 BGM（只入缓存不播放——开场动画等场景先加载避卡顿，播放时机另行控制）。</summary>
+        public void PreloadBGM(string address)
+        {
+            if (string.IsNullOrEmpty(address)) return;
+            GetOrLoadClip(address, clip => { /* 仅缓存——播放由 PlayBGM 触发 */ });
         }
 
         /// <summary>停掉 BGM。</summary>
@@ -104,13 +111,13 @@ namespace TheLaw.Core
             _bgmFadeSkip = false;
         }
 
-        private void CrossfadeTo(AudioClip clip, float fadeSeconds)
+        private void CrossfadeTo(AudioClip clip, float fadeSeconds, float fadeDelay)
         {
             if (_bgmFadeRoutine != null) StopCoroutine(_bgmFadeRoutine);
-            _bgmFadeRoutine = StartCoroutine(CrossfadeRoutine(clip, fadeSeconds));
+            _bgmFadeRoutine = StartCoroutine(CrossfadeRoutine(clip, fadeSeconds, fadeDelay));
         }
 
-        private IEnumerator CrossfadeRoutine(AudioClip clip, float fadeSeconds)
+        private IEnumerator CrossfadeRoutine(AudioClip clip, float fadeSeconds, float fadeDelay)
         {
             float duration = fadeSeconds >= 0f ? Mathf.Max(0.05f, fadeSeconds) : BgmFadeDuration;
             // 新曲走空闲通道，旧曲淡出新曲淡入
@@ -119,9 +126,16 @@ namespace TheLaw.Core
             _bgmUseA = !_bgmUseA;
             _currentBgmSource = newSrc;
 
+            // ⚠️ 播放初始化（AudioSource.Play/解码）可能卡顿——Play() 立即发生（调用方在黑屏阶段启动，卡顿被盖住），
+            // fadeDelay 内保持音量 0 静默，之后才淡入（开场动画：黑屏启动播放、副标题出现时开始可闻淡入）。
             newSrc.clip = clip;
             newSrc.volume = 0f;
             newSrc.Play();
+            if (fadeDelay > 0f)
+            {
+                oldSrc.Stop();
+                oldSrc.clip = null; // 延迟淡入仅用于开场（无旧曲）——旧通道直接停
+            }
 
             // 开场动画跳过（CompleteBGMCrossfade）后启动的淡化：直接满音量，不再渐入
             if (_bgmFadeSkip)
@@ -132,6 +146,23 @@ namespace TheLaw.Core
                 newSrc.volume = _bgmVolume;
                 _bgmFadeRoutine = null;
                 yield break;
+            }
+
+            if (fadeDelay > 0f)
+            {
+                float td = 0f;
+                while (td < fadeDelay)
+                {
+                    td += Time.unscaledDeltaTime;
+                    yield return null; // 静默等待（newSrc 保持音量 0）
+                }
+                if (_bgmFadeSkip) // 等待期间被跳过
+                {
+                    _bgmFadeSkip = false;
+                    newSrc.volume = _bgmVolume;
+                    _bgmFadeRoutine = null;
+                    yield break;
+                }
             }
 
             float t = 0f;

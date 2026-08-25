@@ -26,9 +26,6 @@ namespace TheLaw.UI
             "attack_melee", "attack_melee_aoe", "attack_direct", "attack_arcing", "attack_spell",
             // 围棋立绘（代码内建 def——供 PieceViewFactory 查询）
             "GoPiece",
-            // 麻将牌 1-9
-            "mahjong_1", "mahjong_2", "mahjong_3", "mahjong_4", "mahjong_5",
-            "mahjong_6", "mahjong_7", "mahjong_8", "mahjong_9",
         };
 
         static readonly Dictionary<string, Sprite> _sprites = new Dictionary<string, Sprite>();

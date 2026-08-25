@@ -47,6 +47,11 @@ MonoBehaviour:
     m_ReadOnly: 0
     m_SerializedLabels: []
     FlaggedDuringContentUpdateRestriction: 0
+  - m_GUID: 1bb4127e6ae413d48996272ced5c001a
+    m_Address: mahjong_type_7
+    m_ReadOnly: 0
+    m_SerializedLabels: []
+    FlaggedDuringContentUpdateRestriction: 0
   - m_GUID: 1c1b531c02154cd47a2667a3062c54c5
     m_Address: Tester_Default
     m_ReadOnly: 0
@@ -142,6 +147,11 @@ MonoBehaviour:
     m_ReadOnly: 0
     m_SerializedLabels: []
     FlaggedDuringContentUpdateRestriction: 0
+  - m_GUID: 7e31ed0256fb6984692e4b789743549d
+    m_Address: mahjong_type_9
+    m_ReadOnly: 0
+    m_SerializedLabels: []
+    FlaggedDuringContentUpdateRestriction: 0
   - m_GUID: 812ff5c628e97f048a5c98f0811743a0
     m_Address: move_jump
     m_ReadOnly: 0
@@ -154,6 +164,11 @@ MonoBehaviour:
     FlaggedDuringContentUpdateRestriction: 0
   - m_GUID: 870b837b66e7dfe49b00e1f00f849c50
     m_Address: "Xeon_\u60CA\u8BB6"
+    m_ReadOnly: 0
+    m_SerializedLabels: []
+    FlaggedDuringContentUpdateRestriction: 0
+  - m_GUID: 87b62315252490e4ba6c54a6041f6dc4
+    m_Address: mahjong_type_2
     m_ReadOnly: 0
     m_SerializedLabels: []
     FlaggedDuringContentUpdateRestriction: 0
@@ -192,8 +207,18 @@ MonoBehaviour:
     m_ReadOnly: 0
     m_SerializedLabels: []
     FlaggedDuringContentUpdateRestriction: 0
+  - m_GUID: 99bdf89f1e1f7b044a416034c5681a21
+    m_Address: mahjong_type_8
+    m_ReadOnly: 0
+    m_SerializedLabels: []
+    FlaggedDuringContentUpdateRestriction: 0
   - m_GUID: 9b3320e33a759a843ab4cf7c64745922
     m_Address: InfoFootprint_1x2
+    m_ReadOnly: 0
+    m_SerializedLabels: []
+    FlaggedDuringContentUpdateRestriction: 0
+  - m_GUID: a124c2df8ef801041810dd369c06426c
+    m_Address: mahjong_type_3
     m_ReadOnly: 0
     m_SerializedLabels: []
     FlaggedDuringContentUpdateRestriction: 0
@@ -247,6 +272,11 @@ MonoBehaviour:
     m_ReadOnly: 0
     m_SerializedLabels: []
     FlaggedDuringContentUpdateRestriction: 0
+  - m_GUID: c4331a04e9e6d2b46a4761635a9cc8d4
+    m_Address: mahjong_type_1
+    m_ReadOnly: 0
+    m_SerializedLabels: []
+    FlaggedDuringContentUpdateRestriction: 0
   - m_GUID: c659db84df3251f4896dd57ce5e14fbe
     m_Address: Wizard
     m_ReadOnly: 0
@@ -282,13 +312,28 @@ MonoBehaviour:
     m_ReadOnly: 0
     m_SerializedLabels: []
     FlaggedDuringContentUpdateRestriction: 0
+  - m_GUID: dda103207706adc4b93463d37c3c3035
+    m_Address: mahjong_type_5
+    m_ReadOnly: 0
+    m_SerializedLabels: []
+    FlaggedDuringContentUpdateRestriction: 0
   - m_GUID: e0636d5642b956a4db2dbb482cb7d1d8
     m_Address: Ranger
     m_ReadOnly: 0
     m_SerializedLabels: []
     FlaggedDuringContentUpdateRestriction: 0
+  - m_GUID: e23e28983e6565a4389b33afb0e31da3
+    m_Address: mahjong_type_4
+    m_ReadOnly: 0
+    m_SerializedLabels: []
+    FlaggedDuringContentUpdateRestriction: 0
   - m_GUID: e2f5ce11dd8ec84499f4a4afd510d6c7
     m_Address: Bg
+    m_ReadOnly: 0
+    m_SerializedLabels: []
+    FlaggedDuringContentUpdateRestriction: 0
+  - m_GUID: e85c9c761f9476c45bd6dbbb418a1030
+    m_Address: mahjong_type_6
     m_ReadOnly: 0
     m_SerializedLabels: []
     FlaggedDuringContentUpdateRestriction: 0

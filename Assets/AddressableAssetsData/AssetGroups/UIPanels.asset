@@ -107,6 +107,11 @@ MonoBehaviour:
     m_ReadOnly: 0
     m_SerializedLabels: []
     FlaggedDuringContentUpdateRestriction: 0
+  - m_GUID: 8e7951c27644fa848951dcb95aa8a14c
+    m_Address: ClearanceConditionsPanel
+    m_ReadOnly: 0
+    m_SerializedLabels: []
+    FlaggedDuringContentUpdateRestriction: 0
   - m_GUID: 9555e7c0417a2d94bb6b1f6036e327d6
     m_Address: ConfirmPanel
     m_ReadOnly: 0

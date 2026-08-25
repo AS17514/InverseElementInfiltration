@@ -65,6 +65,7 @@ namespace TheLaw.UI
         private TowerFlow _towerFlow;
         private BattleResultPanel _battleResultPanel; // 结算面板（战斗结束 overlay——常驻，自身监听 StateChanged）
         private ConfirmPanel _confirmPanel; // 通用确认弹窗（常驻——退出确认等场景复用）
+        private ClearanceConditionsPanel _clearancePanel; // 通关条件面板（常驻——战斗开始/战斗中按钮复用；2026-08-26）
         private StoryPanel _storyPanel; // 开场剧情面板（新游戏先播；播完销毁进新局）
         private bool _storyPlaying; // 剧情播放中（防重）
         private TutorialManager _tutorialManager; // 新手教程管理器（观察事件 → 角色说话 + 遮罩高亮）
@@ -123,6 +124,7 @@ namespace TheLaw.UI
             StartCoroutine(CreateBattleResultPanel());
             // ⑤a2 确认面板常驻创建（通用确认 overlay——撤回全部/退出/重开等场景复用；IsPausing 暂停型）
             StartCoroutine(CreateConfirmPanel());
+            StartCoroutine(CreateClearanceConditionsPanel()); // 通关条件面板常驻创建（2026-08-26）
             // ⑤a3 获取物品弹窗常驻创建（RelicObtained 统一提示——2026-08-14：取代事件面板描述区追加）
             StartCoroutine(CreateItemGettingPanel());
             // ⑤a3b 玩法详情面板常驻创建（overlay——Grp_Mode 介绍按钮打开；2026-08-26）
@@ -1141,43 +1143,12 @@ namespace TheLaw.UI
                 Debug.LogWarning("[Bootstrap] 确认面板未就绪——跳过通关条件弹窗");
                 return;
             }
-            _confirmPanel.ShowConfirm(BuildClearanceText(), null, null);
-        }
-
-        /// <summary>按当前关配置拼通关条件文本（只读 FloorConfig）。</summary>
-        private string BuildClearanceText()
-        {
-            var cfg = _gameState != null ? _gameState.CurrentFloorConfig : null;
-            string name = FloorDisplayName(_gameState != null ? _gameState.CurrentFloor : 0);
-            var lines = new System.Collections.Generic.List<string> { $"{name} · 通关条件" };
-            if (cfg == null)
+            if (_clearancePanel == null)
             {
-                lines.Add("（本关配置缺失）");
-                return string.Join("\n", lines);
+                Debug.LogWarning("[Bootstrap] 通关条件面板未就绪——跳过弹窗");
+                return;
             }
-            switch (cfg.victoryRule)
-            {
-                case VictoryRule.WipeOut:
-                    lines.Add("胜利：击败敌方全部棋子（守完所有波次）");
-                    break;
-                case VictoryRule.ScoreTarget:
-                    lines.Add(cfg.targetScore > 0 ? $"胜利：总得分达到 {cfg.targetScore}（或击败所有波次）" : "胜利：击败所有波次");
-                    break;
-                case VictoryRule.PerWaveScore:
-                    lines.Add(cfg.targetScore > 0 ? $"胜利：每波得分达标，且总得分 ≥ {cfg.targetScore}" : "胜利：每波得分达标");
-                    break;
-                case VictoryRule.Both:
-                    lines.Add($"胜利：守完波次全灭敌方，且总得分 ≥ {cfg.targetScore}");
-                    break;
-            }
-            if (cfg.waveDefs != null && cfg.waveDefs.Count > 0)
-            {
-                lines.Add($"敌方共 {cfg.waveDefs.Count} 波");
-                var last = cfg.waveDefs[cfg.waveDefs.Count - 1];
-                if (last.endCountdown > 0) lines.Add($"末波后 {last.endCountdown} 回合强制结算");
-            }
-            if (cfg.scoreDeductEnabled) lines.Add("注意：我方棋子被敌方击败会扣分");
-            return string.Join("\n", lines);
+            _clearancePanel.Show(ClearanceTextBuilder.Build(_gameState));
         }
 
         /// <summary>战斗内查看按钮接线（BackgroundCanvas/Btn_ClearanceConditions——仅战斗中有效）。</summary>
@@ -1295,6 +1266,18 @@ namespace TheLaw.UI
                 panel.Init(_uiManager);
                 _confirmPanel = panel;
                 panel.gameObject.SetActive(false); // 常驻隐藏（ShowConfirm 时 PushOverlay）
+            });
+        }
+
+        /// <summary>通关条件面板常驻创建（overlay——战斗开始/战斗中按钮复用；IsPausing 暂停型；2026-08-26）。</summary>
+        private System.Collections.IEnumerator CreateClearanceConditionsPanel()
+        {
+            yield return LoadPanelAsync<ClearanceConditionsPanel>(panel =>
+            {
+                _uiManager.RegisterPanel(panel);
+                panel.Init(_uiManager);
+                _clearancePanel = panel;
+                panel.gameObject.SetActive(false); // 常驻隐藏（Show 时 PushOverlay）
             });
         }
 

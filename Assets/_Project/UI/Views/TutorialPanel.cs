@@ -31,10 +31,12 @@ namespace TheLaw.UI
         const float ScreenMargin = 16f;
 
         Image _imgPortrait;
-        TMP_Text _txtSpeaker;
         TMP_Text _txtText;
         RectTransform _grpPortrait;
         RectTransform _grpText;
+        RectTransform _textBox;   // 可移动文本框 = Grp_Text，缺省回退 Txt_Text（李毕现结构）
+        RectTransform _textBg;    // 文本背景（若从 TMP 内部提出）——与文本框同步移动
+        Image _textBgImage;
 
         Coroutine _typeRoutine;
         bool _typing;
@@ -47,12 +49,6 @@ namespace TheLaw.UI
         bool _skipBackConsumed;
 
         readonly HashSet<string> _loggedMissingPortrait = new HashSet<string>();
-
-        /// <summary>立绘地址表（Addressables，待美术交付后填）：key → 地址。</summary>
-        static readonly Dictionary<string, string> PortraitAddresses = new Dictionary<string, string>
-        {
-            // TODO: 美术交付后填写（如 "xeon_normal" → "portrait/xeon_normal"）；空表 = 立绘隐藏只显文字
-        };
 
         public bool IsTyping => _typing;
 
@@ -88,7 +84,6 @@ namespace TheLaw.UI
         public void ShowStep(TutorialStep step, bool animate)
         {
             BuildFallbackIfNeeded();
-            if (_txtSpeaker != null) _txtSpeaker.text = step.speaker ?? string.Empty;
             if (_txtText != null) _txtText.text = string.Empty;
             SetPortrait(step.portraitKey);
             ApplyLayout(step.layout, animate);
@@ -135,25 +130,72 @@ namespace TheLaw.UI
         void SetPortrait(string portraitKey)
         {
             if (_imgPortrait == null) return;
-            if (string.IsNullOrEmpty(portraitKey) || !PortraitAddresses.TryGetValue(portraitKey, out var address))
+            if (string.IsNullOrEmpty(portraitKey))
             {
-                _imgPortrait.gameObject.SetActive(false);
-                if (!string.IsNullOrEmpty(portraitKey) && _loggedMissingPortrait.Add(portraitKey))
-                {
-                    Debug.Log("[TutorialPanel] 立绘未配置或地址缺失：" + portraitKey + "（美术交付后填入 PortraitAddresses）——本次隐藏立绘");
-                }
+                _imgPortrait.gameObject.SetActive(false); // 旁白步：无立绘
                 return;
             }
-            _imgPortrait.gameObject.SetActive(true);
-            var handle = Addressables.LoadAssetAsync<Sprite>(address);
-            handle.Completed += op =>
+            var sprite = LoadPortrait(portraitKey);
+            if (sprite != null)
             {
-                if (op.Status == UnityEngine.ResourceManagement.AsyncOperations.AsyncOperationStatus.Succeeded && op.Result != null)
+                _imgPortrait.gameObject.SetActive(true);
+                _imgPortrait.sprite = sprite;
+            }
+            else
+            {
+                _imgPortrait.gameObject.SetActive(false);
+                if (_loggedMissingPortrait.Add(portraitKey))
                 {
-                    if (_imgPortrait != null) _imgPortrait.sprite = op.Result;
+                    Debug.LogWarning("[TutorialPanel] 头像/立绘缺失（Addressables 无 " + portraitKey + " 候选地址）——本次隐藏头像");
                 }
-                Addressables.Release(op);
-            };
+            }
+        }
+
+        /// <summary>
+        /// 头像差分候选地址（仅头像，用户按需求表交付）：
+        /// Xeon = "Avatar_Xeon_常态" 等；3号 = "Avatar_3号_默认"。
+        /// 无全身立绘兜底（用户定案）。
+        /// </summary>
+        static IEnumerable<string> PortraitCandidates(string key)
+        {
+            if (key == "3号")
+            {
+                yield return "Avatar_3号_默认";
+                yield return "Avatar_3号";
+                yield return "Avatar_No3";
+                yield break;
+            }
+            if (key.StartsWith("Avatar", System.StringComparison.OrdinalIgnoreCase))
+            {
+                yield return key;
+                yield break;
+            }
+            yield return "Avatar_Xeon_" + key;
+        }
+
+        /// <summary>Addressables 按候选地址同步加载（同 StoryPanel.LoadSpriteOrNull；地址不存在试下一候选）。</summary>
+        static Sprite LoadPortrait(string key)
+        {
+            foreach (var addr in PortraitCandidates(key))
+            {
+                try
+                {
+                    var locHandle = Addressables.LoadResourceLocationsAsync(addr, typeof(Sprite));
+                    locHandle.WaitForCompletion();
+                    int count = locHandle.Result == null ? 0 : locHandle.Result.Count;
+                    Addressables.Release(locHandle);
+                    if (count == 0) continue; // 地址不存在——试下一候选
+                    var handle = Addressables.LoadAssetAsync<Sprite>(addr);
+                    var sprite = handle.WaitForCompletion();
+                    Addressables.Release(handle);
+                    if (sprite != null) return sprite;
+                }
+                catch
+                {
+                    // 试下一候选
+                }
+            }
+            return null;
         }
 
         // ====== 布局（DOTween 移动两框 + 屏幕内 clamp） ======
@@ -165,22 +207,31 @@ namespace TheLaw.UI
                 p = Presets["bottomCenter"];
             }
             MoveBox(_grpPortrait, p.PortraitPos, animate);
-            MoveBox(_grpText, p.TextPos, animate);
+            MoveBox(_textBox, p.TextPos, animate);
         }
 
         void MoveBox(RectTransform box, Vector2 targetPos, bool animate)
         {
             if (box == null) return;
             Vector2 clamped = ClampToScreen(box, targetPos);
+            Vector2 delta = clamped - box.anchoredPosition;
             if (animate)
             {
                 DOTween.To(() => box.anchoredPosition, v => box.anchoredPosition = v, clamped, MoveDuration)
                     .SetEase(Ease.OutCubic)
                     .SetUpdate(true); // 暂停型（timeScale=0）也不冻结移动
+                if (_textBg != null && _textBg != box)
+                {
+                    Vector2 bgFrom = _textBg.anchoredPosition;
+                    DOTween.To(() => _textBg.anchoredPosition, v => _textBg.anchoredPosition = v, bgFrom + delta, MoveDuration)
+                        .SetEase(Ease.OutCubic)
+                        .SetUpdate(true);
+                }
             }
             else
             {
                 box.anchoredPosition = clamped;
+                if (_textBg != null && _textBg != box) _textBg.anchoredPosition += delta;
             }
         }
 
@@ -297,6 +348,43 @@ namespace TheLaw.UI
 
         // ====== 节点解析 / 代码兜底 ======
 
+        /// <summary>
+        /// prefab 结构修正（运行时，不改资产）：
+        /// 1. 文本框回退：无 Grp_Text 时用 Txt_Text 本体（李毕现结构）；
+        /// 2. 背景图 Img_TextBg 若嵌在 TMP 内部（子节点渲染在父 TMP 之上会盖住文字）→
+        ///    提出到 TMP 同级且排在其前（同矩形、随文本框同步移动）→ 文字渲染在背景之上；
+        /// 3. 头像/背景 raycastTarget=false（教程非阻断，不挡下层交互）。
+        /// </summary>
+        void FixPrefabRenderOrder()
+        {
+            _textBox = _grpText != null ? _grpText : (_txtText != null ? _txtText.rectTransform : null);
+            if (_txtText != null)
+            {
+                var bg = FindDeep<Image>(_txtText.transform, "Img_TextBg");
+                if (bg != null && bg.transform.parent == _txtText.transform)
+                {
+                    var txtRt = _txtText.rectTransform;
+                    var bgRt = bg.rectTransform;
+                    bgRt.SetParent(txtRt.parent, false); // 提到 TMP 同级
+                    bgRt.anchorMin = txtRt.anchorMin;
+                    bgRt.anchorMax = txtRt.anchorMax;
+                    bgRt.pivot = txtRt.pivot;
+                    bgRt.anchoredPosition = txtRt.anchoredPosition;
+                    bgRt.sizeDelta = txtRt.sizeDelta;
+                    bgRt.SetSiblingIndex(txtRt.GetSiblingIndex()); // 排 TMP 之前 → 背景在文字之下
+                    _textBg = bgRt;
+                    _textBgImage = bg;
+                    Debug.Log("[TutorialPanel] 背景图 Img_TextBg 已从 TMP 内部提出至其下（文字渲染于背景之上）");
+                }
+                else
+                {
+                    _textBgImage = bg;
+                }
+            }
+            if (_textBgImage != null) _textBgImage.raycastTarget = false;
+            if (_imgPortrait != null) _imgPortrait.raycastTarget = false;
+        }
+
         void BuildFallbackIfNeeded()
         {
             if (_built) return;
@@ -305,33 +393,25 @@ namespace TheLaw.UI
             _grpPortrait = FindDeep<RectTransform>(transform, "Grp_Portrait");
             _grpText = FindDeep<RectTransform>(transform, "Grp_Text");
             _imgPortrait = FindDeep<Image>(transform, "Img_Portrait");
-            _txtSpeaker = FindDeep<TMP_Text>(transform, "Txt_Speaker");
             _txtText = FindDeep<TMP_Text>(transform, "Txt_Text");
 
-            if (_grpPortrait != null || _grpText != null || _imgPortrait != null || _txtSpeaker != null || _txtText != null)
+            if (_grpPortrait != null || _grpText != null || _imgPortrait != null || _txtText != null)
             {
                 // 部分节点缺失告警（李毕拼完即消）
                 if (_txtText == null) Debug.LogWarning("[TutorialPanel] 未找到 Txt_Text——台词无法显示");
+                FixPrefabRenderOrder(); // prefab 结构修正（背景置于文字之下等）
                 return; // 存在 prefab 节点：缺失项按现有结构兜底
             }
 
             // 纯代码兜底（无 prefab 时也能跑）
             _grpPortrait = CreateBox("Grp_Portrait", new Vector2(320f, 400f), new Color(0.08f, 0.08f, 0.1f, 0.9f), out _);
             _grpText = CreateBox("Grp_Text", new Vector2(800f, 300f), new Color(0.08f, 0.08f, 0.1f, 0.92f), out _);
+            _textBox = _grpText; // 代码兜底：文本框 = Grp_Text（背景在其内、文字在其上）
             var portraitGo = new GameObject("Img_Portrait", typeof(RectTransform), typeof(CanvasRenderer), typeof(Image));
             portraitGo.transform.SetParent(_grpPortrait, false);
             Stretch(portraitGo.GetComponent<RectTransform>(), new Vector2(0.05f, 0.05f), new Vector2(0.95f, 0.95f));
             _imgPortrait = portraitGo.GetComponent<Image>();
             _imgPortrait.raycastTarget = false;
-
-            var speakerGo = new GameObject("Txt_Speaker", typeof(RectTransform), typeof(CanvasRenderer), typeof(TextMeshProUGUI));
-            speakerGo.transform.SetParent(_grpText, false);
-            var speakerRt = speakerGo.GetComponent<RectTransform>();
-            Stretch(speakerRt, new Vector2(0f, 0.72f), new Vector2(1f, 1f));
-            _txtSpeaker = speakerGo.GetComponent<TextMeshProUGUI>();
-            _txtSpeaker.fontSize = 30f;
-            _txtSpeaker.color = Color.white;
-            _txtSpeaker.alignment = TextAlignmentOptions.Left;
 
             var textGo = new GameObject("Txt_Text", typeof(RectTransform), typeof(CanvasRenderer), typeof(TextMeshProUGUI));
             textGo.transform.SetParent(_grpText, false);

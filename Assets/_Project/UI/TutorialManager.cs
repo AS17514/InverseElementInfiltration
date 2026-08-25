@@ -83,8 +83,8 @@ namespace TheLaw.UI
         {
             var ec = EventCenter.Instance;
             ec.AddEventListener(GameEvent.EventOpened, OnEventOpened);
-            ec.AddEventListener(GameEvent.AbilityCandidatesDrawn, OnEventCandidates);
-            ec.AddEventListener(GameEvent.RuleCandidatesDrawn, OnEventCandidates);
+            ec.AddEventListener(GameEvent.AbilityCandidatesDrawn, OnAbilityCandidates);
+            ec.AddEventListener(GameEvent.RuleCandidatesDrawn, OnRuleCandidates);
             ec.AddEventListener(GameEvent.RelicObtained, OnRelicObtained);
             ec.AddEventListener(GameEvent.EditCandidatesDrawn, OnEditCandidates);
             ec.AddEventListener(GameEvent.StateChanged, OnStateChanged);
@@ -96,8 +96,8 @@ namespace TheLaw.UI
             var ec = EventCenter.Instance;
             if (ec == null) return;
             ec.RemoveEventListener(GameEvent.EventOpened, OnEventOpened);
-            ec.RemoveEventListener(GameEvent.AbilityCandidatesDrawn, OnEventCandidates);
-            ec.RemoveEventListener(GameEvent.RuleCandidatesDrawn, OnEventCandidates);
+            ec.RemoveEventListener(GameEvent.AbilityCandidatesDrawn, OnAbilityCandidates);
+            ec.RemoveEventListener(GameEvent.RuleCandidatesDrawn, OnRuleCandidates);
             ec.RemoveEventListener(GameEvent.RelicObtained, OnRelicObtained);
             ec.RemoveEventListener(GameEvent.EditCandidatesDrawn, OnEditCandidates);
             ec.RemoveEventListener(GameEvent.StateChanged, OnStateChanged);
@@ -109,9 +109,22 @@ namespace TheLaw.UI
             TryFirstEvent();
         }
 
-        void OnEventCandidates(object data)
+        void OnAbilityCandidates(object data)
         {
-            TryFirstEvent();
+            TryFirstEvent(); // 首事件 = 能力事件（选遗物）→ 事件界面教程
+        }
+
+        void OnRuleCandidates(object data)
+        {
+            if (_shown.Contains("event_intro"))
+            {
+                // 事件界面教程已播过 → 本玩法事件 = 下一层起始 → 玩法选择教程（docx 最终版新增段）
+                ShowSequence("floor_rule_intro");
+            }
+            else
+            {
+                TryFirstEvent();
+            }
         }
 
         /// <summary>本局第一个事件界面（普通/能力/玩法任一）→ 事件界面教程。</summary>

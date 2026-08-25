@@ -34,12 +34,12 @@ namespace TheLaw.UI
 
         private static bool _busy; // 过渡进行中（Begin 已开始未 End）
 
-        public static void ShowWithLoading(UIManager ui, string key)
+        public static void ShowWithLoading(UIManager ui, string key, bool force = false)
         {
             if (ui == null || string.IsNullOrEmpty(key)) return;
 
-            // 同面板重复 Show（幂等刷新）不需要过渡
-            if (ui.CurrentKey == key)
+            // 同面板重复 Show（幂等刷新）不需要过渡；force=true 强制走过渡（事件→事件内容切换——旧面板保持到遮挡就绪）
+            if (!force && ui.CurrentKey == key)
             {
                 ui.ShowPanel(key);
                 return;

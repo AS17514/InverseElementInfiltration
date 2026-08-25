@@ -54,6 +54,12 @@ namespace TheLaw.UI
                 var bg = GameObject.Find("BackgroundCanvas");
                 if (bg != null) _root = bg.transform.Find("Grp_WaveNodes") as RectTransform;
             }
+            if (_root != null)
+            {
+                // 2026-08-27 测试反馈修复：Grp_WaveNodes 在 BackgroundCanvas 兄弟序中排在 Img_Board/Img_Stand 之前 → 进度条被棋盘图盖住不可见。
+                // 置为最后子节点（高于棋盘/棋台/前景；按钮在 ECG 后仍可点——区域不重叠）。
+                _root.SetAsLastSibling();
+            }
         }
 
         void Update()

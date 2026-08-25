@@ -553,7 +553,7 @@ namespace TheLaw.UI
         {
             if (!_isRulePick || _ruleSelectionLocked || _resolver == null) return;
             _ruleSelectionLocked = true; // 防重复点击锁（同步推进后不释放——下一事件重建时复位）
-            gameObject.SetActive(false);  // 先隐藏：避免同步推进（EventCompleted→下一事件再激活）造成残留或重复点击
+            // ⚠️ 2026-08-26 不隐藏自身：EventCompleted 同步推进 → 下一面板过渡遮挡下切换（防裸场景）
             _resolver.SelectRule(index);  // 后端落账（激活玩法） + 清候选 + EventCompleted 推进（不走普通 Complete）
         }
 
@@ -670,7 +670,7 @@ namespace TheLaw.UI
         {
             if (!_isAbilityPick || _abilitySelectionLocked || _resolver == null) return;
             _abilitySelectionLocked = true; // 防重复点击锁（同步推进后不释放——下一事件重建时复位）
-            gameObject.SetActive(false);    // 先隐藏：避免同步推进（EventCompleted→下一事件 EventOpened 再激活）造成残留或重复点击
+            // ⚠️ 2026-08-26 不隐藏自身：EventCompleted 同步推进 → 下一面板过渡遮挡下切换（防裸场景）
             _resolver.SelectAbility(index); // 后端落账 + 清候选 + EventCompleted 推进（不走普通 Complete）
         }
 
@@ -700,7 +700,7 @@ namespace TheLaw.UI
             }
             if (interactive)
             {
-                gameObject.SetActive(false); // 等专用面板完成（EventCompleted 推进）——下一节点 EventOpened 再激活
+                // ⚠️ 2026-08-26 不隐藏自身——StateChanged("edit"/"deck") 由 Bootstrap 打开专用面板（ShowWithLoading 遮挡下切换，防裸场景）
                 return;
             }
             // 非交互效果（遗物/婉拒）：推进只能由玩家显式操作——选项区重建为"继续"按钮（禁止自动跳过）
@@ -742,11 +742,10 @@ namespace TheLaw.UI
             ShowContinue();
         }
 
-/// <summary>事件交互完成：先关自己再通知 TowerFlow 推进（防同步推进重新激活面板后被 SetActive(false) 关闭——时序反转）。
+/// <summary>事件交互完成：通知 TowerFlow 推进（2026-08-26 起不隐藏自身——EventCompleted 同步推进，下一面板过渡遮挡下切换）。
         /// ⚠️ 2026-08-12：携带当前事件 id——TowerFlow 校验匹配才推进（防重复信号跳节点）。</summary>
         void Complete()
         {
-            gameObject.SetActive(false);
             EventCenter.Instance.EventTrigger(GameEvent.EventCompleted, _currentEventId);
         }
 

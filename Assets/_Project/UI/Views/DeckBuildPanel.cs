@@ -515,7 +515,7 @@ namespace TheLaw.UI
             {
                 _confirmed = true; // 落账成功即锁（失败保持可重试——校验拒绝时不锁）
                 UiSfx.Play(); // 构筑确认按钮碰撞音（2026-08-24 音频挂点方案）
-                gameObject.SetActive(false);
+                // ⚠️ 2026-08-26 不隐藏自身：EventCompleted 同步推进 → 战斗/下一面板 ShowWithLoading 遮挡下切换（防裸场景）
                 EventCenter.Instance.EventTrigger(GameEvent.EventCompleted, _state != null ? _state.CurrentEventId : null); // 推进（携带事件 id——TowerFlow 校验匹配；防重复信号跳节点）
             }
             else
@@ -542,65 +542,23 @@ namespace TheLaw.UI
 
         // ====== 信息区（同 PieceEditPanel 逻辑——选中棋子详情）======
 
-        /// <summary>悬停显示棋子信息（CardHover 调用——跨类所以 internal）。</summary>
+        /// <summary>悬停显示棋子信息（CardHover 调用——跨类所以 internal）。
+        /// 2026-08-27：统一走 HandCardView.Bind（类型位/占地/程序图标/Bg 全量——原手工填充缺这些，图标显示不正确）。</summary>
         internal void ShowPieceInfo(PieceDef def)
         {
-            if (_infoName != null) _infoName.text = VerticalName(def.displayName);
-            if (_infoValueText != null) _infoValueText.text = GetEffectiveValue(def.Id).ToString();
-            if (_infoTypeText != null)
-            {
-                _infoTypeText.text = GetEffectiveType(def.Id) == PieceType.Initial ? "始" : GetEffectiveType(def.Id) == PieceType.Deployable ? "部" : "升";
-            }
-            // 立绘随悬停卡片刷新（2026-08-23：信息区复用 Piece_Handcard——PortraitKey 与卡面同源 = def.name）
-            if (_infoPortrait != null)
-            {
-                _infoPortrait.color = Color.white;
-                _infoPortrait.sprite = PieceViewFactory.TryGetPreloadedPortrait(def.name, out var portrait) ? portrait : null;
-            }
+            if (def == null || _pieceInfo == null) return;
             // 程序 = 编辑差异优先（CurrentPrograms——编辑结果在此），回退 Def 默认模组（2026-08-11 数据链修复）
             List<Template> slots = null;
             if (_state != null && _state.TryGetCurrentProgram(def.Id, out var edited)) slots = edited;
             else if (def.programSet != null && def.programSet.Count > 0) slots = def.programSet[0].slots;
-            int slotCount = slots != null ? Mathf.Min(slots.Count, 4) : 0;
-            for (int i = 0; i < 4; i++)
-            {
-                bool has = i < slotCount;
-                // 2026-08-23：空槽不隐藏——常显位点，仅降透明度（与 HandCardView 一致）
-                if (_slotImages[i] != null)
-                {
-                    _slotImages[i].gameObject.SetActive(true);
-                    var iconColor = _slotImages[i].color;
-                    _slotImages[i].color = new Color(iconColor.r, iconColor.g, iconColor.b, has ? 1f : EmptyProgramSlotAlpha);
-                }
-                if (_slotDescs[i] != null)
-                {
-                    _slotDescs[i].gameObject.SetActive(true);
-                    var descColor = _slotDescs[i].color;
-                    _slotDescs[i].color = new Color(descColor.r, descColor.g, descColor.b, has ? 1f : EmptyProgramSlotAlpha);
-                }
-                if (has)
-                {
-                    var t = slots[i];
-                    if (_slotTexts[i] != null) _slotTexts[i].text = SlotTypeChar(t);
-                    if (_slotDescs[i] != null) _slotDescs[i].text = SlotDetailDesc(t);
-                }
-                else
-                {
-                    if (_slotTexts[i] != null) _slotTexts[i].text = "";
-                    if (_slotDescs[i] != null) _slotDescs[i].text = "";
-                }
-            }
-            if (_pieceInfo != null)
-            {
-                var infoImg = _pieceInfo.GetComponent<Image>();
-                if (infoImg != null)
-                {
-                    // 2026-08-23：背景按棋子类型着色，但不设透明（原 0.45f 半透明为多余设置——prefab 根 Image 已是不透明）
-                    var c = CardTypeColors.For(GetEffectiveType(def.Id));
-                    infoImg.color = new Color(c.r, c.g, c.b, 1f);
-                }
-                _pieceInfo.gameObject.SetActive(true);
-            }
+            var handCardView = _pieceInfo.GetComponent<HandCardView>();
+            if (handCardView == null) handCardView = _pieceInfo.gameObject.AddComponent<HandCardView>();
+            handCardView.Bind(PiecePresentationMapper.ToHandCard(
+                def,
+                GetEffectiveType(def.Id),
+                GetEffectiveValue(def.Id),
+                slots ?? new List<Template>()));
+            _pieceInfo.gameObject.SetActive(true);
         }
 
         /// <summary>隐藏信息区（CardHover 调用——跨类所以 internal）。</summary>

@@ -295,7 +295,7 @@ namespace TheLaw.UI
                 return;
             }
             UiSfx.Play(); // 编辑完成（下一步）按钮碰撞音（2026-08-24 音频挂点方案）
-            gameObject.SetActive(false);
+            // ⚠️ 2026-08-26 不隐藏自身：EventCompleted 同步推进 → 下一面板 ShowWithLoading 遮挡下切换（防裸场景）
             EventCenter.Instance.EventTrigger(GameEvent.EventCompleted, _state != null ? _state.CurrentEventId : null); // 推进（携带事件 id——TowerFlow 校验匹配；防重复信号跳节点）
         }
 

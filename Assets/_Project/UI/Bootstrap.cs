@@ -493,7 +493,8 @@ namespace TheLaw.UI
             else
             {
                 // 面板已存在：其自身监听 EventOpened 处理（Bootstrap 不再主动推——防双消费双推进）
-                PanelTransition.ShowWithLoading(_uiManager, "EventPanel");
+                // force：事件→事件同面板内容切换也走 loading 过渡（旧面板保持到遮挡就绪——防点击后裸场景）
+                PanelTransition.ShowWithLoading(_uiManager, "EventPanel", force: true);
             }
         }
 

@@ -325,47 +325,10 @@ namespace TheLaw.UI
         {
             if (_mask == null)
             {
+                // 层级由 TutorialMask.EnsureLayered 每帧自愈（挂教程面板 Canvas 首子节点，继承 21000 排序）
                 _mask = TutorialMask.Create(FindUICamera());
-                if (_mask != null)
-                {
-                    // ⚠️ 遮罩 Canvas 必须挂到 UI 根 Canvas 之下并 overrideSorting 置顶：
-                    // 否则它自己是"无父 + UI 层 + ScreenSpaceCamera"，会被 PanelBase.EnsureCanvas 误当 UI 根复用
-                    // → 后续面板全挂进遮罩 Canvas、遮罩被压在最底（层级全乱、压暗不可见）。
-                    var rootCanvas = FindRootUICanvas();
-                    var maskCanvas = _mask.GetComponent<Canvas>();
-                    if (rootCanvas != null && maskCanvas != null)
-                    {
-                        maskCanvas.overrideSorting = true;
-                        maskCanvas.sortingOrder = TutorialMask.SortingOrder;
-                        maskCanvas.transform.SetParent(rootCanvas.transform, false);
-                        var rt = maskCanvas.transform as RectTransform;
-                        if (rt != null)
-                        {
-                            rt.anchorMin = Vector2.zero;
-                            rt.anchorMax = Vector2.one;
-                            rt.offsetMin = Vector2.zero;
-                            rt.offsetMax = Vector2.zero;
-                        }
-                    }
-                }
             }
             if (_mask != null) _mask.SetVisible(true);
-        }
-
-        /// <summary>找 UI 根 Canvas（无父 + UI 层 + 非 BackgroundCanvas/非遮罩自身）。</summary>
-        static Canvas FindRootUICanvas()
-        {
-            foreach (var c in Object.FindObjectsOfType<Canvas>(true))
-            {
-                if (c.transform.parent == null &&
-                    c.gameObject.layer == LayerMask.NameToLayer("UI") &&
-                    c.gameObject.name != "BackgroundCanvas" &&
-                    c.gameObject.name != "TutorialMaskCanvas")
-                {
-                    return c;
-                }
-            }
-            return null;
         }
 
         static Camera FindUICamera()

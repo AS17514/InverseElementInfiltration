@@ -35,8 +35,7 @@ namespace TheLaw.UI
         RectTransform _grpPortrait;
         RectTransform _grpText;
         RectTransform _textBox;   // 可移动文本框 = Grp_Text，缺省回退 Txt_Text（李毕现结构）
-        RectTransform _textBg;    // 文本背景（若从 TMP 内部提出）——与文本框同步移动
-        Image _textBgImage;
+        readonly List<RectTransform> _textBgs = new List<RectTransform>(); // 文字背景叠层（支持同名多层，全部跟随文本框）
 
         Coroutine _typeRoutine;
         bool _typing;
@@ -52,25 +51,27 @@ namespace TheLaw.UI
 
         public bool IsTyping => _typing;
 
+        /// <summary>布局预设：仅定义纵向位置与文字在头像哪一侧；水平间距固定 30px（用户定案 20~40）。</summary>
         struct LayoutPreset
         {
-            public Vector2 PortraitPos;
-            public Vector2 TextPos;
-            public LayoutPreset(Vector2 portrait, Vector2 text) { PortraitPos = portrait; TextPos = text; }
+            public float TextY;       // 两框共享的纵向坐标（画布本地 y，参考 1920x1080）
+            public bool TextOnRight;  // true = 文字在头像右侧；false = 文字在头像左侧
+            public LayoutPreset(float y, bool right) { TextY = y; TextOnRight = right; }
         }
 
-        /// <summary>布局预设（中心锚点 + 参考分辨率 1920x1080 偏移；两框间距与对齐在预设中保证）。</summary>
         static readonly Dictionary<string, LayoutPreset> Presets = new Dictionary<string, LayoutPreset>
         {
-            { "bottomCenter", new LayoutPreset(new Vector2(-420f, -330f), new Vector2(300f, -330f)) },
-            { "bottomLeft",   new LayoutPreset(new Vector2(-760f, -330f), new Vector2(-300f, -330f)) },
-            { "bottomRight",  new LayoutPreset(new Vector2(760f, -330f),  new Vector2(300f, -330f)) },
-            { "topCenter",    new LayoutPreset(new Vector2(-420f, 330f),  new Vector2(300f, 330f)) },
-            { "topLeft",      new LayoutPreset(new Vector2(-760f, 330f),  new Vector2(-300f, 330f)) },
-            { "topRight",     new LayoutPreset(new Vector2(760f, 330f),   new Vector2(300f, 330f)) },
-            { "leftMid",      new LayoutPreset(new Vector2(-780f, 0f),    new Vector2(-300f, 0f)) },
-            { "rightMid",     new LayoutPreset(new Vector2(780f, 0f),     new Vector2(300f, 0f)) },
+            { "bottomCenter", new LayoutPreset(-330f, true) },
+            { "bottomLeft",   new LayoutPreset(-330f, true) },
+            { "bottomRight",  new LayoutPreset(-330f, false) },
+            { "topCenter",    new LayoutPreset(330f, true) },
+            { "topLeft",      new LayoutPreset(330f, true) },
+            { "topRight",     new LayoutPreset(330f, false) },
+            { "leftMid",      new LayoutPreset(0f, true) },
+            { "rightMid",     new LayoutPreset(0f, false) },
         };
+
+        const float BoxGap = 30f; // 头像框与文字框固定间距（用户定案）
 
         protected override void OnShow()
         {
@@ -85,6 +86,8 @@ namespace TheLaw.UI
         {
             BuildFallbackIfNeeded();
             if (_txtText != null) _txtText.text = string.Empty;
+            // 换行前置处理：文本框按完整台词自适应尺寸（宽≤720 自动换行），背景图同步跟随，再定位
+            SizeTextBox(step.text);
             SetPortrait(step.portraitKey);
             ApplyLayout(step.layout, animate);
             if (_typeRoutine != null) { StopCoroutine(_typeRoutine); _typeRoutine = null; }
@@ -123,6 +126,30 @@ namespace TheLaw.UI
             }
             if (_txtText != null) _txtText.text = full;
             _typing = false;
+        }
+
+        /// <summary>
+        /// 换行前置处理：按完整台词计算首选项尺寸（宽钳制 720 内自动换行，高随行数），
+        /// 文本框按内容自适应大小，背景图 Img_TextBg 同步同矩形，最后强制布局重建（防溢出屏幕）。
+        /// </summary>
+        void SizeTextBox(string full)
+        {
+            if (_txtText == null || _textBox == null) return;
+            _txtText.ForceMeshUpdate();
+            // ⚠️ 换行宽度必须扣 TMP margin（可用区 = 720 - 左右 margin），否则按 720 估算会少算一行
+            var margin = _txtText.margin;
+            float availW = 720f - margin.x - margin.z;
+            Vector2 pref = _txtText.GetPreferredValues(full ?? string.Empty, availW, 0f);
+            float w = Mathf.Clamp(pref.x + margin.x + margin.z + 24f, 120f, 720f);
+            float h = Mathf.Max(pref.y + margin.y + margin.w + 32f, 80f); // 上下 margin + 缓冲（防末行出背景）
+            _textBox.sizeDelta = new Vector2(w, h);
+            foreach (var bg in _textBgs) // 全部背景叠层同步（支持同名多层）
+            {
+                bg.sizeDelta = _textBox.sizeDelta;
+                bg.anchoredPosition = _textBox.anchoredPosition;
+            }
+            Canvas.ForceUpdateCanvases();
+            LayoutRebuilder.ForceRebuildLayoutImmediate(_textBox);
         }
 
         // ====== 立绘 ======
@@ -206,8 +233,24 @@ namespace TheLaw.UI
             {
                 p = Presets["bottomCenter"];
             }
-            MoveBox(_grpPortrait, p.PortraitPos, animate);
-            MoveBox(_textBox, p.TextPos, animate);
+            // 按实际框宽动态计算：两框相邻（固定 30px 间距）居中摆放，共享同一纵向基线
+            float pw = _grpPortrait != null ? _grpPortrait.rect.width : 150f;
+            float tw = _textBox != null ? _textBox.rect.width : 400f;
+            float pairW = pw + BoxGap + tw;
+            float startX = -pairW * 0.5f;
+            float portraitX, textX;
+            if (p.TextOnRight)
+            {
+                portraitX = startX + pw * 0.5f;
+                textX = startX + pw + BoxGap + tw * 0.5f;
+            }
+            else
+            {
+                textX = startX + tw * 0.5f;
+                portraitX = startX + tw + BoxGap + pw * 0.5f;
+            }
+            MoveBox(_grpPortrait, new Vector2(portraitX, p.TextY), animate);
+            MoveBox(_textBox, new Vector2(textX, p.TextY), animate);
         }
 
         void MoveBox(RectTransform box, Vector2 targetPos, bool animate)
@@ -220,18 +263,24 @@ namespace TheLaw.UI
                 DOTween.To(() => box.anchoredPosition, v => box.anchoredPosition = v, clamped, MoveDuration)
                     .SetEase(Ease.OutCubic)
                     .SetUpdate(true); // 暂停型（timeScale=0）也不冻结移动
-                if (_textBg != null && _textBg != box)
+                if (box == _textBox) // ⚠️ 背景只跟文本框移动（防被头像框移动误同步）
                 {
-                    Vector2 bgFrom = _textBg.anchoredPosition;
-                    DOTween.To(() => _textBg.anchoredPosition, v => _textBg.anchoredPosition = v, bgFrom + delta, MoveDuration)
-                        .SetEase(Ease.OutCubic)
-                        .SetUpdate(true);
+                    foreach (var bg in _textBgs)
+                    {
+                        Vector2 bgFrom = bg.anchoredPosition;
+                        DOTween.To(() => bg.anchoredPosition, v => bg.anchoredPosition = v, bgFrom + delta, MoveDuration)
+                            .SetEase(Ease.OutCubic)
+                            .SetUpdate(true);
+                    }
                 }
             }
             else
             {
                 box.anchoredPosition = clamped;
-                if (_textBg != null && _textBg != box) _textBg.anchoredPosition += delta;
+                if (box == _textBox)
+                {
+                    foreach (var bg in _textBgs) bg.anchoredPosition += delta; // 背景只跟文本框
+                }
             }
         }
 
@@ -367,27 +416,31 @@ namespace TheLaw.UI
                 _grpPortrait.pivot = new Vector2(0.5f, 0.5f);
             }
 
-            // 2) 文本框（无 Grp_Text 时 = Txt_Text 本体）：居中锚点 + 宽度钳制（防溢出屏幕）+ 自动换行
+            // 2) 文本框：居中锚点 + 自动换行兜底全开（尺寸由 ShowStep 按内容自适应）
             if (_textBox != null && _txtText != null)
             {
                 _textBox.anchorMin = new Vector2(0.5f, 0.5f);
                 _textBox.anchorMax = new Vector2(0.5f, 0.5f);
                 _textBox.pivot = new Vector2(0.5f, 0.5f);
-                if (_textBox.rect.width > 780f)
-                {
-                    _textBox.sizeDelta = new Vector2(720f, _textBox.sizeDelta.y);
-                }
+                // 移除 ContentSizeFitter（PreferredSize 会把宽度重置成整行文本宽，远超屏幕）
+                var csf = _txtText.GetComponent<ContentSizeFitter>();
+                if (csf != null) Destroy(csf);
+                csf = _textBox.GetComponent<ContentSizeFitter>();
+                if (csf != null) Destroy(csf);
                 _txtText.enableWordWrapping = true;
+                _txtText.overflowMode = TextOverflowModes.Overflow;
                 _txtText.raycastTarget = false;
             }
 
-            // 3) 背景图 Img_TextBg：无论嵌在 TMP 内部还是同级——统一提到文字之下（同矩形、随框同步移动）
+            // 3) 背景叠层 Img_TextBg：同名可多层——全部提到文字之下（同矩形、随框同步移动）
+            _textBgs.Clear();
             if (_txtText != null)
             {
-                var bg = FindDeep<Image>(transform, "Img_TextBg");
-                if (bg != null && bg.transform != _txtText.transform)
+                var all = FindAllDeep<Image>(transform, "Img_TextBg");
+                var txtRt = _txtText.rectTransform;
+                foreach (var bg in all)
                 {
-                    var txtRt = _txtText.rectTransform;
+                    if (bg == null || bg.transform == _txtText.transform) continue;
                     var bgRt = bg.rectTransform;
                     bgRt.SetParent(txtRt.parent, false);
                     bgRt.anchorMin = txtRt.anchorMin;
@@ -396,15 +449,12 @@ namespace TheLaw.UI
                     bgRt.anchoredPosition = txtRt.anchoredPosition;
                     bgRt.sizeDelta = txtRt.sizeDelta;
                     bgRt.SetSiblingIndex(txtRt.GetSiblingIndex()); // 排文字之前 → 背景在文字之下
-                    _textBg = bgRt;
-                    _textBgImage = bg;
-                    _textBgImage.raycastTarget = false;
-                    Debug.Log("[TutorialPanel] 背景图 Img_TextBg 已对齐文字框并置于其下（文字渲染于背景之上）");
+                    bg.raycastTarget = false;
+                    _textBgs.Add(bgRt);
                 }
-                else
+                if (_textBgs.Count > 0)
                 {
-                    _textBgImage = bg;
-                    if (_textBgImage != null) _textBgImage.raycastTarget = false;
+                    Debug.Log("[TutorialPanel] 背景叠层 Img_TextBg ×" + _textBgs.Count + " 已对齐文字框并置于其下");
                 }
             }
             if (_imgPortrait != null) _imgPortrait.raycastTarget = false;
@@ -424,6 +474,15 @@ namespace TheLaw.UI
                 rootRt.offsetMin = Vector2.zero;
                 rootRt.offsetMax = Vector2.zero;
                 rootRt.pivot = new Vector2(0.5f, 0.5f);
+            }
+
+            // ⚠️ 面板自身 Canvas 置顶（sortingOrder > 遮罩 20000）——否则遮罩压暗层会盖住教程文字/头像
+            if (GetComponent<Canvas>() == null)
+            {
+                var panelCanvas = gameObject.AddComponent<Canvas>();
+                panelCanvas.overrideSorting = true;
+                panelCanvas.sortingOrder = TutorialMask.SortingOrder + 1000;
+                gameObject.AddComponent<GraphicRaycaster>();
             }
 
             _grpPortrait = FindDeep<RectTransform>(transform, "Grp_Portrait");
@@ -495,6 +554,28 @@ namespace TheLaw.UI
                 if (found != null) return found;
             }
             return null;
+        }
+
+        /// <summary>深度优先收集全部同名组件（支持多层同名节点，如叠层背景）。</summary>
+        public static List<T> FindAllDeep<T>(Transform root, string name) where T : Component
+        {
+            var list = new List<T>();
+            CollectAll(root, name, list);
+            return list;
+        }
+
+        static void CollectAll<T>(Transform t, string name, List<T> list) where T : Component
+        {
+            if (t == null) return;
+            if (t.name == name)
+            {
+                var c = t.GetComponent<T>();
+                if (c != null) list.Add(c);
+            }
+            for (int i = 0; i < t.childCount; i++)
+            {
+                CollectAll(t.GetChild(i), name, list);
+            }
         }
     }
 }

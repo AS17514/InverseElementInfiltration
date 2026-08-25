@@ -55,6 +55,13 @@ namespace TheLaw.Gameplay
                 }
             }
 
+            // 属性（2026-08-26 用户方案：属性并入 buff 区显示——敌我双方可见，介绍含相生相克与效果；数据源 piece.element）
+            // 键 = element_{枚举小写}（gold/wood/water/fire/earth——与 buffs-descriptions.json element_* 条目对应）
+            if (piece.element != Element.None)
+            {
+                list.Add(new BuffInfo { key = "element_" + piece.element.ToString().ToLowerInvariant(), remaining = -1 });
+            }
+
             return list;
         }
     }

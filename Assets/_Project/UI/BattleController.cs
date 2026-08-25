@@ -3278,10 +3278,11 @@ namespace TheLaw.UI
                 return _state.Phase == BattlePhase.PlayerTurn && _state.PlayerAP >= 1
                     && !_executing && !_presentationPlaying;
             }
-            // 普通牌仍沿用原部署规则：Placement=初始 / PlayerTurn=部署。
+            // 普通牌部署规则：Placement=初始 / PlayerTurn=部署。
+            // ⚠️ 2026-08-26 同步后端语义（42e022b）：初始棋子战斗中也可部署（延续起始摆位——后端已放行并免费/AP 豁免）
             bool typeOk = _state.Phase == BattlePhase.Placement
                 ? effectiveType == PieceType.Initial
-                : effectiveType == PieceType.Deployable;
+                : effectiveType == PieceType.Deployable || effectiveType == PieceType.Initial;
             return typeOk && !_executing && !_presentationPlaying
                 && (_state.Phase == BattlePhase.Placement || _state.Phase == BattlePhase.PlayerTurn);
         }

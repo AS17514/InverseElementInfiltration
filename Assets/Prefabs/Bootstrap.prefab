@@ -65,6 +65,9 @@ MonoBehaviour:
   - {fileID: 11400000, guid: 7a1d6b6959fb0884ca604390386bd996, type: 2}
   _floorConfigs:
   - {fileID: 11400000, guid: 63df94cabd1c3ce409eda3e678cd83f1, type: 2}
+  - {fileID: 11400000, guid: 0a2d7a3153ec1c440b5404743c85c67a, type: 2}
+  - {fileID: 11400000, guid: d847a67ff8bd30342bc4d86c4d1678fb, type: 2}
+  - {fileID: 11400000, guid: 077166177a16bc04bae12ad18917b810, type: 2}
   _mapConfigs:
   - {fileID: 11400000, guid: d7386d2bc1dca6c48bb84824f07f7f1b, type: 2}
   _aiParamConfigs: []

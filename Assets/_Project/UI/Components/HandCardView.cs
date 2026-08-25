@@ -55,11 +55,13 @@ namespace TheLaw.UI
                     _slotIcons[i].gameObject.SetActive(true);
                     if (_slotIconImages[i] != null)
                     {
-                        if (visible && slot.IconSprite != null) _slotIconImages[i].sprite = slot.IconSprite;
+                        // 有图标只显图标；无图标才用文字（效果模块/空槽——2026-08-26 图标接入防重叠）
+                        _slotIconImages[i].sprite = visible && slot.IconSprite != null ? slot.IconSprite : null;
                         var slotColor = visible && slot.IconColor.HasValue ? slot.IconColor.Value : Color.white;
                         _slotIconImages[i].color = new Color(slotColor.r, slotColor.g, slotColor.b, visible ? 1f : EmptyProgramSlotAlpha);
                     }
-                    if (_slotIconTexts[i] != null) _slotIconTexts[i].text = visible ? slot.TypeLabel : string.Empty;
+                    if (_slotIconTexts[i] != null)
+                        _slotIconTexts[i].text = visible && slot.IconSprite == null ? slot.TypeLabel : string.Empty;
                 }
                 if (_slotDescriptions[i] != null)
                 {

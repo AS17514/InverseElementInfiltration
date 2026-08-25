@@ -1316,9 +1316,13 @@ namespace TheLaw.Gameplay
             return true;
         }
 
-        /// <summary>构筑整组替换手牌（DeckBuild——入口收敛；入参为棋子 defId 列表 → 转 Card；统一分配实例 id）。</summary>
+        /// <summary>构筑整组替换手牌与抽牌堆（DeckBuild——入口收敛；入参为棋子 defId 列表 → 转 Card；统一分配实例 id）。</summary>
         public void DeckSetHand(List<int> defIds)
         {
+            // ⚠️ 2026-08-26 抽牌堆修复：构筑整组定义出战牌组 → 抽牌堆一并重置清空
+            // （原只清 Hand——ResetForNewRun 预填的全部非初始棋残留抽牌堆 → 首回合抽到未选牌）
+            // 后续 SetupDrawPile 会把构筑 12 张中的非初始部分转入抽牌堆 + 按玩法激活补麻将 18 张。
+            _state.DrawPile.Clear();
             _state.Hand.Clear();
             _state.Hand.AddRange(defIds.ConvertAll(id => Card.Piece(id)));
             for (int i = 0; i < _state.Hand.Count; i++)

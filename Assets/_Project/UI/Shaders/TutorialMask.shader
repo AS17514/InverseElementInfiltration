@@ -4,8 +4,8 @@ Shader "UI/TutorialMask"
     {
         [HideInInspector] _MainTex ("Texture", 2D) = "white" {}
         _DarkColor ("暗色", Color) = (0, 0, 0, 0.65)
-        _HoleRect ("挖孔区域(像素 xMin,yMin,xMax,yMax)", Vector) = (0, 0, 0, 0)
-        _Padding ("外扩边距(像素)", Float) = 20
+        _HoleCenter ("挖孔中心(屏幕像素)", Vector) = (0, 0, 0, 0)
+        _HoleSize ("挖孔尺寸(屏幕像素,含边距)", Vector) = (0, 0, 0, 0)
         _HoleEnabled ("启用挖孔", Float) = 1
     }
     SubShader
@@ -38,8 +38,8 @@ Shader "UI/TutorialMask"
 
             sampler2D _MainTex;
             fixed4 _DarkColor;
-            float4 _HoleRect;
-            float _Padding;
+            float2 _HoleCenter;
+            float2 _HoleSize;
             float _HoleEnabled;
 
             v2f vert (appdata v)
@@ -52,13 +52,13 @@ Shader "UI/TutorialMask"
 
             fixed4 frag (v2f i) : SV_Target
             {
-                // ScreenSpaceOverlay 全屏 Image: uv(0..1) * 屏幕像素 = 像素坐标
+                // 屏幕像素坐标（全屏 Image：uv(0..1) * 屏幕像素 = 屏幕像素）
                 float2 px = i.uv * _ScreenParams.xy;
                 fixed4 col = _DarkColor;
-                if (_HoleEnabled > 0.5)
+                if (_HoleEnabled > 0.5 && _HoleSize.x > 0.0 && _HoleSize.y > 0.0)
                 {
-                    float4 r = _HoleRect + float4(-_Padding, -_Padding, _Padding, _Padding);
-                    if (px.x >= r.x && px.x <= r.z && px.y >= r.y && px.y <= r.w)
+                    float2 half = _HoleSize * 0.5;
+                    if (abs(px.x - _HoleCenter.x) <= half.x && abs(px.y - _HoleCenter.y) <= half.y)
                         col.a = 0.0; // 挖孔：中间保持原样（透明）
                 }
                 return col;

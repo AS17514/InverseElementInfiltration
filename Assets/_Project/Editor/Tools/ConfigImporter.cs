@@ -357,16 +357,16 @@ namespace TheLaw.EditorTools
 
         private static void ImportFloor()
         {
-            string path = $"{ConfigsJsonDir}/floor1.json";
-            if (!File.Exists(path))
+            // 2026-08-26 修复：多关支持——扫描 ConfigsJsonDir 下全部 floor*.json（原硬编码 floor1.json：
+            // floor2-4 配置从未导入 → Floor_floor2/3/4.asset 不生成 → Map 永远只有 1 层 → 第 1 关胜利即"整局结束"回主菜单）
+            var jsonFiles = Directory.GetFiles(ConfigsJsonDir, "floor*.json");
+            foreach (var path in jsonFiles)
             {
-                return;
-            }
-            var dto = JsonConvert.DeserializeObject<FloorJson>(File.ReadAllText(path));
-            if (dto == null)
-            {
-                return;
-            }
+                var dto = JsonConvert.DeserializeObject<FloorJson>(File.ReadAllText(path));
+                if (dto == null)
+                {
+                    continue;
+                }
             string assetPath = $"{ConfigAssetsDir}/Floor_{dto.floorName}.asset";
             var floor = LoadOrCreate<FloorConfig>(assetPath, $"Floor_{dto.floorName}"); // 增量：已存在更新不删建
             floor.victoryRule = ParseEnum(dto.victoryRule, VictoryRule.WipeOut);
@@ -428,6 +428,7 @@ namespace TheLaw.EditorTools
                 SetId(floor, StableHash(floor.name));
             }
             EditorUtility.SetDirty(floor);
+            }
         }
 
         // ========== 地图 ==========

@@ -233,6 +233,20 @@ namespace TheLaw.UI
         int _diceMovePieceId = -1;     // 移动选择中的棋子
         readonly Dictionary<Vector2Int, Direction> _diceMoveDirections = new Dictionary<Vector2Int, Direction>(); // 可达格 → 方向
         Image[] _diceFaces;                // Img_DiceFace_1~6（点数对应图——预制体已挂子图，代码按点数显隐）
+        // ====== 玩法面板·麻将（2026-08-27：Grp_FloorPlay_Mahjong——牌山两张手牌卡 + 番数 + 和牌按钮；手牌麻将卡点击=摸切、拖拽=打墙）======
+        GameObject _grpFloorPlayMahjong;            // Grp_FloorPlay_Mahjong
+        TMP_Text _mahjongFanText;                   // Txt_MahjongFan（番数值）
+        TMP_Text _mahjongScoreText1, _mahjongScoreText2; // Txt_MahjongScore_1/_2（牌山数字——与手牌卡同步显示）
+        Button _huBtn;                              // Btn_Hu（和牌——雀头+番数>0 可用）
+        GameObject _mahjongCardTemplate;            // Piece_Handcard 模板（Addressables 缓存）
+        readonly GameObject[] _mahjongPanelCards = new GameObject[2]; // 牌山 1/2 号位运行时生成的手牌卡实例
+        readonly Transform[] _mahjongCardAnchors = new Transform[2];   // 占位实例锚点（位置/缩放）
+        readonly List<GameObject> _mahjongWallViews = new List<GameObject>(); // 场墙视觉（占位灰块）
+        int _mahjongDragValue = -1;                 // 麻将拖拽打墙中的点数（-1=未拖）
+        GameObject _mahjongDragCard;                // 拖拽中的麻将卡
+        GameObject _mahjongWallPreview;             // 打墙预览块
+        Vector2Int _mahjongWallPreviewCell = new Vector2Int(-1, -1);
+        static Sprite _mahjongWallSprite;
         // ====== Grp_Mode（玩法介绍按钮 + 玩法区——2026-08-26：介绍按钮 → FloorPlayDetailePanel；槽位填充玩法预制体/None；选中棋子整组隐藏）======
         Transform _grpModeRoot;          // Grp_Mode（整组显隐）
         Transform _grpIntroductionRoot;  // Grp_Introduction（3 个介绍按钮）
@@ -316,6 +330,9 @@ namespace TheLaw.UI
             _diceMovePieceId = -1;
             _diceMoveDirections.Clear();
             _pendingForcedExecs.Clear();
+            foreach (var go in _mahjongWallViews) if (go != null) Destroy(go);
+            _mahjongWallViews.Clear();
+            DestroyMahjongWallPreview();
             _pendingPromotionWarnings.Clear();
             foreach (var go in _shockWallViews) if (go != null) Destroy(go);
             _shockWallViews.Clear();
@@ -1277,14 +1294,322 @@ namespace TheLaw.UI
             return list;
         }
 
-        /// <summary>玩法面板预制体后缀（Element 面板名 = WuXing）。</summary>
+        /// <summary>玩法面板预制体后缀（与 Addressables 注册地址 Grp_FloorPlay_* 对齐——styleId 为小写，面板名首字母大写；Element 面板名 = WuXing）。</summary>
         static string PlayPanelPrefabSuffix(string styleId)
         {
             switch (styleId)
             {
                 case StyleRegistry.Element: return "WuXing";
+                case StyleRegistry.Mahjong: return "Mahjong";
+                case StyleRegistry.Dice: return "Dice";
+                case StyleRegistry.Go: return "Go";
+                case StyleRegistry.Token: return "Token";
                 default: return styleId;
             }
+        }
+
+        // ========== 玩法面板·麻将（2026-08-27：牌山两张手牌卡 + 番数 + 和牌按钮；手牌麻将卡点击=摸切、拖拽=打墙）==========
+
+        void EnsureMahjongRefs()
+        {
+            if (_grpFloorPlayMahjong != null) return;
+            if (_grpPlayRoot == null) _grpPlayRoot = FindSceneTransform("Grp_Play");
+            if (_grpPlayRoot == null) return;
+            var panel = _grpPlayRoot.Find("Grp_FloorPlay_Mahjong");
+            _grpFloorPlayMahjong = panel != null ? panel.gameObject : null;
+            if (_grpFloorPlayMahjong == null) return;
+            var fan = FindDeep(_grpFloorPlayMahjong.transform, "Txt_MahjongFan");
+            _mahjongFanText = fan != null ? fan.GetComponent<TMP_Text>() : null;
+            var s1 = FindDeep(_grpFloorPlayMahjong.transform, "Txt_MahjongScore_1");
+            _mahjongScoreText1 = s1 != null ? s1.GetComponent<TMP_Text>() : null;
+            var s2 = FindDeep(_grpFloorPlayMahjong.transform, "Txt_MahjongScore_2");
+            _mahjongScoreText2 = s2 != null ? s2.GetComponent<TMP_Text>() : null;
+            var hu = FindDeep(_grpFloorPlayMahjong.transform, "Btn_Hu");
+            _huBtn = hu != null ? hu.GetComponent<Button>() : null;
+            if (_huBtn != null)
+            {
+                _huBtn.onClick.RemoveListener(OnHuClicked); // 每场战斗重接线（防重复监听）
+                _huBtn.onClick.AddListener(OnHuClicked);
+            }
+            // 占位手牌卡（李毕拼的 Piece_Handcard 实例）= 牌山 1/2 号位锚点；运行时隐藏，由生成卡接管位置
+            int anchorIdx = 0;
+            foreach (var pv in _grpFloorPlayMahjong.GetComponentsInChildren<HandCardView>(true))
+            {
+                if (anchorIdx >= 2) break;
+                if (pv.transform.parent == _grpFloorPlayMahjong.transform)
+                {
+                    _mahjongCardAnchors[anchorIdx] = pv.transform;
+                    pv.gameObject.SetActive(false);
+                    anchorIdx++;
+                }
+            }
+            if (anchorIdx == 0) // 兜底：按名找直接子节点（模板无 HandCardView 时）
+            {
+                foreach (Transform child in _grpFloorPlayMahjong.transform)
+                {
+                    if (anchorIdx >= 2) break;
+                    if (child.name == "Piece_Handcard")
+                    {
+                        _mahjongCardAnchors[anchorIdx] = child;
+                        child.gameObject.SetActive(false);
+                        anchorIdx++;
+                    }
+                }
+            }
+            StartCoroutine(EnsureMahjongCardTemplate());
+        }
+
+        IEnumerator EnsureMahjongCardTemplate()
+        {
+            if (_mahjongCardTemplate != null || _grpFloorPlayMahjong == null) yield break;
+            var handle = UnityEngine.AddressableAssets.Addressables.LoadAssetAsync<GameObject>("Piece_Handcard");
+            yield return handle;
+            if (handle.Status == UnityEngine.ResourceManagement.AsyncOperations.AsyncOperationStatus.Succeeded && handle.Result != null)
+            {
+                _mahjongCardTemplate = handle.Result;
+                RefreshMahjongPanel();
+            }
+        }
+
+        /// <summary>牌山/番数/和牌按钮刷新（StateChanged("mahjong-score"/"mahjong-hu") 与槽位重建后调用）。</summary>
+        void RefreshMahjongPanel()
+        {
+            if (_grpFloorPlayMahjong == null) return;
+            if (_mahjongFanText != null) _mahjongFanText.text = _state != null ? _state.FanCount.ToString() : "0";
+            var score = _state != null ? _state.MahjongScore : null;
+            int GetScore(int i) => score != null && i < score.Count ? score[i] : 0;
+            if (_mahjongScoreText1 != null) _mahjongScoreText1.text = GetScore(0).ToString();
+            if (_mahjongScoreText2 != null) _mahjongScoreText2.text = GetScore(1).ToString();
+            for (int i = 0; i < 2; i++)
+            {
+                bool has = score != null && i < score.Count;
+                if (!has)
+                {
+                    if (_mahjongPanelCards[i] != null) _mahjongPanelCards[i].SetActive(false);
+                    continue;
+                }
+                if (_mahjongPanelCards[i] == null && _mahjongCardTemplate != null && i < _mahjongCardAnchors.Length && _mahjongCardAnchors[i] != null)
+                {
+                    var anchor = _mahjongCardAnchors[i];
+                    var view = UIComponentFactory.CreateHandCard(_mahjongCardTemplate, anchor.parent, MahjongCardData(score[i]));
+                    var card = view.gameObject;
+                    card.name = $"MahjongPanelCard_{i + 1}";
+                    card.transform.position = anchor.position;
+                    card.transform.localScale = anchor.localScale;
+                    card.transform.SetSiblingIndex(anchor.GetSiblingIndex());
+                    if (card.GetComponent<CardHoverScale>() == null) card.AddComponent<CardHoverScale>(); // 仅放大不上浮（李毕定案）
+                    _mahjongPanelCards[i] = card;
+                }
+                if (_mahjongPanelCards[i] != null)
+                {
+                    _mahjongPanelCards[i].SetActive(true);
+                    var view = _mahjongPanelCards[i].GetComponent<HandCardView>();
+                    if (view != null) view.Bind(MahjongCardData(score[i]));
+                }
+            }
+            if (_huBtn != null) _huBtn.interactable = CanHu();
+        }
+
+        /// <summary>麻将牌卡数据（牌山/手牌共用——复用 Piece_Handcard：名字=麻将、价值=点数、类型=麻）。</summary>
+        HandCardViewData MahjongCardData(int point)
+        {
+            return new HandCardViewData(Color.white, "", "麻将", point.ToString(), "麻", null);
+        }
+
+        void OnHuClicked()
+        {
+            if (!CanHu() || _flow == null) return;
+            _flow.OnPlayerRequestHu(new HuRequest());
+        }
+
+        /// <summary>和牌条件（与后端一致）：番数 > 0 且手牌有雀头（任意两牌价值相同）。</summary>
+        bool CanHu()
+        {
+            if (_state == null || _state.FanCount <= 0 || _state.Hand == null) return false;
+            var counts = new Dictionary<int, int>();
+            foreach (var c in _state.Hand)
+            {
+                int v = c.IsMahjong ? c.value : ValueOfDef(c.defId);
+                counts.TryGetValue(v, out int n);
+                counts[v] = n + 1;
+                if (n + 1 >= 2) return true;
+            }
+            return false;
+        }
+
+        int ValueOfDef(int defId)
+        {
+            var def = ConfigTable.Find<PieceDef>(defId);
+            return def != null ? GetEffectiveValue(def) : 0;
+        }
+
+        // ====== 麻将场墙视觉（2026-08-27：占位灰块——同震击墙做法；打出/破坏都刷新）======
+
+        void RebuildMahjongWalls()
+        {
+            foreach (var go in _mahjongWallViews) if (go != null) Destroy(go);
+            _mahjongWallViews.Clear();
+            if (_state == null || _state.MahjongWalls == null) return;
+            foreach (var kv in _state.MahjongWalls)
+            {
+                var go = new GameObject($"MahjongWall_{kv.Key.x}_{kv.Key.y}");
+                go.transform.position = PieceViewFactory.CellToWorld(kv.Key);
+                var sr = go.AddComponent<SpriteRenderer>();
+                sr.sprite = MahjongWallSprite();
+                sr.color = new Color(0.55f, 0.5f, 0.35f, 0.9f);
+                sr.sortingOrder = 300; // 棋子（400+）之下
+                _mahjongWallViews.Add(go);
+            }
+        }
+
+        static Sprite MahjongWallSprite()
+        {
+            if (_mahjongWallSprite != null) return _mahjongWallSprite;
+            var tex = new Texture2D(100, 100, TextureFormat.RGBA32, false);
+            var px = new Color[100 * 100];
+            for (int i = 0; i < px.Length; i++) px[i] = Color.white;
+            tex.SetPixels(px);
+            tex.Apply();
+            _mahjongWallSprite = Sprite.Create(tex, new Rect(0, 0, 100, 100), new Vector2(0.5f, 0.5f), 100f); // 1×1 单位
+            return _mahjongWallSprite;
+        }
+
+        // ====== 麻将战斗音（2026-08-27：SfxMahjongTile 统一——打出/牌山[音高随点数]/和牌）======
+
+        void PlayMahjongStateSfx(string key)
+        {
+            if (key == "mahjong-wall")
+            {
+                AudioManager.Instance.PlaySFX(AudioRefs.SfxMahjongTile, 1f, 0.9f); // 打出墙体
+            }
+            else if (key == "mahjong-hu")
+            {
+                AudioManager.Instance.PlaySFX(AudioRefs.SfxMahjongTile, 1f, 0.7f); // 和牌
+            }
+            else if (key == "mahjong-score" && _state != null && _state.MahjongScore.Count > 0)
+            {
+                int point = _state.MahjongScore[_state.MahjongScore.Count - 1];
+                AudioManager.Instance.PlaySFX(AudioRefs.SfxMahjongTile, 1f, 0.8f + point * 0.08f); // 牌山填数（音高随点数）
+            }
+        }
+
+        // ====== 麻将手牌卡交互（2026-08-27 定案：点击=摸切、拖拽=打墙）======
+
+        void AddMahjongCardDrag(GameObject card, int value, int instanceId)
+        {
+            var drag = card.AddComponent<MahjongCardDrag>();
+            drag.Init(this, value);
+        }
+
+        public void OnMahjongCardClicked(int value)
+        {
+            if (_state == null || _flow == null) return;
+            if (_executing || _presentationPlaying) return;
+            if (_state.Phase != BattlePhase.PlayerTurn || _state.PlayerAP < 1) return;
+            if (!_state.IsStyleActive(StyleRegistry.Mahjong)) return;
+            _flow.OnPlayerRequestMochi(new MochiRequest(value)); // 摸切：填牌山+抽一张（1 AP——后端校验）
+        }
+
+        public void OnMahjongDragStart(int value, GameObject card)
+        {
+            if (_state == null || _flow == null) return;
+            if (_executing || _presentationPlaying) return;
+            if (_state.Phase != BattlePhase.PlayerTurn || _state.PlayerAP < 1) return;
+            if (!_state.IsStyleActive(StyleRegistry.Mahjong)) return;
+            _mahjongDragValue = value;
+            _mahjongDragCard = card;
+            SetHandLayoutDragging(true); // 拖拽期间冻结手牌 hover/让位
+            CreateMahjongWallPreview();
+            if (card != null)
+            {
+                var cg = card.GetComponent<CanvasGroup>();
+                if (cg == null) cg = card.AddComponent<CanvasGroup>();
+                cg.alpha = 0.4f;
+            }
+        }
+
+        public void OnMahjongDrag(Vector2 screenPos)
+        {
+            if (_mahjongDragValue < 0 || _mahjongWallPreview == null) return;
+            var cell = ScreenToBoardCell(screenPos);
+            _mahjongWallPreviewCell = cell;
+            if (cell.x >= 0) _mahjongWallPreview.transform.position = PieceViewFactory.CellToWorld(cell);
+        }
+
+        public void OnMahjongDragEnd()
+        {
+            int value = _mahjongDragValue;
+            var card = _mahjongDragCard;
+            _mahjongDragValue = -1;
+            _mahjongDragCard = null;
+            DestroyMahjongWallPreview();
+            SetHandLayoutDragging(false);
+            if (card != null)
+            {
+                var cg = card.GetComponent<CanvasGroup>();
+                if (cg != null) cg.alpha = 1f;
+            }
+            if (value < 0 || _flow == null) return;
+            if (_mahjongWallPreviewCell.x >= 0 && IsMahjongWallCellValid(_mahjongWallPreviewCell))
+            {
+                _flow.OnPlayerRequestPlayMahjong(new PlayMahjongRequest(value, _mahjongWallPreviewCell)); // 打墙：1×2 竖两格（1 AP）
+                StartCoroutine(RecoverMahjongCardIfFailed(value, card));
+            }
+            else
+            {
+                RebuildHand(); // 未落棋盘/非法格：整体重建回手（麻将卡无部署恢复链——重建最稳）
+            }
+            _mahjongWallPreviewCell = new Vector2Int(-1, -1);
+        }
+
+        IEnumerator RecoverMahjongCardIfFailed(int value, GameObject card)
+        {
+            yield return new WaitForSeconds(0.5f);
+            if (HasMahjongInHand(value)) RebuildHand(); // 请求失败（AP 不足/格非法）→ 回手
+        }
+
+        bool HasMahjongInHand(int value)
+        {
+            if (_state == null || _state.Hand == null) return false;
+            foreach (var c in _state.Hand) if (c.IsMahjong && c.value == value) return true;
+            return false;
+        }
+
+        /// <summary>打墙落格校验（与后端一致：1×2 竖＝本格+下格；非敌方部署区/空/无墙）。</summary>
+        bool IsMahjongWallCellValid(Vector2Int cell)
+        {
+            if (_state == null) return false;
+            var second = cell + Vector2Int.down;
+            if (cell.y >= 6 || second.y >= 6) return false; // 敌方部署区（最上 2 行）拒绝
+            return !_state.Pieces.ContainsKey(cell) && !_state.Pieces.ContainsKey(second)
+                && !_state.MahjongWalls.ContainsKey(cell) && !_state.MahjongWalls.ContainsKey(second);
+        }
+
+        Vector2Int ScreenToBoardCell(Vector2 screenPos)
+        {
+            var cam = Camera.main;
+            if (cam == null) return new Vector2Int(-1, -1);
+            var ray = cam.ScreenPointToRay(screenPos);
+            var plane = new Plane(Vector3.up, Vector3.zero);
+            if (!plane.Raycast(ray, out float enter)) return new Vector2Int(-1, -1);
+            return PieceViewFactory.CellFromWorld(ray.GetPoint(enter));
+        }
+
+        void CreateMahjongWallPreview()
+        {
+            if (_mahjongWallPreview != null) return;
+            var go = new GameObject("MahjongWallPreview");
+            var sr = go.AddComponent<SpriteRenderer>();
+            sr.sprite = MahjongWallSprite();
+            sr.color = new Color(1f, 1f, 1f, 0.5f);
+            sr.sortingOrder = 600;
+            _mahjongWallPreview = go;
+        }
+
+        void DestroyMahjongWallPreview()
+        {
+            if (_mahjongWallPreview != null) Destroy(_mahjongWallPreview);
+            _mahjongWallPreview = null;
         }
 
         /// <summary>Grp_Mode 刷新：① 介绍按钮（已加载=玩法名可点 / 未加载=禁用+未加载）② 槽位重建（激活集合变化时）③ 整组显隐（选中棋子隐藏）。</summary>
@@ -1312,6 +1637,8 @@ namespace TheLaw.UI
             {
                 _grpModeRoot.gameObject.SetActive(show);
             }
+            EnsureMahjongRefs();
+            RefreshMahjongPanel(); // 2026-08-27 麻将：槽位就绪后补绑定（幂等）
         }
 
         /// <summary>重建 Grp_Play 槽位：按激活玩法顺序 3 槽——玩法面板 / Grp_Play_None 填补空缺（Addressables 加载模板，保持原名供 Find）。</summary>
@@ -1366,6 +1693,7 @@ namespace TheLaw.UI
                 inst.name = template.name; // 保持原名（Grp_FloorPlay_* / Grp_Play_None——按名 Find）
                 inst.transform.SetAsLastSibling();
                 _modeSlots.Add(inst);
+                if (style == StyleRegistry.Mahjong) EnsureMahjongRefs(); // 2026-08-27 麻将面板接线
             }
             RefreshFloorMode(); // 槽位就绪后再刷（key 已一致——不会重复重建；主要补显隐）
         }
@@ -1971,6 +2299,12 @@ namespace TheLaw.UI
                 else if (s == "shock-walls")
                 {
                     RebuildShockWalls(); // 2026-08-26：能力「震击」墙生成
+                }
+                else if (s == "mahjong-score" || s == "mahjong-wall" || s == "mahjong-hu")
+                {
+                    RefreshMahjongPanel();   // 2026-08-27 麻将：牌山/番数/和牌按钮
+                    RebuildMahjongWalls();   // 打出/破坏墙视觉
+                    PlayMahjongStateSfx(s);  // 牌山/打出/和牌音
                 }
             }
             RefreshDrawPile();
@@ -2780,10 +3114,12 @@ namespace TheLaw.UI
             var layout = _panel.HandRoot.GetComponent<HandLayoutController>();
             if (layout == null) layout = _panel.HandRoot.gameObject.AddComponent<HandLayoutController>();
             // 手牌显示排序：类型优先（初始→部署→升变）+ 同类型价值升序；排序只影响视觉，Card 实例身份必须保留。
-            // ⚠️ 2026-08-20 牌结构：仅棋子牌显示（麻将牌表现留待玩法实现/前端后续）
+            // 2026-08-27 麻将玩法：手牌含麻将牌（棋子牌排序后追加，按点数升序）
             var hand = new List<(Card card, PieceDef def)>();
+            var mahjongHand = new List<Card>();
             foreach (var handCard in snapshot)
             {
+                if (handCard.IsMahjong) { mahjongHand.Add(handCard); continue; }
                 if (!handCard.IsPiece) continue;
                 var def = ConfigTable.Find<PieceDef>(handCard.defId);
                 if (def != null) hand.Add((handCard, def));
@@ -2795,15 +3131,19 @@ namespace TheLaw.UI
                 int value = GetEffectiveValue(a.def).CompareTo(GetEffectiveValue(b.def));
                 return value != 0 ? value : a.card.instanceId.CompareTo(b.card.instanceId);
             });
+            mahjongHand.Sort((a, b) => a.value != b.value ? a.value.CompareTo(b.value) : a.instanceId.CompareTo(b.instanceId));
+            foreach (var mc in mahjongHand) hand.Add((mc, null));
             for (int i = 0; i < hand.Count; i++)
             {
                 var handCard = hand[i].card;
                 var def = hand[i].def;
-                var data = PiecePresentationMapper.ToHandCard(
-                    def,
-                    GetEffectiveType(def),
-                    GetEffectiveValue(def),
-                    GetDisplayProgram(def));
+                var data = def != null
+                    ? PiecePresentationMapper.ToHandCard(
+                        def,
+                        GetEffectiveType(def),
+                        GetEffectiveValue(def),
+                        GetDisplayProgram(def))
+                    : MahjongCardData(handCard.value); // 2026-08-27 麻将卡：复用卡模板（名字=麻将/价值=点数/类型=麻）
                 GameObject card = null;
                 // 复用必须按实例 id 匹配：同 defId、同属性的重复牌也不能互换身份。
                 for (int j = 0; j < oldCards.Count; j++)
@@ -2819,16 +3159,17 @@ namespace TheLaw.UI
                 {
                     var view = UIComponentFactory.CreateHandCard(template, _panel.HandRoot, data);
                     card = view.gameObject;
-                    card.name = $"Card_{i}_{def.displayName}";
+                    card.name = $"Card_{i}_{(def != null ? def.displayName : "麻将")}";
                     card.SetActive(true);
-                    AddCardDrag(card, handCard, i);
+                    if (handCard.IsMahjong) AddMahjongCardDrag(card, handCard.value, handCard.instanceId);
+                    else AddCardDrag(card, handCard, i);
                     var newCanvasGroup = card.GetComponent<CanvasGroup>();
                     if (newCanvasGroup != null) newCanvasGroup.alpha = 1f;
                     // 全量重建后直接可见；不使用 alpha=0 的异步淡入，避免 tween 被打断后层级对象存在但不可见。
                 }
                 else
                 {
-                    card.name = $"Card_{i}_{def.displayName}";
+                    card.name = $"Card_{i}_{(def != null ? def.displayName : "麻将")}";
                     card.SetActive(true);
                     var drag = card.GetComponent<HandCardDrag>();
                     if (drag != null) drag.CancelVisualTween();
@@ -3173,6 +3514,56 @@ namespace TheLaw.UI
         {
             _controller.OnCardDragEnd(eventData);
         }
+    }
+
+    /// <summary>卡 hover 放大（仅缩放不上浮——2026-08-27 麻将牌山卡；参考手牌区 2 倍比例）。</summary>
+    public class CardHoverScale : MonoBehaviour, IPointerEnterHandler, IPointerExitHandler
+    {
+        const float HoverFactor = 2f;
+        Vector3 _baseScale = Vector3.zero;
+        DG.Tweening.Tween _tween;
+
+        void EnsureBase()
+        {
+            if (_baseScale == Vector3.zero) _baseScale = transform.localScale;
+        }
+
+        public void OnPointerEnter(PointerEventData eventData)
+        {
+            EnsureBase();
+            if (_tween != null) _tween.Kill();
+            _tween = transform.DOScale(_baseScale * HoverFactor, 0.15f);
+        }
+
+        public void OnPointerExit(PointerEventData eventData)
+        {
+            EnsureBase();
+            if (_tween != null) _tween.Kill();
+            _tween = transform.DOScale(_baseScale, 0.15f);
+        }
+
+        void OnDestroy()
+        {
+            if (_tween != null) { _tween.Kill(); _tween = null; }
+        }
+    }
+
+    /// <summary>麻将手牌卡拖拽（2026-08-27：拖到棋盘=打墙（1×2 竖两格）；点击=摸切（填牌山+抽牌））。</summary>
+    public class MahjongCardDrag : MonoBehaviour, IBeginDragHandler, IDragHandler, IEndDragHandler, IPointerClickHandler
+    {
+        BattleController _controller;
+        int _value;
+
+        public void Init(BattleController controller, int value)
+        {
+            _controller = controller;
+            _value = value;
+        }
+
+        public void OnBeginDrag(PointerEventData eventData) => _controller?.OnMahjongDragStart(_value, gameObject);
+        public void OnDrag(PointerEventData eventData) => _controller?.OnMahjongDrag(eventData.position);
+        public void OnEndDrag(PointerEventData eventData) => _controller?.OnMahjongDragEnd();
+        public void OnPointerClick(PointerEventData eventData) => _controller?.OnMahjongCardClicked(_value);
     }
 
     /// <summary>围棋棋子牌拖拽（2026-08-24：手牌式拖到任意空格部署——牌不消耗；整套流程同手牌部署）。</summary>

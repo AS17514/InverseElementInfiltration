@@ -989,8 +989,11 @@ namespace TheLaw.UI
             }
             else
             {
+                // 2026-08-26 修复（第 2 关起左右空白）：复用分支先激活面板（OnShow 兜底全量重建）再设数据——
+                // 设数据含刷新链（active 上 StartCoroutine 才安全），避免隐藏面板上刷新失败导致左右空白。
+                _uiManager.ShowPanel("PieceEdit");
                 _pieceEditPanel.SetEditableDefId(editableDefId);
-                PanelTransition.ShowWithLoading(_uiManager, "PieceEdit");
+                PanelTransition.ShowWithLoading(_uiManager, "PieceEdit"); // 已显示 → 幂等（仅收尾过渡）
             }
         }
 

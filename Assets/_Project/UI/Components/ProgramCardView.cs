@@ -20,8 +20,8 @@ namespace TheLaw.UI
         public void Bind(ProgramCardViewData data)
         {
             CacheNodes();
-            if (_typeIcon != null && data != null && data.IconSprite != null) _typeIcon.sprite = data.IconSprite;
-            if (_typeText != null) _typeText.text = data?.TypeLabel ?? string.Empty;
+            if (_typeIcon != null) _typeIcon.sprite = data?.IconSprite; // 有图标只显图标；无图标才用文字（2026-08-26 防重叠）
+            if (_typeText != null) _typeText.text = data != null && data.IconSprite == null ? data.TypeLabel : string.Empty;
             if (_valueText != null) _valueText.text = data?.ValueText ?? string.Empty;
             if (_descriptionText != null) _descriptionText.text = data?.Description ?? string.Empty;
         }

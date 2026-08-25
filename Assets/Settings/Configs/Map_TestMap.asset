@@ -15,3 +15,6 @@ MonoBehaviour:
   _id: 1652177332
   floors:
   - {fileID: 11400000, guid: 63df94cabd1c3ce409eda3e678cd83f1, type: 2}
+  - {fileID: 11400000, guid: 0a2d7a3153ec1c440b5404743c85c67a, type: 2}
+  - {fileID: 11400000, guid: d847a67ff8bd30342bc4d86c4d1678fb, type: 2}
+  - {fileID: 11400000, guid: 077166177a16bc04bae12ad18917b810, type: 2}

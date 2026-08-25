@@ -70,8 +70,10 @@ namespace TheLaw.UI
             _selectedDefId = defId;
             _slotTemplates.Clear();
             _slotLocked.Clear();
-            // 面板可能已缓存：先按本次事件棋子建立候选，避免首次打开候选区空白。
-            if (_editor != null && defId >= 0)
+            // 2026-08-26 修复（第 2 关起左右空白）：inactive 面板只记标记、不启动刷新链——
+            // RefreshProgramList 在 inactive 对象上 StartCoroutine 会失败（程序区被清空且不重建）；
+            // 刷新统一由 OnShow 执行（面板激活后全量重建左右列表）。
+            if (gameObject.activeInHierarchy && _editor != null && defId >= 0)
             {
                 BuildProgramLibrary();
                 RefreshProgramList();
@@ -299,6 +301,9 @@ namespace TheLaw.UI
 
         protected override void OnShow()
         {
+            // 2026-08-26 留痕（第 2 关起左右空白排查）：构建链异常不得静默——try/catch 留栈，防"左右空白无日志"难定位。
+            try
+            {
             // 新局重置：清选中 + 隐藏信息区 + 重建棋子列表（卡面程序缩略图随当前数据刷新——
             // ⚠️ 2026-08-12：RefreshPieceList 原只在 Awake 跑一次，面板常驻跨局复用 → 卡面显示旧局编辑结果）
             _selectedDefId = _editableDefId >= 0 ? _editableDefId : -1;
@@ -328,6 +333,11 @@ namespace TheLaw.UI
             }
             RefreshPieceList();
             RefreshEditorButtons(); // 新会话：按钮状态与当前可编辑棋子保持一致
+            }
+            catch (System.Exception e)
+            {
+                Debug.LogError($"[PieceEdit] OnShow 构建链异常（左右列表可能空白）：{e}");
+            }
         }
 
         void ResolveNodes()
@@ -820,7 +830,9 @@ namespace TheLaw.UI
                 if (has)
                 {
                     var t = _slotTemplates[i];
-                    if (_slotTexts[i] != null) _slotTexts[i].text = SlotTypeChar(t);
+                    // 有图标只显图标（移动/攻击）；无图标（效果/未知）才写字——2026-08-26 图标接入防重叠
+                    if (_slotTexts[i] != null)
+                        _slotTexts[i].text = _slotImages[i] != null && _slotImages[i].sprite != null ? string.Empty : SlotTypeChar(t);
                     if (_slotDescs[i] != null) _slotDescs[i].text = SlotDetailDescStatic(t);
                     // 状态颜色：锁定=灰（一版全部可编辑）
                     if (_slotImages[i] != null)

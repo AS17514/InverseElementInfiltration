@@ -159,9 +159,12 @@ namespace TheLaw.UI
             var draw = new List<Card>(_state.DrawPile);
             Shuffle(draw);
             BuildPile(_drawContainer, draw, false, showAll: true);
-            BuildPile(_discardContainer, _state.Discard.PieceDeaths, _buyMode); // 购买模式：弃牌区牌可点击（索引 = DiscardView 前段）
+            // 2026-08-27 麻将玩法：弃牌区 = 棋子死亡 + 麻将死亡（顺序 = Resolver.DiscardView——购买索引对齐）
+            var discard = new List<Card>(_state.Discard.PieceDeaths);
+            discard.AddRange(_state.Discard.MahjongDeaths);
+            BuildPile(_discardContainer, discard, _buyMode, showAll: true); // 购买模式：弃牌区牌可点击（含麻将卡——代币可买麻将）
             if (_drawHeader != null) _drawHeader.text = $"抽牌堆（{draw.Count}）";
-            if (_discardHeader != null) _discardHeader.text = $"弃牌堆（{_state.Discard.PieceDeaths.Count}）";
+            if (_discardHeader != null) _discardHeader.text = $"弃牌堆（{discard.Count}）";
         }
 
         /// <summary>重建单个牌堆：清空 → 生成手牌卡（仅棋子牌——麻将表现留待玩法实现，同战斗手牌口径）→ 手动排列。</summary>

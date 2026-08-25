@@ -478,7 +478,8 @@ namespace TheLaw.UI
             _isRulePick = true;
             _ruleSelectionLocked = false;
             BeginContent(); // 内容就绪检查点：玩法事件开始构建
-            if (_title != null) _title.text = string.IsNullOrEmpty(ev.title) ? "未知事件" : ev.title; // 中文兜底（防资产名泄漏）
+            // 2026-08-26：标题走 EventTexts 覆盖表（此前用 ev.title 资产原文——玩法文本"终端黑墙"未生效）
+            if (_title != null) _title.text = EventTexts.TitleFor(eventId, ev);
             if (_desc != null) _desc.text = EventTexts.DescFor(_currentEventId, _currentEvent);
             if (_exitBtn != null) _exitBtn.interactable = false; // 玩法模式禁用退出（不能"直接完成"绕过玩法选择）
             ApplyEventArt(ArtForEvent(ev)); // 玩法事件 CG（event_mode）

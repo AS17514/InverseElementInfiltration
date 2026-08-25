@@ -46,10 +46,13 @@ namespace TheLaw.UI
         public Rect HoleScreenRect => _holeRect;
         public bool HasHole => _holeRect.width > 0f && _holeRect.height > 0f;
 
-        /// <summary>整层显隐（无高亮步骤时整层隐藏，避免误压暗全屏）。</summary>
+        /// <summary>
+        /// 显隐：只切换暗色 Image——阻挡层（TutorialInputBlock）保持常驻，由 IsBlocking 控制是否拦截，
+        /// 避免"无高亮步骤遮罩隐藏 → 阻挡跟着失效"（用户定案：教程期间全屏全挡）。
+        /// </summary>
         public void SetVisible(bool on)
         {
-            if (gameObject != null) gameObject.SetActive(on);
+            if (_image != null) _image.gameObject.SetActive(on);
         }
 
         /// <summary>创建全屏遮罩元素（无独立 Canvas——由 EnsureLayered 挂到教程面板下作首子节点）。</summary>

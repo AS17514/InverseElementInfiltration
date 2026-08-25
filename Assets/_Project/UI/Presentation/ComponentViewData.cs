@@ -141,6 +141,19 @@ namespace TheLaw.UI
         }
     }
 
+    /// <summary>通关条件面板数据（2026-08-26）：标题 + 多行正文（Txt_Title / Txt_Info）。</summary>
+    public sealed class ClearanceViewData
+    {
+        public string Title { get; }
+        public string Body { get; }
+
+        public ClearanceViewData(string title, string body)
+        {
+            Title = title ?? string.Empty;
+            Body = body ?? string.Empty;
+        }
+    }
+
     public sealed class ItemGettingViewData
     {
         public string Name { get; }

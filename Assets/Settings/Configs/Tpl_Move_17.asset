@@ -15,11 +15,11 @@ MonoBehaviour:
   _id: 110861206
   templateKey: Move-17
   template:
-    rid: 7823914212394270778
+    rid: 7823914212394270802
   references:
     version: 2
     RefIds:
-    - rid: 7823914212394270778
+    - rid: 7823914212394270802
       type: {class: MoveTemplate, ns: TheLaw.Data, asm: Data}
       data:
         id: 17

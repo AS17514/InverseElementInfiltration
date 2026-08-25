@@ -2679,9 +2679,22 @@ namespace TheLaw.UI
         int _handBuildSeq; // 手牌重建版本号（防异步协程竞态）
         string _lastHandKey = ""; // 上次重建的手牌指纹（无变化跳过重建——防闪烁）
 
+        bool _handRebuildPending; // 2026-08-26：手牌节点未就绪时的重建等待标记（防重复排队）
+
         void RebuildHand()
         {
-            if (_panel == null || _panel.HandRoot == null) return;
+            if (_panel == null) return;
+            if (_panel.HandRoot == null)
+            {
+                // 2026-08-26 防御：面板节点未解析（ResolveNodes 在 OnShow——Init 先于解析的时序窗口）
+                // → 等待节点就绪后重建，防"手牌有数据但 UI 空"的静默丢失（按钮接线同理）。
+                if (!_handRebuildPending)
+                {
+                    _handRebuildPending = true;
+                    StartCoroutine(WaitForHandRootThenRebuild());
+                }
+                return;
+            }
 
             // 无变化保护：手牌内容没变就不重建（消除外部 HandChanged/阶段切换的无意义闪烁）
             // 牌实例 id 是手牌 UI 身份；同 defId / 属性的重复牌也必须分别刷新与复用。
@@ -2715,6 +2728,22 @@ namespace TheLaw.UI
             _handBuildSeq++;
             var snapshot = new List<Card>(_state.Hand);
             StartCoroutine(LoadAndBuildHand(_handBuildSeq, snapshot));
+        }
+
+        /// <summary>等待战斗面板节点解析（HandRoot 就绪）后重建手牌；超时放弃（面板无该节点时防死等）。</summary>
+        System.Collections.IEnumerator WaitForHandRootThenRebuild()
+        {
+            float t = 0f;
+            while (_panel != null && _panel.HandRoot == null && t < 3f)
+            {
+                t += Time.unscaledDeltaTime;
+                yield return null;
+            }
+            _handRebuildPending = false;
+            if (_panel != null && _panel.HandRoot != null)
+            {
+                RebuildHand();
+            }
         }
 
         IEnumerator LoadAndBuildHand(int seq, List<Card> snapshot)

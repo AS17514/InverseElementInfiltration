@@ -99,8 +99,11 @@ namespace TheLaw.UI
             }
         }
 
+        private bool _confirmed; // 2026-08-26 防重：确认落账成功后锁定——防重复确认触发双 EventCompleted 跳节点
+
         protected override void OnShow()
         {
+            _confirmed = false; // 新构筑会话解锁（重复确认防御——每轮仅一次）
             // 每次打开：出战清空（从零构筑——事件发生前手牌为全量，构筑 = 选新的出战）
             _deck.Clear();
             LoadLimits(); // 显示时 _state 必已 Init（Awake 时序问题：CreateAsync 回调后才 Init）
@@ -500,6 +503,7 @@ namespace TheLaw.UI
 
         void OnConfirm()
         {
+            if (_confirmed) return; // 2026-08-26 防重：已确认落账——忽略重复触发（防双 EventCompleted 导致 TowerFlow 双推进跳关）
             if (_resolver == null) return;
             if (WarnIfDeckSizeIncomplete()) return;
             if (_deck.Count == 0)
@@ -509,6 +513,7 @@ namespace TheLaw.UI
             }
             if (_resolver.BuildDeck(new List<int>(_deck)))
             {
+                _confirmed = true; // 落账成功即锁（失败保持可重试——校验拒绝时不锁）
                 UiSfx.Play(); // 构筑确认按钮碰撞音（2026-08-24 音频挂点方案）
                 gameObject.SetActive(false);
                 EventCenter.Instance.EventTrigger(GameEvent.EventCompleted, _state != null ? _state.CurrentEventId : null); // 推进（携带事件 id——TowerFlow 校验匹配；防重复信号跳节点）

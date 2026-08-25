@@ -91,6 +91,8 @@ namespace TheLaw.UI
             LoadConfigs();
             // ②a 预加载棋子美术立绘（Addressables——缺资源回退占位）
             PieceViewFactory.PreloadPortraits();
+            // ②a-2 预加载图标资源（程序块/围棋/麻将——2026-08-26 图标接入）
+            IconLibrary.PreloadIcons();
             // ②b 程序块描述表（数据驱动——UI 槽位描述）
             SlotDescTable.Load(_slotDescriptions);
             // ②c buff 描述表（数据驱动——UI buff 区显示名）
@@ -323,6 +325,19 @@ namespace TheLaw.UI
 
         /// <summary>当前战斗实例（BattleFlow 每场创建——经 TowerFlow 取；非战斗中为 null）。</summary>
         private BattleFlow CurrentBattleFlow => _towerFlow != null ? _towerFlow.CurrentBattleFlow : null;
+
+        /// <summary>测试用自动过关（2026-08-26：Ctrl+左键连点设置按钮 10 次触发——前端调后端公开收尾入口，避免测试卡关）。</summary>
+        private void OnCheatAutoWinRequested()
+        {
+            var flow = CurrentBattleFlow;
+            if (flow == null)
+            {
+                Debug.LogWarning("[Cheat] 自动过关：当前无战斗实例——忽略");
+                return;
+            }
+            Debug.Log("[Cheat] Ctrl+设置×10 → 强制玩家胜利（测试用）");
+            flow.EndBattle(Side.Player); // 后端公开收尾：GameOver + StateChanged(winner) → TowerFlow 胜利推进下一关
+        }
 
         // ========== 存档对接后端（2026-08-23：关键节点落档——Continue 依赖存档恢复）==========
 
@@ -841,6 +856,7 @@ namespace TheLaw.UI
                     _battlePanel = panel;
                     _uiManager.RegisterPanel(panel);
                     panel.OnSettingsClicked += () => _uiManager.PushOverlay("Settings");
+                    panel.OnCheatAutoWin += OnCheatAutoWinRequested; // 测试自动过关（Ctrl+设置×10）
                     panel.gameObject.SetActive(false); // 预加载隐藏（防与其他界面重叠）
                 }, sessionBound: true);
             }
@@ -990,11 +1006,16 @@ namespace TheLaw.UI
             }, sessionBound: true);
         }
 
+        private bool _deckBuildLoading; // 2026-08-26 防重：构筑面板加载中/已显示时忽略重复 StateChanged("deck")——防双实例与重复 OnShow 重建布局
+
         /// <summary>打开牌组构筑面板（事件关模式——StateChanged("deck") 驱动；Btn_Next 经 Resolver.BuildDeck 落账后发 EventCompleted 推进）。</summary>
         private void OpenDeckBuild()
         {
+            if (_deckBuildLoading) return;                              // 加载中——重复信号忽略（防双实例）
+            if (_deckBuildPanel != null && _deckBuildPanel.IsVisible) return; // 已显示——重复信号忽略（防重复 OnShow 重建出"布局数据异常"）
             if (_deckBuildPanel == null)
             {
+                _deckBuildLoading = true;
                 StartCoroutine(LoadDeckBuildPanel());
             }
             else
@@ -1007,6 +1028,7 @@ namespace TheLaw.UI
         {
             yield return LoadPanelAsync<DeckBuildPanel>(panel =>
             {
+                _deckBuildLoading = false; // 加载完成——复位（失败/成功路径均走此回调）
                 _deckBuildPanel = panel;
                 _uiManager.RegisterPanel(panel);
                 panel.Init(_resolver, _gameState);
@@ -1050,6 +1072,7 @@ namespace TheLaw.UI
                 _battlePanel = panel;
                 _uiManager.RegisterPanel(panel);
                 panel.OnSettingsClicked += () => _uiManager.PushOverlay("Settings"); // 战斗内设置入口
+                panel.OnCheatAutoWin += OnCheatAutoWinRequested; // 测试自动过关（Ctrl+设置×10）
                 panel.OnDeckClicked += () => _uiManager.PushOverlay("DeckLibrary"); // 2026-08-26：牌库浏览入口（Btn_Graveyard）
                 CreateBattleControllerWith(flow, panel);
             }, sessionBound: true);

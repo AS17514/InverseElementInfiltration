@@ -1,6 +1,7 @@
 using System;
 using TMPro;
 using UnityEngine;
+using UnityEngine.InputSystem;
 using UnityEngine.UI;
 
 namespace TheLaw.UI
@@ -16,8 +17,13 @@ namespace TheLaw.UI
         // 设置按钮（Bootstrap 订阅 → PushOverlay("Settings")——面板只转发输入）
         public event Action OnSettingsClicked;
 
+        // 测试用自动过关（2026-08-26：Ctrl+左键连点设置按钮 10 次 → 强制玩家胜利；不打开设置）
+        public event Action OnCheatAutoWin;
+
         // 牌库按钮（Btn_Graveyard——Bootstrap 订阅 → PushOverlay("DeckLibrary")）
         public event Action OnDeckClicked;
+
+        private int _cheatClickCount; // 作弊点击计数（每场战斗由 BattleController.Init 重置）
 
         public Button PhaseButton { get; private set; }
         public Button ExitButton { get; private set; }
@@ -119,7 +125,28 @@ namespace TheLaw.UI
                 return;
             }
             btn.onClick.RemoveAllListeners();
-            btn.onClick.AddListener(() => OnSettingsClicked?.Invoke());
+            btn.onClick.AddListener(() =>
+            {
+                // 测试用自动过关（2026-08-26）：Ctrl+左键连点设置按钮 10 次 → 触发，不打开设置
+                if (Keyboard.current != null && Keyboard.current.ctrlKey.isPressed)
+                {
+                    _cheatClickCount++;
+                    if (_cheatClickCount >= 10)
+                    {
+                        _cheatClickCount = 0;
+                        OnCheatAutoWin?.Invoke();
+                    }
+                    return;
+                }
+                UiSfx.Play(); // 设置按钮碰撞音（2026-08-24 音频挂点方案）
+                OnSettingsClicked?.Invoke();
+            });
+        }
+
+        /// <summary>重置作弊点击计数（每场战斗开始由 BattleController.Init 调用——防跨场累计误触发）。</summary>
+        public void ResetCheatCount()
+        {
+            _cheatClickCount = 0;
         }
 
         public void SetDrawPile(int remaining, bool interactable)

@@ -30,6 +30,9 @@ namespace TheLaw.UI
         IntentResolver _intentResolver;
         BattlePanel _panel;
 
+        /// <summary>当前绑定战斗（2026-08-26：Bootstrap.OnPhaseChanged 幂等守卫校验用——胜利推进下一关后旧控制器仍存在但绑定已销毁的旧 flow → 据此销毁重建）。</summary>
+        public BattleFlow Flow => _flow;
+
         // 回合进度条已迁移：Assets/_Project/UI/Widgets/WaveProgressBar.cs（BackgroundCanvas 心电图式，2026-08-24）
 
         // ========== 状态 ==========

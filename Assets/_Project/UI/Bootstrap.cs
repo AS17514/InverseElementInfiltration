@@ -315,7 +315,16 @@ namespace TheLaw.UI
             // 战斗开始（TowerFlow.StartBattle → Placement）→ 创建战斗控制器（幂等）
             if (_gameState.Phase == BattlePhase.Placement)
             {
-                if (GameObject.Find("BattleController") == null)
+                var existing = GameObject.Find("BattleController");
+                // ⚠️ 2026-08-26 修复：胜利推进下一关时旧控制器未销毁（DestroyBattleController 只在整局结束/重开路径调用）——
+                // 旧控制器绑定已销毁的上一场 BattleFlow：若仅判"存在"会跳过创建 → 第 2 关起无手牌渲染/按钮接线/表现回执
+                // （视觉残留上一场棋盘 + 3s 超时降级 + 玩家动不了）。改为绑定校验：存在但 flow ≠ 当前战斗 → 立即销毁（同步反注册）→ 重建。
+                if (existing != null && existing.GetComponent<BattleController>()?.Flow != CurrentBattleFlow)
+                {
+                    UnityEngine.Object.DestroyImmediate(existing);
+                    existing = null;
+                }
+                if (existing == null)
                 {
                     CreateBattleController();
                     AudioManager.Instance.PlayBGM(TheLaw.Core.AudioRefs.BgmBattle); // 战斗 BGM（占位；切曲走交叉淡化）

@@ -22,19 +22,19 @@ MonoBehaviour:
   specialAbilities: []
   programSet:
   - slots:
-    - rid: 7823914186279223470
-    - rid: 7823914186279223471
-    - rid: 7823914186279223472
+    - rid: 4463436102609141937
+    - rid: 4463436102609141938
+    - rid: 4463436102609141939
   promotionConfigId: 0
   references:
     version: 2
     RefIds:
-    - rid: 7823914186279223470
+    - rid: 4463436102609141937
       type: {class: EffectTemplate, ns: TheLaw.Data, asm: Data}
       data:
         id: 1
         abilityKey: Ability_ShieldBlock_OnDamaged_1
-    - rid: 7823914186279223471
+    - rid: 4463436102609141938
       type: {class: MoveTemplate, ns: TheLaw.Data, asm: Data}
       data:
         id: 4
@@ -48,7 +48,7 @@ MonoBehaviour:
             - direction: 32
               steps: 01000000
         jumpOffsets: []
-    - rid: 7823914186279223472
+    - rid: 4463436102609141939
       type: {class: AttackTemplate, ns: TheLaw.Data, asm: Data}
       data:
         id: 1

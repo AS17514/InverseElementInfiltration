@@ -22,19 +22,19 @@ MonoBehaviour:
   specialAbilities: []
   programSet:
   - slots:
-    - rid: 7823914186279223478
-    - rid: 7823914186279223479
-    - rid: 7823914186279223480
+    - rid: 4463436102609141945
+    - rid: 4463436102609141946
+    - rid: 4463436102609141947
   promotionConfigId: 0
   references:
     version: 2
     RefIds:
-    - rid: 7823914186279223478
+    - rid: 4463436102609141945
       type: {class: EffectTemplate, ns: TheLaw.Data, asm: Data}
       data:
         id: 3
         abilityKey: Ability_Attach_OnAttack_Cross
-    - rid: 7823914186279223479
+    - rid: 4463436102609141946
       type: {class: AttackTemplate, ns: TheLaw.Data, asm: Data}
       data:
         id: 10
@@ -51,7 +51,7 @@ MonoBehaviour:
         - {x: 1, y: 2}
         - {x: 2, y: 1}
         rangeSteps: []
-    - rid: 7823914186279223480
+    - rid: 4463436102609141947
       type: {class: MoveTemplate, ns: TheLaw.Data, asm: Data}
       data:
         id: 9

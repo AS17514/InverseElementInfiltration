@@ -22,13 +22,13 @@ MonoBehaviour:
   specialAbilities: []
   programSet:
   - slots:
-    - rid: 7823914186279223487
-    - rid: 7823914186279223488
+    - rid: 4463436102609141956
+    - rid: 4463436102609141957
   promotionConfigId: 0
   references:
     version: 2
     RefIds:
-    - rid: 7823914186279223487
+    - rid: 4463436102609141956
       type: {class: AttackTemplate, ns: TheLaw.Data, asm: Data}
       data:
         id: 5
@@ -40,7 +40,7 @@ MonoBehaviour:
         shape: 0
         points: []
         rangeSteps: []
-    - rid: 7823914186279223488
+    - rid: 4463436102609141957
       type: {class: MoveTemplate, ns: TheLaw.Data, asm: Data}
       data:
         id: 6

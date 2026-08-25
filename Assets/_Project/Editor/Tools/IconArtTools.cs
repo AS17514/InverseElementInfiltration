@@ -17,6 +17,7 @@ namespace TheLaw.EditorTools
         {
             "Assets/Art/ProgramBlock",
             "Assets/Art/Characters/Special",
+            "Assets/Art/BaseInfoBlock",
         };
         const string GroupName = "Art";
 

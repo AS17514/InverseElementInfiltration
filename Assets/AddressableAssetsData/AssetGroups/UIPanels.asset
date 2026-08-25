@@ -112,6 +112,11 @@ MonoBehaviour:
     m_ReadOnly: 0
     m_SerializedLabels: []
     FlaggedDuringContentUpdateRestriction: 0
+  - m_GUID: 9b344f0bbee9ae9408fc55dd59a9fdc2
+    m_Address: Btn_Number
+    m_ReadOnly: 0
+    m_SerializedLabels: []
+    FlaggedDuringContentUpdateRestriction: 0
   - m_GUID: a0c1a2406283ed6418aeebf4ce2a5b02
     m_Address: DeckLibrary
     m_ReadOnly: 0
@@ -119,6 +124,11 @@ MonoBehaviour:
     FlaggedDuringContentUpdateRestriction: 0
   - m_GUID: a4c6d20acbc7860479ac44fc12e5fccf
     m_Address: TipPanel
+    m_ReadOnly: 0
+    m_SerializedLabels: []
+    FlaggedDuringContentUpdateRestriction: 0
+  - m_GUID: ab3dfbd06cab88345805cb28cb7c244c
+    m_Address: SelectNumberPanel
     m_ReadOnly: 0
     m_SerializedLabels: []
     FlaggedDuringContentUpdateRestriction: 0

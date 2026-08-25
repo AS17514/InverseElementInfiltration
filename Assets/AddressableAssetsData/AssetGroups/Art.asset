@@ -147,6 +147,11 @@ MonoBehaviour:
     m_ReadOnly: 0
     m_SerializedLabels: []
     FlaggedDuringContentUpdateRestriction: 0
+  - m_GUID: 824a9dc2fd4269d4b948bf6f89df1ba8
+    m_Address: Info_None
+    m_ReadOnly: 0
+    m_SerializedLabels: []
+    FlaggedDuringContentUpdateRestriction: 0
   - m_GUID: 870b837b66e7dfe49b00e1f00f849c50
     m_Address: "Xeon_\u60CA\u8BB6"
     m_ReadOnly: 0
@@ -172,6 +177,11 @@ MonoBehaviour:
     m_ReadOnly: 0
     m_SerializedLabels: []
     FlaggedDuringContentUpdateRestriction: 0
+  - m_GUID: 9609eddcb2b19164fb8ebf701403695c
+    m_Address: InfoFootprint_1x1
+    m_ReadOnly: 0
+    m_SerializedLabels: []
+    FlaggedDuringContentUpdateRestriction: 0
   - m_GUID: 96cdd74bedbee474aa5e46ffe28f458f
     m_Address: event_ability
     m_ReadOnly: 0
@@ -179,6 +189,11 @@ MonoBehaviour:
     FlaggedDuringContentUpdateRestriction: 0
   - m_GUID: 97d442d7da8011d489a681234c352d9d
     m_Address: event_option
+    m_ReadOnly: 0
+    m_SerializedLabels: []
+    FlaggedDuringContentUpdateRestriction: 0
+  - m_GUID: 9b3320e33a759a843ab4cf7c64745922
+    m_Address: InfoFootprint_1x2
     m_ReadOnly: 0
     m_SerializedLabels: []
     FlaggedDuringContentUpdateRestriction: 0

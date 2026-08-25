@@ -22,8 +22,18 @@ MonoBehaviour:
     m_ReadOnly: 0
     m_SerializedLabels: []
     FlaggedDuringContentUpdateRestriction: 0
+  - m_GUID: 089f79194bf72f94ea8b3518fd07d9aa
+    m_Address: Grp_FloorPlay_WuXing
+    m_ReadOnly: 0
+    m_SerializedLabels: []
+    FlaggedDuringContentUpdateRestriction: 0
   - m_GUID: 16b61da117c3a124f83fa368189bba77
     m_Address: Grp_Play_None
+    m_ReadOnly: 0
+    m_SerializedLabels: []
+    FlaggedDuringContentUpdateRestriction: 0
+  - m_GUID: 17168ead90abad04f80c1ed6969f75f5
+    m_Address: Grp_FloorPlay_Mahjong
     m_ReadOnly: 0
     m_SerializedLabels: []
     FlaggedDuringContentUpdateRestriction: 0
@@ -62,6 +72,11 @@ MonoBehaviour:
     m_ReadOnly: 0
     m_SerializedLabels: []
     FlaggedDuringContentUpdateRestriction: 0
+  - m_GUID: 7374df59c98ac604baa7370d4dc3fc76
+    m_Address: TutorialPanel
+    m_ReadOnly: 0
+    m_SerializedLabels: []
+    FlaggedDuringContentUpdateRestriction: 0
   - m_GUID: 762d95d0ad199124da63764f776ae705
     m_Address: PieceEditPanel
     m_ReadOnly: 0
@@ -74,6 +89,11 @@ MonoBehaviour:
     FlaggedDuringContentUpdateRestriction: 0
   - m_GUID: 7d2de312b8ce90941a8d42e13778d589
     m_Address: BattlePanel
+    m_ReadOnly: 0
+    m_SerializedLabels: []
+    FlaggedDuringContentUpdateRestriction: 0
+  - m_GUID: 832f76515a08eae45957002611c9e6c6
+    m_Address: Grp_FloorPlay_Token
     m_ReadOnly: 0
     m_SerializedLabels: []
     FlaggedDuringContentUpdateRestriction: 0
@@ -129,6 +149,11 @@ MonoBehaviour:
     FlaggedDuringContentUpdateRestriction: 0
   - m_GUID: e480a4591ef60454e9fe918331734656
     m_Address: StoryPanel
+    m_ReadOnly: 0
+    m_SerializedLabels: []
+    FlaggedDuringContentUpdateRestriction: 0
+  - m_GUID: f6d621b48a8529042a5020202f985576
+    m_Address: FloorPlayDetailePanel
     m_ReadOnly: 0
     m_SerializedLabels: []
     FlaggedDuringContentUpdateRestriction: 0

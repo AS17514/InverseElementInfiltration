@@ -181,5 +181,35 @@ namespace TheLaw.Core
 
         /// <summary>是否存在存档（主菜单"继续"按钮用）。</summary>
         public bool HasSave => File.Exists(SavePath);
+
+        // ========== 独立文本文件槽位（2026-08-25：教程记录 tutorial.json——仿 settings.json 先例：设备级数据不随主档生命周期）==========
+
+        private const string TutorialFileName = "tutorial.json"; // 教程记录独立文件（不在主档——清档/失败清档不影响"是否看过教程"）
+
+        /// <summary>教程记录独立槽位原子写（2026-08-25：仿 settings.json——立即保存；随 TutorialSystem 变更触发）。</summary>
+        public void SaveTutorialRecords(string json)
+        {
+            WriteBundleTo(Path.Combine(Application.persistentDataPath, TutorialFileName),
+                new Dictionary<string, string> { [TutorialKey] = json });
+        }
+
+        /// <summary>教程记录独立槽位读取（无文件返回 null——调用方按空处理：从未记录、教程可全部重播）。</summary>
+        public string LoadTutorialRecords()
+        {
+            string path = Path.Combine(Application.persistentDataPath, TutorialFileName);
+            if (!File.Exists(path)) return null;
+            try
+            {
+                var bundle = JsonConvert.DeserializeObject<Dictionary<string, string>>(File.ReadAllText(path));
+                if (bundle != null && bundle.TryGetValue(TutorialKey, out var json)) return json;
+            }
+            catch (System.Exception e)
+            {
+                UnityEngine.Debug.LogError($"[SaveManager] 教程记录读取失败：{e.Message}");
+            }
+            return null;
+        }
+
+        private const string TutorialKey = "TutorialSystem"; // tutorial.json 内的键（序列化格式与旧主档段兼容——可无缝迁移）
     }
 }

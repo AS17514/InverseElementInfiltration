@@ -104,9 +104,13 @@ namespace TheLaw.UI
             // ③a 行动经济 buff 前端同步桥（订阅现有回合/表现事件补发 BuffsChanged——不新增后端接口）
             ActionEconomyBuffSync.EnsureSubscribed(_gameState);
             // ③a2 新手教程管理器（UI 层：观察事件 → 角色说话面板 + 遮罩高亮；零后端改动）
-            var tutorialGo = new GameObject("TutorialManager");
-            _tutorialManager = tutorialGo.AddComponent<TutorialManager>();
-            _tutorialManager.Init(_uiManager);
+            // ⚠️ 2026-08-25：受 Tutorials.Enabled 总开关控制——关闭时不创建（防 TutorialPanel 资源未注册时 Awake 崩溃；测试可临时关）
+            if (TheLaw.Core.Tutorials.Enabled)
+            {
+                var tutorialGo = new GameObject("TutorialManager");
+                _tutorialManager = tutorialGo.AddComponent<TutorialManager>();
+                _tutorialManager.Init(_uiManager);
+            }
             // ④ 注册存档快照
             RegisterSnapshots();
             // ⚠️ 2026-08-23 修复：移除启动自动 LoadAll——它会使"开始新游戏"继承旧档未复位字段（示例：AP 上限、随机种子）
@@ -119,6 +123,8 @@ namespace TheLaw.UI
             StartCoroutine(CreateConfirmPanel());
             // ⑤a3 获取物品弹窗常驻创建（RelicObtained 统一提示——2026-08-14：取代事件面板描述区追加）
             StartCoroutine(CreateItemGettingPanel());
+            // ⑤a3b 玩法详情面板常驻创建（overlay——Grp_Mode 介绍按钮打开；2026-08-26）
+            StartCoroutine(CreateFloorPlayDetailePanel());
             // ⑤a4 设置面板常驻创建（overlay——主菜单/战斗中入口复用；IsPausing 暂停型）
             StartCoroutine(CreateSettingsPanel());
             // ⑤a4b 牌库面板常驻创建（overlay——2026-08-25：牌库浏览 + 代币购买选牌复用）
@@ -145,6 +151,7 @@ namespace TheLaw.UI
             // 普通类（去单例化——显式创建）
             _uiManager = new UIManager();
             _tutorialSystem = new TutorialSystem();
+            _tutorialSystem.LoadTutorials(); // 2026-08-25：教程记录独立教程加载（tutorial.json——仿 settings.json，不随存档）
             _progressSystem = new ProgressSystem();
         }
 
@@ -206,7 +213,7 @@ namespace TheLaw.UI
         private void CreateSessionFlow()
         {
             _editorSession = new EditorSession(_gameState, _resolver);
-            _eventNodeSystem = new EventNodeSystem(_gameState, _resolver);
+            _eventNodeSystem = new EventNodeSystem(_gameState, _resolver, _tutorialSystem); // 2026-08-25 教程契约：事件打开触发点（TryShow 跨局去重）
             _towerFlow = new TowerFlow(_gameState, _eventNodeSystem, _battleFlowFactory, GetMapConfig());
             RefreshSessionPanelRefs();
         }
@@ -254,7 +261,7 @@ namespace TheLaw.UI
             var saveManager = SaveManager.Instance;
             saveManager.RegisterSnapshot(_gameState);
             saveManager.RegisterSnapshot(RandomManager.Instance);
-            saveManager.RegisterSnapshot(_tutorialSystem);
+            // ⚠️ 2026-08-25：教程记录不再注册主档快照——独立 tutorial.json（仿 settings.json：设备级状态、变更立即保存、启动单独加载）
             saveManager.RegisterSnapshot(_progressSystem);
         }
 
@@ -421,7 +428,7 @@ namespace TheLaw.UI
         private readonly HashSet<string> _loadingPanels = new HashSet<string>(); // 加载中的面板（防重入）
         private int _sessionGeneration; // 局内异步创建代际：重开/收尾后旧回调不得接入新局
 
-        private System.Collections.IEnumerator LoadPanelAsync<T>(System.Action<T> onReady, bool sessionBound = false) where T : PanelBase
+        private System.Collections.IEnumerator LoadPanelAsync<T>(System.Action<T> onReady, bool sessionBound = false, string addressOverride = null) where T : PanelBase
         {
             int generation = _sessionGeneration;
             string key = sessionBound ? $"{typeof(T).Name}:{generation}" : typeof(T).Name;
@@ -431,7 +438,7 @@ namespace TheLaw.UI
             }
             bool done = false;
             T panel = null;
-            PanelBase.CreateAsync<T>(p => { panel = p; done = true; });
+            PanelBase.CreateAsync<T>(p => { panel = p; done = true; }, addressOverride);
             yield return new WaitUntil(() => done);
             _loadingPanels.Remove(key);
 
@@ -777,9 +784,12 @@ namespace TheLaw.UI
             _storyPlaying = true;
             // 2026-08-25 运镜过渡：先显示剧情（不播）→ 主菜单缓出 + 背景运镜到剧情位（可跳过）→ 隐藏主菜单 → 剧情开播
             _storyPanel.DeferPlayback();
-            _uiManager.ShowPanel("StoryPanel");
             var menuPanel = _uiManager.GetPanel("MainMenu") as PanelBase;
-            yield return StartCoroutine(StoryTransition.Play(menuPanel != null ? menuPanel.transform : null, _storyPanel.transform));
+            var menuRoot = menuPanel != null ? menuPanel.transform : null;
+            (menuPanel as MainMenuPanel)?.CompleteIntro(); // 主菜单开场动画落终态（背景亮度与剧情一致——防亮度跳变闪屏）
+            // ⚠️ 不用 UIManager.ShowPanel：切换型会先隐藏主菜单（空档一帧露出场景=闪）。
+            // 剧情面板由转场在"主菜单控件淡出后"再显示（淡出可见 + 同图同位无缝接管，无空档）。
+            yield return StartCoroutine(StoryTransition.Play(menuRoot, _storyPanel));
             _uiManager.HidePanel("MainMenu");
             _storyPanel.StartPlayback();
             Debug.Log("[Bootstrap] 开场剧情播放开始");
@@ -1040,6 +1050,7 @@ namespace TheLaw.UI
                 _battlePanel = panel;
                 _uiManager.RegisterPanel(panel);
                 panel.OnSettingsClicked += () => _uiManager.PushOverlay("Settings"); // 战斗内设置入口
+                panel.OnDeckClicked += () => _uiManager.PushOverlay("DeckLibrary"); // 2026-08-26：牌库浏览入口（Btn_Graveyard）
                 CreateBattleControllerWith(flow, panel);
             }, sessionBound: true);
         }
@@ -1060,6 +1071,17 @@ namespace TheLaw.UI
                 _uiManager.RegisterPanel(panel);
                 panel.Init(_uiManager);
                 panel.gameObject.SetActive(false);
+            });
+        }
+
+        /// <summary>玩法详情面板常驻创建（Grp_Mode 介绍按钮 → PushOverlay；仅确认关闭；2026-08-26）。</summary>
+        private System.Collections.IEnumerator CreateFloorPlayDetailePanel()
+        {
+            yield return LoadPanelAsync<FloorPlayDetailePanel>(panel =>
+            {
+                _uiManager.RegisterPanel(panel);
+                panel.Init(_uiManager);
+                panel.gameObject.SetActive(false); // 常驻隐藏（介绍按钮 PushOverlay 显示）
             });
         }
 
@@ -1087,12 +1109,13 @@ namespace TheLaw.UI
         /// <summary>牌库面板常驻创建（overlay——抽牌区/弃牌区浏览 + 代币购买选牌；IsPausing 暂停型）。</summary>
         private System.Collections.IEnumerator CreateDeckLibraryPanel()
         {
+            // prefab 文件名 DeckLibrary（≠类名 DeckLibraryPanel）——显式传地址加载真实布局，避免 Addressables 缺 key 报错
             yield return LoadPanelAsync<DeckLibraryPanel>(panel =>
             {
                 _uiManager.RegisterPanel(panel);
                 panel.Init(_uiManager);
                 panel.gameObject.SetActive(false); // 常驻隐藏（购买按钮/牌库按钮 PushOverlay 显示）
-            });
+            }, addressOverride: "DeckLibrary");
         }
 
         /// <summary>确认面板常驻创建（通用确认 overlay——2026-08-13：编辑撤回全部等场景；IsPausing 暂停型）。</summary>

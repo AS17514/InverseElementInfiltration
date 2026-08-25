@@ -45,6 +45,7 @@ namespace TheLaw.UI
         // ====== 节点引用（按名字 Find——prefab 层级变动容错；缺失判空跳过）======
         private TMP_Text _nameText;   // Txt_Name（说话人）
         private TMP_Text _contentText; // Txt_Content（对白——逐字打字机）
+        private Transform _txtBg;      // Img_TxtBg（对话框——prefab 初始不激活，StartPlayback 时激活）
         private Image _charLeft;      // Img_Character_L（Xeon 主位）
         private Image _charRight;     // Img_Character_R（测试员右位）
 
@@ -94,12 +95,16 @@ namespace TheLaw.UI
                 Build();
             }
             CacheRefs();
+            // ⚠️ 2026-08-26：实例化即隐藏（prefab 根 active=1）——否则剧情面板从创建起就盖在主菜单上，
+            // 主菜单→剧情转场的主菜单控件淡出会被盖住看不见。由 StoryTransition 在主菜单淡出后显式 Show()。
+            gameObject.SetActive(false);
         }
 
         private void CacheRefs()
         {
             _nameText = FindDeep<TMP_Text>(transform, "Txt_Name");
             _contentText = FindDeep<TMP_Text>(transform, "Txt_Content");
+            _txtBg = FindDeep<Transform>(transform, "Img_TxtBg"); // prefab 初始不激活——StartPlayback 时激活
             _charLeft = FindDeep<Image>(transform, "Img_Character_L");
             _charRight = FindDeep<Image>(transform, "Img_Character_R");
             if (_charRight == null) Debug.Log("[StoryPanel] 未找到 Img_Character_R（李毕拼图后自动生效——缺失期间测试员句跳过右立绘）");
@@ -120,6 +125,8 @@ namespace TheLaw.UI
         public void StartPlayback()
         {
             _deferPlayback = false;
+            // prefab 初始除背景外全部不激活——运镜结束开播前激活对话框（立绘由 cue 激活）
+            if (_txtBg != null && !_txtBg.gameObject.activeSelf) _txtBg.gameObject.SetActive(true);
             if (_cues != null && _cues.Count > 0 && !_playing && gameObject.activeInHierarchy)
             {
                 _playRoutine = StartCoroutine(PlayRoutine());

@@ -1,0 +1,59 @@
+{
+  "floorName": "floor3",
+  "displayName": "第 3 层·每波达标",
+  "description": "【测试配置 2026-08-26——数值待策划校准】胜利 = 击败所有波次 且（目标分 80 达成 或 每波得分均达标 6/10/14/20）；【扣分机制启用（scoreDeductEnabled=true）】——我方棋子被敌方棋子击败 → 本关总得分 - 该棋子价值（clamp 0，测试者可通过故意送子观察）；敌方 AP 3；4 波（回合 1/4/7/10）固定阵容 + 前 3 波自动升变预告；玩法事件二选一激活玩法",
+  "victoryRule": "PerWaveScore",
+  "targetScore": 80,
+  "scoreDeductEnabled": true,
+  "enemyMaxAP": 3,
+  "eventSequence": [
+    "rule",
+    "ability",
+    "edit",
+    "deck"
+  ],
+  "eventPoolIds": [
+    "rule_pool",
+    "ability_pool",
+    "edit_pool",
+    "deck_pool"
+  ],
+  "waves": [
+    {
+      "startTurn": 1,
+      "pieceDefIds": ["Soldier", "Swordsman", "ShieldGuard", "ShortArcher"],
+      "positions": [{"dx":0,"dy":7},{"dx":2,"dy":7},{"dx":5,"dy":7},{"dx":7,"dy":7}],
+      "isLastWave": false,
+      "endCountdown": 0,
+      "autoPromote": true,
+      "waveScoreTarget": 6
+    },
+    {
+      "startTurn": 4,
+      "pieceDefIds": ["Ranger", "LightCavalry", "Berserker", "Knight"],
+      "positions": [{"dx":1,"dy":6},{"dx":2,"dy":6},{"dx":5,"dy":6},{"dx":6,"dy":6}],
+      "isLastWave": false,
+      "endCountdown": 0,
+      "autoPromote": true,
+      "waveScoreTarget": 10
+    },
+    {
+      "startTurn": 7,
+      "pieceDefIds": ["Ranger", "Berserker", "LightCavalry", "Knight"],
+      "positions": [{"dx":0,"dy":7},{"dx":3,"dy":7},{"dx":4,"dy":7},{"dx":7,"dy":7}],
+      "isLastWave": false,
+      "endCountdown": 0,
+      "autoPromote": true,
+      "waveScoreTarget": 14
+    },
+    {
+      "startTurn": 10,
+      "pieceDefIds": ["Assassin", "Wizard", "Cannoner", "Knight"],
+      "positions": [{"dx":1,"dy":6},{"dx":2,"dy":7},{"dx":5,"dy":7},{"dx":6,"dy":6}],
+      "isLastWave": true,
+      "endCountdown": 4,
+      "autoPromote": false,
+      "waveScoreTarget": 20
+    }
+  ]
+}

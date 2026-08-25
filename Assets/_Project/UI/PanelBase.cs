@@ -1,3 +1,4 @@
+using System.Collections.Generic;
 using TheLaw.Core;
 using UnityEngine;
 using UnityEngine.AddressableAssets;
@@ -192,9 +193,17 @@ namespace TheLaw.UI
         /// Addressables 异步创建面板：加载 Assets/_Project/UI/Prefabs/ 下同名 prefab 实例化；
         /// 加载失败回退纯代码创建。
         /// </summary>
-        public static void CreateAsync<T>(System.Action<T> onReady) where T : PanelBase
+        public static void CreateAsync<T>(System.Action<T> onReady, string addressOverride = null) where T : PanelBase
         {
-            var address = typeof(T).Name;
+            var address = addressOverride ?? typeof(T).Name;
+            // ⚠️ 2026-08-26 根治：Addressables 缺 key 会**内部** LogError（try/catch 接住也刷屏）——
+            // 先探测注册态，未注册直接纯代码创建（prefab 缺失由面板内部兜底）。
+            if (!IsAddressableRegistered(address))
+            {
+                Debug.LogWarning($"[PanelBase] Addressables 未注册 {address}——纯代码创建（无 prefab 布局时由面板内部兜底）");
+                onReady?.Invoke(Create<T>());
+                return;
+            }
             AsyncOperationHandle<GameObject> handle;
             try
             {
@@ -229,6 +238,27 @@ namespace TheLaw.UI
                 Addressables.Release(op);
                 onReady?.Invoke(panel);
             };
+        }
+
+        /// <summary>Addressables 是否注册了该 key（Locate 探测——不触发缺 key 内部报错）。</summary>
+        static bool IsAddressableRegistered(string address)
+        {
+            try
+            {
+                foreach (var locator in Addressables.ResourceLocators)
+                {
+                    if (locator != null && locator.Locate(address, typeof(GameObject), out var locations)
+                        && locations != null && locations.Count > 0)
+                    {
+                        return true;
+                    }
+                }
+            }
+            catch (System.Exception e)
+            {
+                Debug.LogWarning($"[PanelBase] Addressables 探测异常 {address}：{e.Message}——按未注册处理（纯代码创建）");
+            }
+            return false;
         }
     }
 

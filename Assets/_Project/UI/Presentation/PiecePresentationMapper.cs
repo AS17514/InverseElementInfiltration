@@ -15,11 +15,12 @@ namespace TheLaw.UI
                 effectiveValue.ToString(),
                 PieceTypeLabel(effectiveType),
                 def != null ? def.name : string.Empty,
+                def != null ? def.footprint : Footprint.Size1x1,
                 ToProgramIcons(program));
         }
 
         public static HandCardViewData ToHandCard(PieceDef def, PieceType effectiveType, int effectiveValue,
-            IReadOnlyList<Template> program)
+            IReadOnlyList<Template> program, Element element = Element.None)
         {
             return new HandCardViewData(
                 CardTypeColors.For(effectiveType),
@@ -27,7 +28,9 @@ namespace TheLaw.UI
                 ToVerticalName(def != null ? def.displayName : string.Empty),
                 effectiveValue.ToString(),
                 PieceTypeLabel(effectiveType),
-                ToProgramSlots(program));
+                ToProgramSlots(program),
+                element,
+                def != null ? def.footprint : Footprint.Size1x1);
         }
 
         public static ProgramCardViewData ToProgramCard(Template template)

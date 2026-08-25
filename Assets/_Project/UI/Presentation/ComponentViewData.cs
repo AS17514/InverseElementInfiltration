@@ -1,4 +1,5 @@
 using System.Collections.Generic;
+using TheLaw.Data;
 using UnityEngine;
 
 namespace TheLaw.UI
@@ -60,15 +61,17 @@ namespace TheLaw.UI
         public string ValueText { get; }
         public string TypeLabel { get; }
         public string PortraitKey { get; }
+        public Footprint Footprint { get; }
         public IReadOnlyList<ProgramIconViewData> ProgramIcons { get; }
 
         public PieceCardViewData(Color backgroundColor, string valueText, string typeLabel, string portraitKey,
-            IReadOnlyList<ProgramIconViewData> programIcons)
+            Footprint footprint, IReadOnlyList<ProgramIconViewData> programIcons)
         {
             BackgroundColor = backgroundColor;
             ValueText = valueText ?? string.Empty;
             TypeLabel = typeLabel ?? string.Empty;
             PortraitKey = portraitKey ?? string.Empty;
+            Footprint = footprint;
             ProgramIcons = programIcons ?? new List<ProgramIconViewData>();
         }
     }
@@ -77,14 +80,17 @@ namespace TheLaw.UI
     {
         public new string PortraitKey { get; }
         public string VerticalName { get; }
+        public Element Element { get; }
         public IReadOnlyList<ProgramSlotViewData> ProgramSlots { get; }
 
         public HandCardViewData(Color backgroundColor, string portraitKey, string verticalName, string valueText,
-            string typeLabel, IReadOnlyList<ProgramSlotViewData> programSlots)
-            : base(backgroundColor, valueText, typeLabel, portraitKey, ToIcons(programSlots))
+            string typeLabel, IReadOnlyList<ProgramSlotViewData> programSlots,
+            Element element = Element.None, Footprint footprint = Footprint.Size1x1)
+            : base(backgroundColor, valueText, typeLabel, portraitKey, footprint, ToIcons(programSlots))
         {
             PortraitKey = portraitKey ?? string.Empty;
             VerticalName = verticalName ?? string.Empty;
+            Element = element;
             ProgramSlots = programSlots ?? new List<ProgramSlotViewData>();
         }
 

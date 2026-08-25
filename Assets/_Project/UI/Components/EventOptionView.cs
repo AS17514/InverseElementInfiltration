@@ -44,8 +44,9 @@ namespace TheLaw.UI
             _suppressClick = false;
 
             var interactable = data != null && data.Interactable;
-            if (_title != null) _title.text = data?.Title ?? string.Empty;
-            if (_content != null) _content.text = data?.Content ?? string.Empty;
+            // 2026-08-26：全角＋ 字体缺失——显示层归一化为半角 +（数据域 JSON 未动）
+            if (_title != null) _title.text = NormalizePlus(data?.Title);
+            if (_content != null) _content.text = NormalizePlus(data?.Content);
             ApplyHeightByContent(); // 按 TMP 真实渲染行数定高（90/120/170）
             if (_button == null) return;
 
@@ -153,6 +154,12 @@ namespace TheLaw.UI
             _content.ForceMeshUpdate();
             if (_content.textInfo == null) return 1;
             return Mathf.Max(1, _content.textInfo.lineCount);
+        }
+
+        /// <summary>全角＋ → 半角 +（2026-08-26：字体缺全角加号字形——显示层统一归一化）。</summary>
+        static string NormalizePlus(string s)
+        {
+            return s == null ? string.Empty : s.Replace('＋', '+');
         }
     }
 }

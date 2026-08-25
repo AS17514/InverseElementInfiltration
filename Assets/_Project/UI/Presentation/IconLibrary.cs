@@ -13,6 +13,10 @@ namespace TheLaw.UI
     {
         static readonly string[] PreloadKeys =
         {
+            // 基础信息图标（占地标识 / 类型占位——2026-08-27）
+            "InfoFootprint_1x1", "InfoFootprint_1x2", "Info_None",
+            // 程序块槽位背景（默认底图——手牌/构筑卡 Img_InfoProgram 无模块图标时显示）
+            "Bg",
             // 程序块·移动（4 族）
             "move_step", "move_area", "move_jump", "move_combo",
             // 程序块·攻击（5 方式）

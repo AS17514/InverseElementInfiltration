@@ -1,4 +1,5 @@
 using System.Collections.Generic;
+using TheLaw.Data;
 using TMPro;
 using UnityEngine;
 using UnityEngine.UI;
@@ -11,6 +12,8 @@ namespace TheLaw.UI
         private Image _typeBackground;
         private TMP_Text _valueText;
         private TMP_Text _typeText;
+        private Image _typeIcon;       // Img_PieceType（类型位：默认 None 图标——2026-08-27）
+        private Image _footprintImage; // Img_PieceFootprint（占地标识）
         private Image _portrait;
         private Sprite _fallbackPortrait;
         private Transform _programRoot;
@@ -33,7 +36,23 @@ namespace TheLaw.UI
                     : _fallbackPortrait;
             }
             if (_valueText != null) _valueText.text = data?.ValueText ?? string.Empty;
-            if (_typeText != null) _typeText.text = data?.TypeLabel ?? string.Empty;
+            // 类型位：默认 None 图标（卡色已表达种类；Element 不在构筑卡——2026-08-27）
+            if (_typeIcon != null && IconLibrary.TryGet("Info_None", out var none))
+            {
+                _typeIcon.sprite = none;
+                _typeIcon.color = Color.white;
+            }
+            if (_typeText != null) _typeText.text = string.Empty;
+            // 占地标识：1x1/1x2；1x3 无图标不兜底
+            if (_footprintImage != null)
+            {
+                var fp = data != null ? data.Footprint : Footprint.Size1x1;
+                Sprite f = null;
+                if (fp == Footprint.Size1x2) IconLibrary.TryGet("InfoFootprint_1x2", out f);
+                else if (fp == Footprint.Size1x1) IconLibrary.TryGet("InfoFootprint_1x1", out f);
+                _footprintImage.sprite = f;
+                _footprintImage.gameObject.SetActive(f != null);
+            }
         }
 
         public void BindProgramIcons(IReadOnlyList<ProgramIconViewData> icons, GameObject iconTemplate)
@@ -65,6 +84,16 @@ namespace TheLaw.UI
             if (_typeBackground == null) _typeBackground = FindNode("Image")?.GetComponent<Image>();
             if (_valueText == null) _valueText = FindText("Img_PieceValue");
             if (_typeText == null) _typeText = FindText("Img_PieceType");
+            if (_typeIcon == null)
+            {
+                var typeNode = FindNode("Img_PieceType");
+                _typeIcon = typeNode != null ? typeNode.GetComponent<Image>() : null;
+            }
+            if (_footprintImage == null)
+            {
+                var fpNode = FindNode("Img_PieceFootprint");
+                _footprintImage = fpNode != null ? fpNode.GetComponent<Image>() : null;
+            }
             if (_portrait == null) _portrait = FindNode("Img_PiecePortrait")?.GetComponent<Image>();
             if (_fallbackPortrait == null && _portrait != null) _fallbackPortrait = _portrait.sprite;
             if (_programRoot == null) _programRoot = FindNode("Grp_PieceProgramInfo");

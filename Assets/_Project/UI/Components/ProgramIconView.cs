@@ -9,6 +9,7 @@ namespace TheLaw.UI
     {
         private Image _iconImage;
         private TMP_Text _typeText;
+        private Sprite _bgSprite; // 程序槽默认背景（Bg.png——2026-08-26）
 
         private void Awake()
         {
@@ -22,8 +23,9 @@ namespace TheLaw.UI
             if (gameObject.activeSelf != visible) gameObject.SetActive(visible);
             if (_iconImage != null)
             {
-                // 有图标只显图标；无图标才用文字（2026-08-26 图标接入防重叠；null 清残留）
-                _iconImage.sprite = data != null ? data.IconSprite : null;
+                // 有模块图标显图标；无图标（效果/空槽）显默认背景 Bg——2026-08-26 槽位背景
+                if (data != null && data.IconSprite != null) _iconImage.sprite = data.IconSprite;
+                else if (_bgSprite != null) _iconImage.sprite = _bgSprite;
                 if (data != null && data.IconColor.HasValue) _iconImage.color = data.IconColor.Value;
             }
             if (_typeText != null)
@@ -34,6 +36,7 @@ namespace TheLaw.UI
         {
             if (_iconImage == null) _iconImage = GetComponent<Image>();
             if (_typeText == null) _typeText = GetComponentInChildren<TMP_Text>(true);
+            if (_bgSprite == null && IconLibrary.TryGet("Bg", out var bg)) _bgSprite = bg;
         }
     }
 }

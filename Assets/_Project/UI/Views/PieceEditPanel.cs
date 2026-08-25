@@ -831,8 +831,9 @@ namespace TheLaw.UI
                 {
                     var t = _slotTemplates[i];
                     // 有图标只显图标（移动/攻击）；无图标（效果/未知）才写字——2026-08-26 图标接入防重叠
+                    // （槽位 Image 恒有 Bg 背景兜底——判据用图标键，不能用 sprite 是否为空）
                     if (_slotTexts[i] != null)
-                        _slotTexts[i].text = _slotImages[i] != null && _slotImages[i].sprite != null ? string.Empty : SlotTypeChar(t);
+                        _slotTexts[i].text = PiecePresentationMapper.ProgramIconKey(t) != null ? string.Empty : SlotTypeChar(t);
                     if (_slotDescs[i] != null) _slotDescs[i].text = SlotDetailDescStatic(t);
                     // 状态颜色：锁定=灰（一版全部可编辑）
                     if (_slotImages[i] != null)

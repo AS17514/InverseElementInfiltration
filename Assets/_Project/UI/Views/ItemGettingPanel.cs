@@ -17,6 +17,9 @@ namespace TheLaw.UI
     {
         public override string Key => "ItemGetting";
 
+        /// <summary>弹窗是否正在展示（2026-08-25：EventPanel 据此延迟下个事件显示——确认后才切换）。</summary>
+        public static bool IsShowing { get; private set; }
+
         private UIManager _uiManager;
         private Image _iconImg;      // Img_Info（物品图标——占位色块；无图标资源时隐藏）
         private TMP_Text _nameText;  // Txt_Name
@@ -47,6 +50,7 @@ namespace TheLaw.UI
         {
             EventCenter.Instance.RemoveEventListener(GameEvent.RelicObtained, OnRelicObtained);
             if (_confirmBtn != null) _confirmBtn.onClick.RemoveListener(OnConfirmClicked);
+            IsShowing = false; // 销毁兜底（防静态标记卡死延迟）
         }
 
         void OnRelicObtained(object data)
@@ -59,8 +63,9 @@ namespace TheLaw.UI
         /// <summary>纯展示绑定；队列与 Overlay 生命周期仍由 Panel 管理。</summary>
         public void Bind(ItemGettingViewData data)
         {
-            if (_nameText != null) _nameText.text = data?.Name ?? string.Empty;
-            if (_infoText != null) _infoText.text = data?.Description ?? string.Empty;
+            // 2026-08-26：全角＋ 字体缺失——显示层归一化为半角 +（数据域 JSON 未动）
+            if (_nameText != null) _nameText.text = NormalizePlus(data?.Name);
+            if (_infoText != null) _infoText.text = NormalizePlus(data?.Description);
             if (_iconImg != null)
             {
                 _iconImg.color = data != null ? data.IconColor : Color.white;
@@ -78,6 +83,7 @@ namespace TheLaw.UI
         {
             if (_pendingRelics.Count == 0) return;
             _showing = true;
+            IsShowing = true; // 弹窗展示中——下个事件显示延迟
             Bind(ToViewData(_pendingRelics.Dequeue()));
             // 覆盖显示（不暂停——通知性质；确认关闭）
             if (_uiManager != null) _uiManager.PushOverlay(Key);
@@ -104,6 +110,7 @@ namespace TheLaw.UI
             else
             {
                 _showing = false;
+                IsShowing = false; // 队列清空 + 关闭——下个事件可显示
                 if (_uiManager != null) _uiManager.PopOverlay();
                 else gameObject.SetActive(false);
             }
@@ -123,6 +130,12 @@ namespace TheLaw.UI
                 case 4: return new Color(0.75f, 0.55f, 0.95f); // 紫
                 default: return new Color(0.95f, 0.65f, 0.40f); // 橙
             }
+        }
+
+        /// <summary>全角＋ → 半角 +（2026-08-26：字体缺全角加号字形——显示层统一归一化）。</summary>
+        static string NormalizePlus(string s)
+        {
+            return s == null ? string.Empty : s.Replace('＋', '+');
         }
 
         /// <summary>递归按名查找（容错 prefab 层级嵌套）。</summary>

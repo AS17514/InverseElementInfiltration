@@ -30,6 +30,7 @@ namespace TheLaw.UI
         public TMP_Text PhaseButtonText { get; private set; }
         public TMP_Text APValueText { get; private set; }
         public TMP_Text EventNameText { get; private set; }
+        public TMP_Text CurrentProgressText { get; private set; } // Txt_CurrentProgress（战斗左上角关卡名称——2026-08-26 白模/Demo/ALPHA/BETA）
         public Button DrawButton { get; private set; }
         public Button DeckButton { get; private set; }
         public TMP_Text DrawPileCountText { get; private set; }
@@ -89,6 +90,8 @@ namespace TheLaw.UI
                     if (t.name == "Txt_EventName") { EventNameText = t; break; }
                 }
             }
+            var progressTxt = FindDeep("Txt_CurrentProgress");
+            if (progressTxt != null) CurrentProgressText = progressTxt.GetComponent<TMP_Text>();
             HandRoot = transform.Find("Grp_Hand") as RectTransform;
 
             // 手牌模板（Grp_Hand 下名为 Piece_Handcard 的节点，保留作克隆模板）
@@ -164,6 +167,12 @@ namespace TheLaw.UI
         public void SetEventName(string name)
         {
             if (EventNameText != null) EventNameText.text = name;
+        }
+
+        /// <summary>战斗左上角关卡名称（Txt_CurrentProgress——白模/Demo/ALPHA/BETA）。</summary>
+        public void SetFloorName(string name)
+        {
+            if (CurrentProgressText != null) CurrentProgressText.text = name;
         }
 
         /// <summary>进度条值（0~1）。</summary>

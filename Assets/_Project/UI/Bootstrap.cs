@@ -1,5 +1,6 @@
 using System;
 using System.Collections.Generic;
+using Newtonsoft.Json.Linq;
 using TheLaw.Core;
 using TheLaw.Data;
 using TheLaw.Gameplay;
@@ -1328,10 +1329,39 @@ namespace TheLaw.UI
             panel.OnContinueClicked += ContinueGame; // 2026-08-23：对接存档继续（读档恢复会话/事件流程）
             panel.OnSettingsClicked += () => { _uiManager.PushOverlay("Settings"); }; // 设置面板 overlay（主菜单之上，暂停型）
             panel.OnQuitClicked += Application.Quit;
+            panel.SetContinueAvailable(CanContinueGame()); // 2026-08-26：无可用存档置灰"继续"
             _uiManager.ShowPanel("MainMenu");
             DestroyBootBlackOverlay(); // 主菜单已接管黑屏（开场动画起始即全黑，无闪烁交接）
             Debug.Log("[Bootstrap] 主菜单已显示");
             });
+        }
+
+        /// <summary>主菜单"继续"可用性：有存档且非终局档且存在进行中状态（镜像 TryResumeSavedState 可恢复分支——轻量探测不加载快照）。</summary>
+        private bool CanContinueGame()
+        {
+            string json = SaveManager.Instance.PeekGameStateJson();
+            if (json == null) return false; // 无档/损坏
+            try
+            {
+                var obj = JObject.Parse(json);
+                int phase = -1;
+                var phaseTok = obj["Phase"];
+                if (phaseTok != null)
+                {
+                    if (phaseTok.Type == JTokenType.Integer) phase = phaseTok.Value<int>();
+                    else if (phaseTok.Type == JTokenType.String) int.TryParse(phaseTok.Value<string>(), out phase); // 兼容字符串枚举存档
+                }
+                if (phase == (int)BattlePhase.GameOver) return false; // 终局档不可续（点继续=防御清档）
+                if (obj["Pieces"] is JArray pieces && pieces.Count > 0) return true;  // 战斗中（SL 重打）
+                if (obj["EditingDefs"] is JArray ed && ed.Count > 0) return true;    // 编辑中断
+                var evId = obj["CurrentEventId"]?.Value<string>();
+                return !string.IsNullOrEmpty(evId); // 事件中断
+            }
+            catch (System.Exception e)
+            {
+                Debug.LogWarning("[Bootstrap] 继续可用性探测失败：" + e.Message);
+                return false;
+            }
         }
 
         // ========== 冷启动黑屏（2026-08-26：盖住其他面板异步加载过程）==========

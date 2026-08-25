@@ -36,6 +36,7 @@ namespace TheLaw.UI
         private CanvasGroup _subtitleGroup; // 副标题（Txt_Subtitle）
         private CanvasGroup _menuGroup;     // 按钮组（Grp_MenuOptions——prefab 已挂 CanvasGroup）
         private Image _introBlocker;        // 全屏透明阻射线层（动画期防点击）
+        private Button _continueButton;     // 继续按钮（无可用存档时置灰）
 
         private void Awake()
         {
@@ -126,6 +127,8 @@ namespace TheLaw.UI
             var menuRoot = FindChild(transform, "Grp_MenuOptions") ?? transform; // 代码兜底路径无 Grp_——退化为整面板
             _menuGroup = menuRoot.GetComponent<CanvasGroup>();
             if (_menuGroup == null) _menuGroup = menuRoot.gameObject.AddComponent<CanvasGroup>();
+
+            _continueButton = FindDeep<Button>(transform, "Btn_ContinueGame");
         }
 
         private IEnumerator PlayIntro()
@@ -189,6 +192,12 @@ namespace TheLaw.UI
         {
             _introRunning = false;
             RemoveBlocker();
+        }
+
+        /// <summary>设置"继续"可用性（无可用存档置灰——Bootstrap 轻量读档探测后调用）。</summary>
+        public void SetContinueAvailable(bool available)
+        {
+            if (_continueButton != null) _continueButton.interactable = available;
         }
 
         private void KillIntroTweens()

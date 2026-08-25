@@ -182,6 +182,25 @@ namespace TheLaw.Core
         /// <summary>是否存在存档（主菜单"继续"按钮用）。</summary>
         public bool HasSave => File.Exists(SavePath);
 
+        /// <summary>
+        /// 轻量读主档的 GameState 段 JSON（不加载/分发快照——主菜单"继续"可用性探测用；无档/损坏返回 null）。
+        /// 解析交给调用方（Core 零依赖——枚举语义在 UI 层判定）。
+        /// </summary>
+        public string PeekGameStateJson()
+        {
+            if (!File.Exists(SavePath)) return null;
+            try
+            {
+                var bundle = JsonConvert.DeserializeObject<Dictionary<string, string>>(File.ReadAllText(SavePath));
+                if (bundle != null && bundle.TryGetValue("GameState", out var json)) return json;
+            }
+            catch (System.Exception e)
+            {
+                UnityEngine.Debug.LogWarning($"[SaveManager] 存档探测失败：{e.Message}");
+            }
+            return null;
+        }
+
         // ========== 独立文本文件槽位（2026-08-25：教程记录 tutorial.json——仿 settings.json 先例：设备级数据不随主档生命周期）==========
 
         private const string TutorialFileName = "tutorial.json"; // 教程记录独立文件（不在主档——清档/失败清档不影响"是否看过教程"）

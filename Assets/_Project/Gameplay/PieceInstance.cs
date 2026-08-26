@@ -114,39 +114,61 @@ namespace TheLaw.Gameplay
         /// 外部模块——如盾兵 Effect-1 + 外部 Effect-4 护盾）按实例各计一次（护盾 1+1=2）；
         /// 棋子固有能力已迁移为程序效果模块（abilities 字段移除——"特殊能力=行动槽"）。
         /// </summary>
+        // AA5-06：能力列表缓存——失效键 = (def, GameState 实例, 生效程序引用, 临时能力列表引用+Count)。
+        // 程序/临时能力/升变 def 变化时引用或计数必变，缓存自动失效；返回列表仅供只读遍历（全仓无修改调用）。
+        private List<SpecialAbilityDef> _cachedAbilities;
+        private PieceDef _cachedDef;
+        private GameState _cachedState;
+        private List<Template> _cachedProgram;
+        private List<SpecialAbilityDef> _cachedTempAbilities;
+        private int _cachedTempAbilitiesCount;
+
         public List<SpecialAbilityDef> GetAllAbilities()
         {
+            var state = GameState.Instance;
+            var program = state != null ? GetProgram(state) : null;
+            if (_cachedAbilities != null
+                && _cachedDef == def
+                && _cachedState == state
+                && _cachedProgram == program
+                && _cachedTempAbilities == tempAbilities
+                && _cachedTempAbilitiesCount == (tempAbilities != null ? tempAbilities.Count : 0))
+            {
+                return _cachedAbilities;
+            }
+
             var result = new List<SpecialAbilityDef>();
             if (def != null)
             {
                 result.AddRange(def.specialAbilities);
             }
             // 效果模块（装配即生效）：程序中的 EffectTemplate → 能力并入（按实例叠加——不去重）
-            var state = GameState.Instance;
-            if (state != null)
+            if (state != null && program != null)
             {
-                var program = GetProgram(state);
-                if (program != null)
+                foreach (var slot in program)
                 {
-                    foreach (var slot in program)
+                    if (slot is EffectTemplate effect && !string.IsNullOrEmpty(effect.abilityKey))
                     {
-                        if (slot is EffectTemplate effect && !string.IsNullOrEmpty(effect.abilityKey))
+                        var ability = ConfigTable.FindByName<SpecialAbilityDef>(effect.abilityKey);
+                        if (ability != null)
                         {
-                            var ability = ConfigTable.FindByName<SpecialAbilityDef>(effect.abilityKey);
-                            if (ability != null)
-                            {
-                                result.Add(ability);
-                            }
-                            else
-                            {
-                                // ⚠️ 2026-08-19 防御（评审加固）：能力资产名是静默字符串契约——查不到打 Warning（防静默失效）
-                                UnityEngine.Debug.LogWarning($"[PieceInstance] 效果模块能力资产缺失：{effect.abilityKey}（棋子 {DefId}——检查导入/注册）");
-                            }
+                            result.Add(ability);
+                        }
+                        else
+                        {
+                            // ⚠️ 2026-08-19 防御（评审加固）：能力资产名是静默字符串契约——查不到打 Warning（防静默失效）
+                            UnityEngine.Debug.LogWarning($"[PieceInstance] 效果模块能力资产缺失：{effect.abilityKey}（棋子 {DefId}——检查导入/注册）");
                         }
                     }
                 }
             }
             result.AddRange(tempAbilities);
+            _cachedAbilities = result;
+            _cachedDef = def;
+            _cachedState = state;
+            _cachedProgram = program;
+            _cachedTempAbilities = tempAbilities;
+            _cachedTempAbilitiesCount = tempAbilities != null ? tempAbilities.Count : 0;
             return result;
         }
     }

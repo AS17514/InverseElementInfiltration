@@ -18,7 +18,6 @@ namespace TheLaw.Data
         HandChanged,           // 手牌/墓地变化
         ProgramEdited,         // 程序被编辑（defId）
         RelicObtained,         // 获得遗物
-        WaveAnnounced,         // 波次预告（波次号, 阵容）⚠️ 2026-08-23 标注：**未使用**——波次预告功能未实现（波次到回合直接部署）；未来若做"下波来袭"预告 UI/音效在此触发
         PromoteAnnounced,      // 敌方升变预告（pieceId, newDefId, 倒计时）
         EventOpened,           // 事件关打开（携带 CurrentEventId——UI 打开事件界面）
         EditCandidatesDrawn,   // 编辑事件候选就绪（2026-08-19：三选一棋子 + 6 候选模块已抽取——UI 显示三选一；查询 GameState.EditCandidates/EditModuleCandidates）
@@ -30,7 +29,6 @@ namespace TheLaw.Data
         TutorialRequested,    // 教程展示请求（2026-08-25：TutorialSystem.TryShow 审核[跨局持久去重]通过后发——携带教程序列 id；前端 TutorialManager 监听播放）
 
         // ---- UI → 规则层（玩家输入/表现完成）----
-        PlayerCellSelected,    // ⚠️ 2026-08-23 标注：**死声明**——玩家选格实际走 `BattleFlow.OnPlayerCellSelected` 直调（与 OnPlayerRequest* 同模式）；保留标注，待清理决策
         PresentationFinished,  // 表现完成（UI 播完一组表现后发——BattleFlow 解锁）
         PhaseDisplayed,        // 阶段已展示（UI 渲染阶段名后下一帧发——动画优先：无动画的阶段切换至少展示一帧）
         PlacementFinished,     // 开局摆放完成

@@ -133,21 +133,19 @@ namespace TheLaw.Gameplay
         }
 
         /// <summary>
-        /// 战斗结束回调（胜利 → 推进；失败 → 整局结束）。
-        /// ⚠️ 2026-08-13：先销毁当前战斗实例（"离开销毁"——注销监听防幽灵回调），再推进。
+        /// 战斗结束回调（2026-08-27 时序修正：胜利不再立即推进——先销毁当前战斗实例，
+        /// 推进等结算面板确认后由 Bootstrap 经 loading 过渡调用 AdvanceNode）。
         /// 时序安全：EndBattle 先发 StateChanged（结算面板快照）后走到本方法——快照在前、销毁在后。
+        /// 失败仍立即触发 RunEnded（Bootstrap 侧挂起收尾，确认前保持战斗场景）。
         /// </summary>
         public void OnBattleEnded(Side winner)
         {
-            DisposeCurrentBattle();
-            if (winner == Side.Player)
-            {
-                AdvanceNode();
-            }
-            else
+            DisposeCurrentBattle(); // 离开销毁（注销监听防幽灵回调；战斗视觉仍留在场景，结算面板覆盖其上）
+            if (winner == Side.Enemy)
             {
                 OnRunEnded(false);
             }
+            // 胜利：不在此推进——由 Bootstrap 在 BattleResultPanel.OnConfirmed 后调用 AdvanceNode（含 loading 过渡）
         }
 
         /// <summary>楼层索引越界防御（存档越界 Continue / 非法 EnterFloor）——越界 LogError 并返回 false，调用方安全退出。</summary>

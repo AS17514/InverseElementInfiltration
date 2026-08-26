@@ -8,6 +8,11 @@ namespace TheLaw.Core
     /// </summary>
     public class ScreenSettingsApplier : MonoBehaviour
     {
+        private bool _appliedFullscreen;
+        private int _appliedWidth;
+        private int _appliedHeight;
+        private bool _initialized;
+
         private void OnEnable()
         {
             SettingsSystem.Instance.SettingsChanged += Apply;
@@ -26,6 +31,16 @@ namespace TheLaw.Core
             if (s == null) return;
 
             var r = ToNearest16To9(s.ResolutionWidth, s.ResolutionHeight);
+            // 仅当全屏/分辨率实际变化时重设 Screen（音量等无关变更不再每 tick 触发 SetResolution）。
+            if (_initialized && _appliedFullscreen == s.Fullscreen && _appliedWidth == r.x && _appliedHeight == r.y)
+            {
+                return;
+            }
+            _initialized = true;
+            _appliedFullscreen = s.Fullscreen;
+            _appliedWidth = r.x;
+            _appliedHeight = r.y;
+
             if (s.Fullscreen)
             {
                 Screen.fullScreenMode = FullScreenMode.FullScreenWindow;

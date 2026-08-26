@@ -555,7 +555,7 @@ namespace TheLaw.Gameplay
         private void HandleDeath(PieceInstance victim, PieceInstance killer)
         {
             // 2026-08-23 死亡回放记录（补"死亡黑盒"缺口——killer=-1 = 非攻击击杀/未知来源；离线推演直读死因）
-            _state.ReplayLog.Add(new DeathAction(victim.Id, victim.DefId, victim.side, killer != null ? killer.Id : -1, victim.position)
+            _state.AppendReplay(new DeathAction(victim.Id, victim.DefId, victim.side, killer != null ? killer.Id : -1, victim.position)
             {
                 side = victim.side,
                 defId = victim.DefId,
@@ -1598,7 +1598,7 @@ namespace TheLaw.Gameplay
         }
 
         /// <summary>
-        /// 牌组构筑落账（DeckBuild 事件——整组替换手牌，含牌数/总价值校验）。
+        /// 牌组构筑落账（DeckBuild 事件——整组替换手牌，含牌数校验）。
         /// 限制来自当前事件定义（EventDefinition.deckSizeLimit/totalValueLimit；0 = 不限制；
         /// allowDuplicate 可复数 / promoteLimitByInitial 升变≤初始——2026-08-15 策划新案，事件级开关，默认 false = 旧行为）。
         /// 校验失败返回 false 且不改状态（UI 提示后保持面板编辑态）。
@@ -1634,13 +1634,6 @@ namespace TheLaw.Gameplay
             }
 
             int sizeLimit = ev.deckSizeLimit;
-            // ⚠️ 死代码（测试占位机制——2026-08-20 用户拍板废除）：构筑"总价值 ≤ 上限"限制。
-            // 原本只是测试阶段占位（events.json deck_standard 的 totalValueLimit:30）；正式规则 = 满 12 张 +
-            // 可重复 + 升变≤初始（无价值上限）。保留 valueLimit/totalValue 变量与累计仅为可读性（不再校验）——
-            // 有关接口（EventDefinition.totalValueLimit / 前端总价值 tag / BuildDeck 价值校验）全部废除。
-            int valueLimit = ev.totalValueLimit; // 死代码：不再生效（原占位限制值——保留字段兼容旧配置）
-
-            int totalValue = 0; // 死代码：原价值累计（保留——不再用于校验）
             int initialCount = 0;
             int promotedCount = 0;
             foreach (var id in effective)
@@ -1650,8 +1643,6 @@ namespace TheLaw.Gameplay
                 {
                     return false; // 牌组含未知棋子——配置缺失当场拒绝
                 }
-                // ⚠️ 死代码：totalValue 累计不再参与校验（价值上限已废除——见上）；保留计算仅供注释参考
-                totalValue += _state.GetEffectiveValue(id);
                 if (ev.promoteLimitByInitial)
                 {
                     var t = _state.GetEffectiveType(id); // 升变≤初始：按当前价值档位计数
@@ -1661,7 +1652,6 @@ namespace TheLaw.Gameplay
             }
             // ⚠️ 2026-08-19：必须**选满**（策划确认"构筑事件中必须构筑满 12 个棋子"）——原为上限型（Count ≤ sizeLimit 通过）
             if (sizeLimit > 0 && effective.Count != sizeLimit) return false;
-            // 死代码（2026-08-20 废除）：价值上限校验——不再执行（原：if (valueLimit > 0 && totalValue > valueLimit) return false;）
             if (ev.promoteLimitByInitial && promotedCount > initialCount) return false; // 升变数量 ≤ 初始数量
 
             // 通过校验：整组替换手牌（落账纪律——统一牌区入口 DeckSetHand）
@@ -1910,7 +1900,7 @@ namespace TheLaw.Gameplay
                 action.side = actPiece.side;
                 action.defId = actPiece.DefId;
             }
-            _state.ReplayLog.Add(action); // 回放记录（数据）
+            _state.AppendReplay(action); // 回放记录（数据，AA5-05 环形上限）
             Debug.Log($"[Resolver] 落账: {action.GetType().Name}"); // 落账日志（现场还原）
         }
 

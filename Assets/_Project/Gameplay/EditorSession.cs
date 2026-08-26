@@ -21,13 +21,6 @@ namespace TheLaw.Gameplay
             _resolver = resolver;
         }
 
-        /// <summary>重置会话（新局必清——快照/撤销栈为会话级不入存档，跨局残留会让"恢复原样"恢复到上一局，后端待办 #7）。</summary>
-        public void ResetSession()
-        {
-            _initialSnapshots.Clear();
-            _undoStacks.Clear();
-        }
-
         /// <summary>进入编辑（记录初始快照 + 编辑态标记）。</summary>
         public void BeginEdit(int defId)
         {
@@ -87,12 +80,6 @@ namespace TheLaw.Gameplay
             return _undoStacks.TryGetValue(defId, out var stack) && stack.Count > 0;
         }
 
-        /// <summary>清空指定棋子的撤销历史（"全部撤回"后历史无意义——UI 调用）。</summary>
-        public void ClearHistory(int defId)
-        {
-            if (_undoStacks.TryGetValue(defId, out var stack)) stack.Clear();
-        }
-
         /// <summary>撤销上一步（弹栈恢复 before，经 Resolver）。</summary>
         public void Undo(int defId)
         {
@@ -100,16 +87,6 @@ namespace TheLaw.Gameplay
             {
                 var op = stack.Pop();
                 _resolver.ApplyProgramEdit(defId, op.Before);
-            }
-        }
-
-        /// <summary>还原单棋子（用初始快照，经 Resolver；2026-08-19：还原 = 恢复初始——清 hide 隐藏标记恢复展示）。</summary>
-        public void RestoreOriginal(int defId)
-        {
-            if (_initialSnapshots.TryGetValue(defId, out var original))
-            {
-                _resolver.ApplyProgramEdit(defId, original);
-                _state.HiddenModules.Remove(defId);
             }
         }
 
@@ -338,12 +315,6 @@ namespace TheLaw.Gameplay
             {
                 list.Add(module);
             }
-        }
-
-        /// <summary>预览（棋子副本模拟，不改状态——骨架：用副本实例跑 BoardRules）。</summary>
-        public void PreviewProgram(PieceDef def, List<Template> program)
-        {
-            // TODO: 用临时副本实例 + BoardRules 计算移动/攻击范围展示
         }
 
         private List<Template> GetCurrentProgram(int defId)

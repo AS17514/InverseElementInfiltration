@@ -72,6 +72,7 @@ namespace TheLaw.Gameplay
                     bool free = state.FreeExecutes.Contains(piece.Id);
                     requests.Add(new ExecuteRequest(piece.Id) { free = free });
                     budget--; // 免费也占一次行动次数预算（enemyAPMax=行动次数上限）
+                    return requests; // AA4-11：BattleFlow 每步仅消费 requests[0]，找到首个可行动棋子即早退（其余候选不再浪费计算）
                 }
             }
             return requests;
@@ -117,21 +118,6 @@ namespace TheLaw.Gameplay
                 if (slot is AttackTemplate attack)
                 {
                     if (HasEnemyTarget(state, _intentResolver.GetAttackOptions(state, piece, attack)))
-                    {
-                        return true;
-                    }
-                }
-            }
-            return false;
-        }
-
-        private bool CanMoveNow(GameState state, PieceInstance piece, List<Template> program)
-        {
-            foreach (var slot in program)
-            {
-                if (slot is MoveTemplate move)
-                {
-                    if (_intentResolver.GetMoveOptions(state, piece, move).Count > 0)
                     {
                         return true;
                     }

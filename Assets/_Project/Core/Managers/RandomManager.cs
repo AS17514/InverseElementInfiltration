@@ -19,9 +19,11 @@ namespace TheLaw.Core
         private int _seed = Environment.TickCount;
         private int _callCount;
 
-        // 诊断缓冲（2026-08-23：随机用途标注——调用来源方法名；环形上限防膨胀；默认关）
-        private readonly List<string> _diagnosticCalls = new List<string>();
+        // 诊断缓冲（2026-08-23：随机用途标注——调用来源方法名；定长环形数组防膨胀与 RemoveAt(0) O(n) 移位；默认关）
         private const int DiagnosticCap = 2000;
+        private readonly string[] _diagnosticRing = new string[DiagnosticCap];
+        private int _diagnosticHead;   // 下一次写入位置
+        private int _diagnosticCount;  // 有效条数（0..DiagnosticCap）
 
         public string Key => "RandomManager";
 
@@ -31,7 +33,7 @@ namespace TheLaw.Core
             _seed = seed;
             _callCount = 0;
             _random = new Random(seed);
-            _diagnosticCalls.Clear();
+            ClearDiagnosticRing();
         }
 
         /// <summary>[minInclusive, maxExclusive) 随机整数。
@@ -86,18 +88,43 @@ namespace TheLaw.Core
         private void TraceRandomCall(string caller)
         {
             if (!Diagnostics.VerboseEnabled) return;
-            if (_diagnosticCalls.Count >= DiagnosticCap) _diagnosticCalls.RemoveAt(0);
-            _diagnosticCalls.Add($"{_callCount}:{caller}");
+            AddDiagnostic($"{_callCount}:{caller}");
+        }
+
+        private void AddDiagnostic(string entry)
+        {
+            _diagnosticRing[_diagnosticHead] = entry;
+            _diagnosticHead = (_diagnosticHead + 1) % DiagnosticCap;
+            if (_diagnosticCount < DiagnosticCap) _diagnosticCount++;
+        }
+
+        private void ClearDiagnosticRing()
+        {
+            _diagnosticHead = 0;
+            _diagnosticCount = 0;
+            Array.Clear(_diagnosticRing, 0, _diagnosticRing.Length);
+        }
+
+        /// <summary>诊断缓冲（按时间顺序快照——存档/外部查阅用）。</summary>
+        private List<string> SnapshotDiagnosticCalls()
+        {
+            var list = new List<string>(_diagnosticCount);
+            int start = _diagnosticCount < DiagnosticCap ? 0 : _diagnosticHead;
+            for (int i = 0; i < _diagnosticCount; i++)
+            {
+                list.Add(_diagnosticRing[(start + i) % DiagnosticCap]);
+            }
+            return list;
         }
 
         /// <summary>诊断缓冲（存档查阅——存档时并入快照）。</summary>
-        public List<string> DiagnosticCalls => _diagnosticCalls;
+        public List<string> DiagnosticCalls => SnapshotDiagnosticCalls();
 
         // ---- ISnapshot ----
 
         public string ToJson()
         {
-            return JsonConvert.SerializeObject(new RandomState { Seed = _seed, CallCount = _callCount, DiagnosticCalls = _diagnosticCalls });
+            return JsonConvert.SerializeObject(new RandomState { Seed = _seed, CallCount = _callCount, DiagnosticCalls = SnapshotDiagnosticCalls() });
         }
 
         public void FromJson(string json)
@@ -106,8 +133,11 @@ namespace TheLaw.Core
             _seed = state.Seed;
             _callCount = state.CallCount;
             _random = new Random(_seed);
-            _diagnosticCalls.Clear();
-            if (state.DiagnosticCalls != null) _diagnosticCalls.AddRange(state.DiagnosticCalls);
+            ClearDiagnosticRing();
+            if (state.DiagnosticCalls != null)
+            {
+                foreach (var entry in state.DiagnosticCalls) AddDiagnostic(entry);
+            }
             // 重放 _callCount 次调用（保证读档后序列与存档时一致）。
             // ⚠️ 2026-08-13：补的方式必须与消耗方式一致（调用端只用 NextDouble——事件池抽取）——
             // 原用 Next() 整数补，两种方式内部消耗的随机原料数可能不同（旧 .NET 实现）→ 补不齐序列漂移。

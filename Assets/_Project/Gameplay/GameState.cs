@@ -190,6 +190,18 @@ namespace TheLaw.Gameplay
 
         // ========== 回放 ==========
         public List<ConcreteAction> ReplayLog { get; internal set; } = new List<ConcreteAction>();
+        /// <summary>回放记录环形上限（AA5-05：保留最近 N 条——长局存档/每次 SaveAll 全量序列化不再无界膨胀；取舍：旧回放头部丢弃）。</summary>
+        public const int ReplayLogCap = 500;
+
+        /// <summary>追加回放记录（唯一写入口——内部环形上限）。</summary>
+        public void AppendReplay(ConcreteAction action)
+        {
+            ReplayLog.Add(action);
+            if (ReplayLog.Count > ReplayLogCap)
+            {
+                ReplayLog.RemoveRange(0, ReplayLog.Count - ReplayLogCap);
+            }
+        }
 
         // ========== 查询（只读，供 BoardRules/UI）==========
 
@@ -689,6 +701,7 @@ namespace TheLaw.Gameplay
             CurrentNodeIndex = dto.CurrentNodeIndex;
             NodeStates = dto.NodeStates ?? new List<NodeState>();
             ReplayLog = dto.ReplayLog ?? new List<ConcreteAction>();
+            if (ReplayLog.Count > ReplayLogCap) ReplayLog.RemoveRange(0, ReplayLog.Count - ReplayLogCap); // AA5-05：旧档超长回放读入即裁剪
             Obstacles = dto.Obstacles != null ? new HashSet<Vector2Int>(dto.Obstacles) : new HashSet<Vector2Int>();
             ShockWalls = dto.ShockWalls != null ? new HashSet<Vector2Int>(dto.ShockWalls) : new HashSet<Vector2Int>(); // 2026-08-24 能力「震击」（旧档缺省空）
             Pieces.Clear();

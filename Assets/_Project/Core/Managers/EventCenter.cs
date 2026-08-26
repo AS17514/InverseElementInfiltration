@@ -10,7 +10,13 @@ namespace TheLaw.Core
     /// </summary>
     public class EventCenter : BaseManager<EventCenter>
     {
-        private readonly Dictionary<Type, Dictionary<int, Action<object>>> _listeners = new();
+        private sealed class ListenerSet
+        {
+            public Action<object> Chain;
+            public Action<object>[] Snapshot; // 增删时失效——广播时重建，避免每次广播 GetInvocationList 分配 Delegate[]
+        }
+
+        private readonly Dictionary<Type, Dictionary<int, ListenerSet>> _listeners = new();
 
         /// <summary>注册监听。</summary>
         public void AddEventListener<T>(T eventType, Action<object> handler) where T : Enum
@@ -18,13 +24,17 @@ namespace TheLaw.Core
             var type = typeof(T);
             if (!_listeners.TryGetValue(type, out var map))
             {
-                map = new Dictionary<int, Action<object>>();
+                map = new Dictionary<int, ListenerSet>();
                 _listeners[type] = map;
             }
             int key = Convert.ToInt32(eventType);
-            // 首次添加：key 不存在——TryGetValue 取 null，null + handler = handler（避免 map[key] += 读不存在的 key 崩溃）
-            map.TryGetValue(key, out var existing);
-            map[key] = existing + handler;
+            if (!map.TryGetValue(key, out var set) || set == null)
+            {
+                set = new ListenerSet();
+                map[key] = set;
+            }
+            set.Chain += handler;
+            set.Snapshot = null;
         }
 
         /// <summary>移除监听。</summary>
@@ -32,11 +42,16 @@ namespace TheLaw.Core
         {
             if (_listeners.TryGetValue(typeof(T), out var map))
             {
-                if (map.TryGetValue(Convert.ToInt32(eventType), out var list))
+                int key = Convert.ToInt32(eventType);
+                if (map.TryGetValue(key, out var set) && set != null)
                 {
-                    // ⚠️ 委托不可变：-= 产生新链，必须写回 map（否则移除从未生效——旧实例监听残留）
-                    list -= handler;
-                    map[Convert.ToInt32(eventType)] = list;
+                    // ⚠️ 委托不可变：-= 产生新链，必须写回（否则移除从未生效——旧实例监听残留）
+                    set.Chain -= handler;
+                    set.Snapshot = null;
+                    if (set.Chain == null)
+                    {
+                        map.Remove(key); // 空链移除——语义同旧 map 存 null（EventTrigger 跳过；Add 重建）
+                    }
                 }
             }
         }
@@ -46,15 +61,28 @@ namespace TheLaw.Core
         {
             if (_listeners.TryGetValue(typeof(T), out var map))
             {
-                if (map.TryGetValue(Convert.ToInt32(eventType), out var list) && list != null)
+                if (map.TryGetValue(Convert.ToInt32(eventType), out var set) && set != null)
                 {
+                    var snapshot = set.Snapshot;
+                    if (snapshot == null)
+                    {
+                        var chain = set.Chain;
+                        if (chain == null) return;
+                        var invocations = chain.GetInvocationList();
+                        snapshot = new Action<object>[invocations.Length];
+                        for (int i = 0; i < invocations.Length; i++)
+                        {
+                            snapshot[i] = (Action<object>)invocations[i];
+                        }
+                        set.Snapshot = snapshot;
+                    }
                     // ⚠️ 2026-08-12（大审查 H1）：逐监听者异常隔离——任一监听者崩溃不中断委托链、
                     // 不向上传播到规则层（防 Resolve* 落账半途中断=半落账）。历史"敌方未生成+WaveScores=0"即此链条。
-                    foreach (var d in list.GetInvocationList())
+                    foreach (var d in snapshot)
                     {
                         try
                         {
-                            ((Action<object>)d)(data);
+                            d(data);
                         }
                         catch (Exception e)
                         {

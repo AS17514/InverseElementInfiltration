@@ -55,6 +55,7 @@ namespace TheLaw.Gameplay
         public List<Vector2Int> GetLegalMoves(GameState state, PieceInstance piece, MoveTemplate template)
         {
             var reachable = new HashSet<Vector2Int>();
+            int stepModifier = GetPassiveModifier(state, piece, PassiveTarget.MoveStep); // AA4-10：与 (start,move) 无关，提升到入口每棋子算一次
             foreach (var path in template.paths)
             {
                 var frontier = new List<Vector2Int> { piece.position }; // 当前段起点（路径起点 = 棋子位置）
@@ -67,7 +68,6 @@ namespace TheLaw.Gameplay
                     {
                         foreach (var move in segment.moves)
                         {
-                            int stepModifier = GetPassiveModifier(state, piece, PassiveTarget.MoveStep); // 被动修正（作用于每段每选项）
                             foreach (var k in move.steps)
                             {
                                 int steps = k + stepModifier;

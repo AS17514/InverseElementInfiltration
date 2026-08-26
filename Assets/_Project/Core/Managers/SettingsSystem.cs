@@ -43,6 +43,20 @@ namespace TheLaw.Core
             SaveSettings();
         }
 
+        /// <summary>仅应用 BGM 音量（发 SettingsChanged 实时生效，不写盘）——设置面板滑条拖动实时生效用；落盘由面板节流合并。</summary>
+        public void ApplyBGMVolumePercent(int percent)
+        {
+            _bgmVolumePercent = Mathf.Clamp(percent, 0, 100);
+            SettingsChanged?.Invoke();
+        }
+
+        /// <summary>仅应用 SFX 音量（发 SettingsChanged 实时生效，不写盘）——设置面板滑条拖动实时生效用；落盘由面板节流合并。</summary>
+        public void ApplySFXVolumePercent(int percent)
+        {
+            _sfxVolumePercent = Mathf.Clamp(percent, 0, 100);
+            SettingsChanged?.Invoke();
+        }
+
         public void SetFullscreen(bool fullscreen)
         {
             _fullscreen = fullscreen;

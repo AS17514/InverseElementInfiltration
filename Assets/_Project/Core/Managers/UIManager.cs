@@ -24,6 +24,16 @@ namespace TheLaw.Core
         /// <summary>当前切换型面板 key（null=无——启动前/隐藏后）。面板切换过渡（PanelTransition）依赖。</summary>
         public string CurrentKey => _current;
 
+        /// <summary>栈上是否存在非过渡 overlay（过渡 loading 除外）——压栈弹窗显示中切换不加载（overlay 本身盖住切换过程）。</summary>
+        public bool HasOverlayBesides(string exceptKey)
+        {
+            foreach (var k in _overlayStack)
+            {
+                if (k != exceptKey) return true;
+            }
+            return false;
+        }
+
         /// <summary>按 key 取面板（伪 null 防御——已销毁返回 null）。面板切换过渡（PanelTransition 等 LoadingPanel 渐入事件）用。</summary>
         public IPanel GetPanel(string key)
         {

@@ -73,13 +73,22 @@ namespace TheLaw.Gameplay
         public void FromJson(string json)
         {
             _triggered.Clear();
-            var list = JsonConvert.DeserializeObject<List<string>>(json);
-            if (list != null)
+            if (string.IsNullOrEmpty(json)) return;
+            try
             {
-                foreach (var id in list)
+                var list = JsonConvert.DeserializeObject<List<string>>(json);
+                if (list != null)
                 {
-                    _triggered.Add(id);
+                    foreach (var id in list)
+                    {
+                        _triggered.Add(id);
+                    }
                 }
+            }
+            catch (System.Exception e)
+            {
+                // AA5-01：损坏 tutorial.json 不崩启动——失败按空记录处理（本局教程可全播，后续保存覆盖损坏文件）
+                UnityEngine.Debug.LogError($"[TutorialSystem] 教程记录解析失败（按空记录处理）：{e.Message}");
             }
         }
     }

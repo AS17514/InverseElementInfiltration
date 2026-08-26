@@ -294,7 +294,17 @@ namespace TheLaw.Gameplay
                     var victim = _state.GetPieceAt(cell);
                     if (victim != null && (victim.side != attacker.side || template.friendlyFire))
                     {
-                        ModifyDurability(victim, -attachDamage, attacker); // killer = 攻击者（附着结算）
+                        bool died = ModifyDurability(victim, -attachDamage, attacker); // killer = 攻击者（附着结算）
+                        EventCenter.Instance.EventTrigger(GameEvent.DamageDealt, new DamageInfo
+                        {
+                            AttackerId = attacker.Id,
+                            TargetId = victim.Id,
+                            TargetCell = cell,
+                            Damage = attachDamage,
+                            TargetDied = died,
+                            FriendlyFire = template.friendlyFire,
+                            AttackMode = template.mode, // AA4-15：与 AOE 分支同参数形态——前端受击表现
+                        });
                     }
                 }
             }
@@ -664,6 +674,7 @@ namespace TheLaw.Gameplay
         {
             if (!mahjongCard.IsMahjong) return false;
             var second = cell + Vector2Int.down; // 竖 = 纵向（dy+1——y 轴向下为正：Unity 坐标 y+ 向下？——现有棋盘 x=列 y=行，上=+y？——统一：竖 = (x,y)+(x,y+1)）
+            if (!IsInsideBoard(cell) || !IsInsideBoard(second)) return false; // AA4-05：界内校验（防盘外墙）
             if (_state.Pieces.ContainsKey(cell) || _state.Pieces.ContainsKey(second)
                 || _state.MahjongWalls.ContainsKey(cell) || _state.MahjongWalls.ContainsKey(second)
                 || IsEnemyDeployZone(cell) || IsEnemyDeployZone(second))
@@ -911,6 +922,7 @@ namespace TheLaw.Gameplay
         {
             if (!_state.IsStyleActive(StyleRegistry.Go)) return false;
             if (_state.GoDeployCount >= _state.GoDeployCapacity()) return false; // 每回合容量（免费限次+买子；BattleFlow 已校验——防御，单一来源 GameState）
+            if (!IsInsideBoard(cell)) return false; // AA4-04：界内校验（防落盘外棋）
             if (_state.Pieces.ContainsKey(cell)) return false; // 空格（任意格——非占用即可）
             // 颜色切换：首次蓝（Player）；之后每次部署切换（上次红→本次蓝、上次蓝→本次红）
             Side side = !_state.GoEverDeployed ? Side.Player : (_state.GoLastColor == Side.Player ? Side.Enemy : Side.Player);

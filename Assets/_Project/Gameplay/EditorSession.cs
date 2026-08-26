@@ -121,6 +121,10 @@ namespace TheLaw.Gameplay
                 _resolver.ApplyProgramEdit(pair.Key, pair.Value);
             }
             _state.HiddenModules.Clear();
+            // AA5-11：全部还原后清理会话级字段（跨局残留会让"恢复原样"恢复到上一局）
+            _state.EditingDefs.Clear();
+            _initialSnapshots.Clear();
+            _undoStacks.Clear();
         }
 
         /// <summary>

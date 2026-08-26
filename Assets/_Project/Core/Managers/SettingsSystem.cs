@@ -14,7 +14,7 @@ namespace TheLaw.Core
     {
         private int _bgmVolumePercent = 80;
         private int _sfxVolumePercent = 100;
-        private bool _fullscreen = true;
+        private bool _fullscreen = false; // 2026-08-26：默认窗口化 1920×1080（打包首帧即窗口；全屏由设置面板切换——全屏仍走原生分辨率+16:9 黑边）
         private int _resolutionWidth = 1920;
         private int _resolutionHeight = 1080;
 

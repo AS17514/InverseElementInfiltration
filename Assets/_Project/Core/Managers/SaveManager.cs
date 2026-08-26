@@ -33,7 +33,15 @@ namespace TheLaw.Core
         /// </summary>
         public void SaveAll()
         {
-            WriteBundle(CollectBundle());
+            try
+            {
+                WriteBundle(CollectBundle());
+            }
+            catch (System.Exception e)
+            {
+                // AA3-06：OnApplicationPause/Quit 保存异常不外抛（仿 ArchiveHistory——留日志不中断收尾）
+                UnityEngine.Debug.LogError($"[SaveManager] 保存全部快照失败：{e.Message}");
+            }
         }
 
         /// <summary>原子写主存档（先写临时文件再替换——防"写到一半进程被杀"留下半个 JSON 损坏存档）。</summary>
@@ -46,12 +54,31 @@ namespace TheLaw.Core
         private void WriteBundleTo(string path, Dictionary<string, string> bundle)
         {
             string tmpPath = path + ".tmp";
-            File.WriteAllText(tmpPath, JsonConvert.SerializeObject(bundle));
-            if (File.Exists(path))
+            try
             {
-                File.Delete(path);
+                File.WriteAllText(tmpPath, JsonConvert.SerializeObject(bundle));
+                if (File.Exists(path))
+                {
+                    // AA5-04：优先原子替换（原删-移窗口非原子）；Replace 失败（跨卷等）→ 覆盖移动降级
+                    try
+                    {
+                        File.Replace(tmpPath, path, null);
+                    }
+                    catch (System.Exception)
+                    {
+                        File.Move(tmpPath, path, true);
+                    }
+                }
+                else
+                {
+                    File.Move(tmpPath, path);
+                }
             }
-            File.Move(tmpPath, path);
+            catch (System.Exception e)
+            {
+                // AA3-06/AA5-04：写盘失败不上抛（OnApplicationPause/Quit）；保留 tmp 供排查
+                UnityEngine.Debug.LogError($"[SaveManager] 写入存档失败（已保留临时文件 {tmpPath}）：{e.Message}");
+            }
         }
 
         /// <summary>
@@ -169,7 +196,15 @@ namespace TheLaw.Core
                 {
                     if (_snapshots.TryGetValue(pair.Key, out var snapshot))
                     {
-                        snapshot.FromJson(pair.Value);
+                        try
+                        {
+                            snapshot.FromJson(pair.Value);
+                        }
+                        catch (System.Exception e)
+                        {
+                            // AA5-03：单快照损坏/异常隔离——点名段名，继续分发后续段
+                            UnityEngine.Debug.LogError($"[SaveManager] 快照 {pair.Key} 读档失败（跳过该段继续）：{e.Message}");
+                        }
                     }
                 }
             }
@@ -216,15 +251,39 @@ namespace TheLaw.Core
         public string LoadTutorialRecords()
         {
             string path = Path.Combine(Application.persistentDataPath, TutorialFileName);
-            if (!File.Exists(path)) return null;
+            if (File.Exists(path))
+            {
+                try
+                {
+                    var bundle = JsonConvert.DeserializeObject<Dictionary<string, string>>(File.ReadAllText(path));
+                    if (bundle != null && bundle.TryGetValue(TutorialKey, out var json)) return json;
+                }
+                catch (System.Exception e)
+                {
+                    UnityEngine.Debug.LogError($"[SaveManager] 教程记录读取失败：{e.Message}");
+                }
+                return null;
+            }
+            // AA5-14：旧档教程段在主档 save.json（TutorialSystem 键）——tutorial.json 缺省时迁移旧记录并落独立槽
+            return TryMigrateLegacyTutorialRecords();
+        }
+
+        private string TryMigrateLegacyTutorialRecords()
+        {
+            if (!File.Exists(SavePath)) return null;
             try
             {
-                var bundle = JsonConvert.DeserializeObject<Dictionary<string, string>>(File.ReadAllText(path));
-                if (bundle != null && bundle.TryGetValue(TutorialKey, out var json)) return json;
+                var bundle = JsonConvert.DeserializeObject<Dictionary<string, string>>(File.ReadAllText(SavePath));
+                if (bundle != null && bundle.TryGetValue(TutorialKey, out var json) && !string.IsNullOrEmpty(json))
+                {
+                    SaveTutorialRecords(json); // 迁移落盘（后续独立于主档生命周期）
+                    UnityEngine.Debug.Log("[SaveManager] 已从旧主档迁移教程记录到 tutorial.json");
+                    return json;
+                }
             }
             catch (System.Exception e)
             {
-                UnityEngine.Debug.LogError($"[SaveManager] 教程记录读取失败：{e.Message}");
+                UnityEngine.Debug.LogWarning($"[SaveManager] 旧档教程段迁移失败：{e.Message}");
             }
             return null;
         }

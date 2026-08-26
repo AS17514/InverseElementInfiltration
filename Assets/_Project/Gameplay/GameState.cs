@@ -714,11 +714,11 @@ namespace TheLaw.Gameplay
                         isDeployed = pdto.IsDeployed,
                         shieldCount = pdto.ShieldCount,
                         tempShield = pdto.TempShield, // 2026-08-26 额外护盾（旧档缺省 0）
-                        waveIndex = pdto.WaveIndex, // 波次标（2026-08-13 补：第 3 关每波得分依赖——原 DTO 缺字段读档归 -1）
+                        waveIndex = pdto.WaveIndex ?? -1, // 波次标（2026-08-13 补：第 3 关每波得分依赖——原 DTO 缺字段读档归 -1）
                         element = pdto.Element,     // 属性（2026-08-20——缺省 None）
                         IsGo = pdto.IsGo,           // 2026-08-24 围棋棋子
                     };
-                    foreach (var abilityId in pdto.TempAbilities)
+                    foreach (var abilityId in (pdto.TempAbilities ?? new List<int>())) // AA5-02：旧档缺省 null 兜底（不 NRE）
                     {
                         var ability = ConfigTable.Find<SpecialAbilityDef>(abilityId);
                         if (ability != null)
@@ -729,6 +729,16 @@ namespace TheLaw.Gameplay
                     Pieces[piece.position] = piece;
                     PiecesById[piece.Id] = piece;
                 }
+            }
+            // AA4-02 读档兜底：NextPieceId 缺省 0（旧档/损坏）→ 取已恢复棋子最大 Id + 1（至少 1）
+            if (_nextPieceId <= 0)
+            {
+                int maxId = 0;
+                foreach (var id in PiecesById.Keys)
+                {
+                    if (id > maxId) maxId = id;
+                }
+                _nextPieceId = maxId + 1;
             }
         }
     }
@@ -823,7 +833,7 @@ namespace TheLaw.Gameplay
         public bool IsDeployed;
         public int ShieldCount;
         public int TempShield; // 2026-08-26 波次部署额外护盾（spawnShield——旧档缺省 0）
-        public int WaveIndex; // 所属波次（2026-08-13 补——每波得分按此累计）
+        public int? WaveIndex; // 所属波次（2026-08-13 补——每波得分按此累计；可空：旧档缺字段=null，读档归 -1）
         public Element Element; // 属性玩法（2026-08-20）
         public bool IsGo; // 围棋棋子（2026-08-24——专用"棋子牌"部署，B1 定稿）
     }

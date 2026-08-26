@@ -143,6 +143,10 @@ namespace TheLaw.Gameplay
             _enemyBudget = 0; // 敌方行动预算（新字段必须进重置清单——防跨局残留）
             _actedEnemyPieces.Clear(); // 已行动棋子集合（新字段必须进重置清单——防跨局残留）
             _diceRigPending = false; // 2026-08-24 能力「出千」自选瞬态（新字段必须进重置清单）
+            _pendingImmediateExecutes.Clear(); // AA4-07：插入执行队列（新字段必须进重置清单——防跨局残留）
+            _pendingEnemyImmediateExecutes.Clear(); // AA4-07：敌方立即额外行动队列（新字段必须进重置清单——防跨局残留）
+            _waitingDiceMovePieceId = -1; // AA4-07：骰子选方向等待（新字段必须进重置清单——防跨局残留）
+            _waitingDiceMoveSide = default; // AA4-07：骰子选方向等待阵营（新字段必须进重置清单——防跨局残留）
         }
 
         private void OnPlacementFinished(object data)
@@ -202,6 +206,12 @@ namespace TheLaw.Gameplay
             {
                 return;
             }
+            // AA4-01：等待/执行中禁止结束回合（防执行免扣 AP + 半程序丢弃）
+            if (_ctx != null || _waitingCellSelect || _waitingPresentation || _waitingDiceMovePieceId >= 0)
+            {
+                Debug.LogWarning("[BattleFlow] 选格/执行/表现/骰子选方向等待中禁止结束回合");
+                return;
+            }
             _state.PlayerAP = 0; // 回合末清零
             ClearEditedCardQualify(); // 2026-08-23 E5：资格不跨回合——结束回合即取消（高亮消失）
             _floorRules.OnTurnEnd(_state, _resolver);
@@ -239,6 +249,10 @@ namespace TheLaw.Gameplay
         /// </summary>
         private void TryNextEnemyDecision()
         {
+            if (_ctx != null || _waitingPresentation)
+            {
+                return; // AA4-06：当前执行/表现未收尾——等 FinishExecute 链再触发（防额外行动被覆盖截断）
+            }
             if (_state.Phase == BattlePhase.GameOver)
             {
                 return; // 战斗已结束——不再决策（防御：防失败后误判胜利）
@@ -663,6 +677,7 @@ namespace TheLaw.Gameplay
                     case DeployGoRequest dg:
                         // 围棋·部署"棋子牌"（不耗 AP、每回合容量内[免费限次+买子]、任意**空**格[非占用/非障碍/非墙体]；AP=0 豁免）
                         if (side == Side.Player && _state.IsStyleActive(StyleRegistry.Go)
+                            && _boardRules.IsInsideBoard(dg.cell)
                             && _state.GoDeployCount < _state.GoDeployCapacity()
                             && !_state.Pieces.ContainsKey(dg.cell) && !_state.IsBlocked(dg.cell))
                         {
@@ -1243,6 +1258,12 @@ namespace TheLaw.Gameplay
                 if (_ctx != null)
                 {
                     AdvanceSlot();
+                }
+                else if (_state.Phase == BattlePhase.EnemyTurn)
+                {
+                    // AA4-08：波次部署表现（_ctx==null 的 WaitPresentation）完成时补触发敌方决策——
+                    // StartEnemyTurn 里 TryNextEnemyDecision 被 _waitingPresentation 守卫拦住后，无人再触发会卡死。
+                    TryNextEnemyDecision();
                 }
             }
             TryFlushEnemyImmediateExecutes(); // 2026-08-24：敌方击杀额外行动（表现排空后收尾前补触发——被 _ctx/阶段挡则无害）

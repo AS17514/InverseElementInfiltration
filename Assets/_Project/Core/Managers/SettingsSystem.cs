@@ -72,21 +72,6 @@ namespace TheLaw.Core
             SaveSettings();
         }
 
-        /// <summary>可用分辨率列表（运行时过滤宽高 &gt; 0）。</summary>
-        public List<Vector2Int> GetResolutions()
-        {
-            var list = new List<Vector2Int>();
-            foreach (var res in Screen.resolutions)
-            {
-                var r = new Vector2Int(res.width, res.height);
-                if (!list.Contains(r))
-                {
-                    list.Add(r);
-                }
-            }
-            return list;
-        }
-
         // ---- 设置序列化（独立 settings.json）----
 
         public void LoadSettings()

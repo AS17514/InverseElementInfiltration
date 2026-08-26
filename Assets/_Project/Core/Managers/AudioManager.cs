@@ -28,6 +28,7 @@ namespace TheLaw.Core
         private readonly List<string> _sfxPlayingAddress = new List<string>(); // 每路当前播放的 SFX 地址（restartIfPlaying 查重用）
         private int _nextSfxIndex;
         private readonly Dictionary<string, AudioClip> _clipCache = new Dictionary<string, AudioClip>();
+        private readonly HashSet<string> _missingClipAddresses = new HashSet<string>(); // AA3-08：失败地址负缓存（成功后移除）
 
         private float _bgmVolume = 1f;
         private float _sfxVolume = 1f;
@@ -255,16 +256,23 @@ namespace TheLaw.Core
                 onReady(cached);
                 return;
             }
+            if (_missingClipAddresses.Contains(address))
+            {
+                onReady(null); // AA3-08：已知缺失地址负缓存——不再重复 LoadAssetAsync / 日志风暴（首次已 Warn）
+                return;
+            }
             var handle = Addressables.LoadAssetAsync<AudioClip>(address);
             handle.Completed += op =>
             {
                 if (handle.Status == AsyncOperationStatus.Succeeded && handle.Result != null)
                 {
+                    _missingClipAddresses.Remove(address);
                     _clipCache[address] = handle.Result;
                     onReady(handle.Result);
                 }
                 else
                 {
+                    _missingClipAddresses.Add(address);
                     Debug.LogWarning($"[AudioManager] 音频缺失（Addressables 无此地址）：{address}——请补 Assets/Audio 下资源并入 Addressables");
                     onReady(null);
                 }

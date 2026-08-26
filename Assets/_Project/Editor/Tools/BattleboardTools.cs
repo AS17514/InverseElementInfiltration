@@ -33,7 +33,7 @@ namespace TheLaw.EditorTools
             foreach (var guid in AssetDatabase.FindAssets("t:Texture2D", new[] { BattleboardDir }))
             {
                 var path = AssetDatabase.GUIDToAssetPath(guid);
-                if (path == null || !path.EndsWith(".png", System.StringComparison.OrdinalIgnoreCase)) continue;
+                if (!path.EndsWith(".png", System.StringComparison.OrdinalIgnoreCase)) continue;
 
                 // 统一 Sprite 导入（地址按 Sprite 加载——LoadAssetAsync<Sprite> 需要 Sprite 类型）
                 var importer = AssetImporter.GetAtPath(path) as TextureImporter;

@@ -48,7 +48,7 @@ namespace TheLaw.EditorTools
                 foreach (var guid in AssetDatabase.FindAssets("t:Texture2D", new[] { dir }))
                 {
                     var path = AssetDatabase.GUIDToAssetPath(guid);
-                    if (path == null || !path.EndsWith(".png", System.StringComparison.OrdinalIgnoreCase)) continue;
+                    if (!path.EndsWith(".png", System.StringComparison.OrdinalIgnoreCase)) continue;
 
                     string address = Path.GetFileNameWithoutExtension(path); // 地址 = 文件名（move_step / GoPiece / mahjong_1 ...）
                     if (addressOwners.TryGetValue(address, out var ownerPath) && ownerPath != path)

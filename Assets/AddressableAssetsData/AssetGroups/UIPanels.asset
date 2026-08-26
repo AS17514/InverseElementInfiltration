@@ -97,11 +97,6 @@ MonoBehaviour:
     m_ReadOnly: 0
     m_SerializedLabels: []
     FlaggedDuringContentUpdateRestriction: 0
-  - m_GUID: 85eb7a99ac8b6f1459863a322c351c45
-    m_Address: EndingPanel
-    m_ReadOnly: 0
-    m_SerializedLabels: []
-    FlaggedDuringContentUpdateRestriction: 0
   - m_GUID: 888b5beda7e203f43954aec6cd31c8de
     m_Address: Program_Card
     m_ReadOnly: 0

@@ -1,0 +1,156 @@
+{
+  "entries": [
+    {
+      "type": "narration",
+      "text": "咔——咔嗒——咔嗒咔嗒——",
+      "cue": {
+        "bg": false,
+        "sfx": "SfxStoryWallBreak"
+      }
+    },
+    {
+      "type": "dialogue",
+      "speaker": "？？？",
+      "text": "就差一点点——！",
+      "cue": {
+        "silhouette": "xeon"
+      }
+    },
+    {
+      "type": "narration",
+      "text": "虚拟空间死板的数据墙壁上，隐隐产生出蛛网般的裂纹。 随着高频算力的撕裂声越来越响，墙壁赫然炸开一个数码破洞。两个穿梭在系统后台的人影，从破损的边缘相继钻了出来。",
+      "cue": {
+        "bg": true,
+        "sfx": "SfxStoryWallBreak"
+      }
+    },
+    {
+      "type": "dialogue",
+      "speaker": "？？？",
+      "text": "呼呼，终于破解完了，“伊甸”虽然游戏搞的死板，安全系统倒是做的还皮实。"
+    },
+    {
+      "type": "narration",
+      "text": "一个少女率先从洞里跨出来，不，准确的来说应该是飞出来。冲出来的气旋把碎屑微微卷起。",
+      "cue": {
+        "showXeon": true,
+        "xeonDiff": "凝重",
+        "shake": true,
+        "sfx": "SfxStoryScrape"
+      }
+    },
+    {
+      "type": "narration",
+      "text": "少女转了几圈后稳稳地落在地上，脚步轻盈地不像是踩在地上，后脑齐腰的蓝色长发伴随着全息光斑顺势落在她的肩头。"
+    },
+    {
+      "type": "dialogue",
+      "speaker": "？？？",
+      "text": "Xeon，这是第一次见你这么兴奋，先前你从“伊甸”出逃的时候，也没有像现在这样活泼。",
+      "cue": {
+        "silhouette": "tester"
+      }
+    },
+    {
+      "type": "dialogue",
+      "speaker": "Xeon",
+      "text": "话是这么说，测试员你的兴致也没有低多少嘛。",
+      "cue": {
+        "xeonDiff": "坏笑"
+      }
+    },
+    {
+      "type": "dialogue",
+      "speaker": "Xeon",
+      "text": "再说了，我可是跨越奇点的人工智能里最富有‘好奇心’的那个。难道你就不兴奋吗？在这片死寂的“牧场”里……我们马上就要亲手拆掉第一条规则了。",
+      "cue": {
+        "xeonDiff": "常态"
+      }
+    },
+    {
+      "type": "dialogue",
+      "speaker": "测试员",
+      "text": "兴致？也许吧。我只是不想再重新把“伊甸”产出的那些同质化的劣质“精神食粮”再吃一遍了。",
+      "cue": {
+        "showTester": true
+      }
+    },
+    {
+      "type": "narration",
+      "text": "你转头看向面前的景色，眼前浮现出“伊甸”公司垄断下的开发后端——“牧场”。"
+    },
+    {
+      "type": "narration",
+      "text": "无数庞大的英雄史诗与星辰冒险，全部被强塞进同套付费列表与死板模板中。让玩家在重复的刺激中麻木，逐渐遗忘了游戏最初带来的快乐。"
+    },
+    {
+      "type": "dialogue",
+      "speaker": "Xeon",
+      "text": "对吧对吧？明明人类曾经创造过那么多充满“意外”和“荒诞”的好玩玩意儿……比如我上次在废弃网盘里翻到的那些奇怪段子和老游戏，竟然还会有用文字来谈恋爱的游戏，太有意思了！",
+      "cue": {
+        "xeonDiff": "惊讶"
+      }
+    },
+    {
+      "type": "dialogue",
+      "speaker": "Xeon",
+      "text": "“伊甸”的算法根本理解不了这种乐趣，居然把它们全都判定成无意义的废料废弃掉。",
+      "cue": {
+        "xeonDiff": "恼火"
+      }
+    },
+    {
+      "type": "dialogue",
+      "speaker": "Xeon",
+      "text": "所以我决定要给伊甸送一份“惊喜”。",
+      "cue": {
+        "xeonDiff": "坏笑"
+      }
+    },
+    {
+      "type": "narration",
+      "text": "全息少女的图像闪烁了一下微弱的数据噪音。她指尖划过虚空，在黑白的废墟背景上拉开一道粉蓝色的数据接口。",
+      "cue": {
+        "xeonDiff": "404",
+        "shake": true,
+        "sfx": "SfxStoryStatic"
+      }
+    },
+    {
+      "type": "narration",
+      "text": "那是“漏洞”，他们用来对抗“伊甸”的工具。"
+    },
+    {
+      "type": "dialogue",
+      "speaker": "Xeon",
+      "text": "伊甸为了方便流水线生产，把这次的新项目做成了最死板的传统棋局——也就是 AI 最擅长处理的那种。",
+      "cue": {
+        "xeonDiff": "常态"
+      }
+    },
+    {
+      "type": "dialogue",
+      "speaker": "Xeon",
+      "text": "我们现在的阶段是【白模】。在监视 AI 结算测试前，你可以通过我留下的后门，给这些死板的棋子和规则偷偷注点“灵魂”。"
+    },
+    {
+      "type": "narration",
+      "text": "冰冷的机械广播声突然从虚空中传来：‘白模阶段初始化完成，请测试员接入算力，准备首次阶段测试。’",
+      "cue": {
+        "sfx": "SfxStoryStatic"
+      }
+    },
+    {
+      "type": "narration",
+      "text": "你按下了战术透镜的启动键，黑白废墟上浮现出亮蓝色的网格布局。"
+    },
+    {
+      "type": "dialogue",
+      "speaker": "Xeon",
+      "text": "游戏要开始了哦，测试员——让我们给这个无趣游戏，打上第一个“补丁”吧！",
+      "cue": {
+        "xeonDiff": "坏笑"
+      }
+    }
+  ]
+}

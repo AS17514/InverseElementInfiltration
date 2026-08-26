@@ -1,0 +1,4 @@
+<linker>
+  <assembly fullname="DOTween" preserve="all"/>
+</linker>
+

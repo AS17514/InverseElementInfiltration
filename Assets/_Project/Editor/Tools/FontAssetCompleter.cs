@@ -131,11 +131,18 @@ namespace TheLaw.EditorTools
             AssetDatabase.SaveAssets();
             AssetDatabase.Refresh();
 
-            // TMP Settings：默认 = 子集主资产；fallback = 动态资产
+            // TMP Settings：默认 = 子集主资产（Rebuild48 产物，原 FontAssetPath 已删）；fallback = 动态资产
             var settingsAsset = AssetDatabase.LoadMainAssetAtPath("Assets/TextMesh Pro/Resources/TMP Settings.asset");
             var so = new SerializedObject(settingsAsset);
-            so.FindProperty("m_defaultFontAsset").objectReferenceValue =
-                AssetDatabase.LoadMainAssetAtPath(FontAssetPath);
+            var defaultFont = AssetDatabase.LoadAssetAtPath<TMP_FontAsset>("Assets/Fonts/TMP/AlibabaFangYuan_SDF_48.asset");
+            if (defaultFont == null)
+            {
+                Debug.LogError("[Font] 未找到默认字体资产 Assets/Fonts/TMP/AlibabaFangYuan_SDF_48.asset——保留现有默认字体，不置空");
+            }
+            else
+            {
+                so.FindProperty("m_defaultFontAsset").objectReferenceValue = defaultFont;
+            }
             var fb = so.FindProperty("m_fallbackFontAssets");
             fb.ClearArray();
             fb.InsertArrayElementAtIndex(0);

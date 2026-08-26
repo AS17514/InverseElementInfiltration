@@ -1,0 +1,35 @@
+%YAML 1.1
+%TAG !u! tag:unity3d.com,2011:
+--- !u!114 &11400000
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 0}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: bbb281ee3bf0b054c82ac2347e9e782c, type: 3}
+  m_Name: Fonts
+  m_EditorClassIdentifier: 
+  m_GroupName: Fonts
+  m_Data:
+    m_SerializedData: []
+  m_GUID: b6808004addfedf4a9df3651fc4cc711
+  m_SerializeEntries:
+  - m_GUID: c88cefa5167695d42beb50eaf5efaf27
+    m_Address: Fonts/ALIMAMAFANGYUANTIVF-THIN
+    m_ReadOnly: 0
+    m_SerializedLabels: []
+    FlaggedDuringContentUpdateRestriction: 0
+  - m_GUID: ccdac3b0d5bb6084bb9b258bb25fe2b0
+    m_Address: Fonts/TMP/AlibabaFangYuan_SDF_48
+    m_ReadOnly: 0
+    m_SerializedLabels: []
+    FlaggedDuringContentUpdateRestriction: 0
+  m_ReadOnly: 0
+  m_Settings: {fileID: 11400000, guid: 47cc120f2a625024bb26fdfb7b9fdeeb, type: 2}
+  m_SchemaSet:
+    m_Schemas:
+    - {fileID: 11400000, guid: 28fa5fb41ba0fbd44ba8776288ee2800, type: 2}
+    - {fileID: 11400000, guid: 5ef2c42ebfe457d4ebd4be350a12f055, type: 2}

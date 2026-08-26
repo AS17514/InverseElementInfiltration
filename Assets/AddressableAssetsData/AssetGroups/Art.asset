@@ -62,6 +62,11 @@ MonoBehaviour:
     m_ReadOnly: 0
     m_SerializedLabels: []
     FlaggedDuringContentUpdateRestriction: 0
+  - m_GUID: 2061dcf8fd1098c47a4ecc40de1d8e74
+    m_Address: Art/DeckBuild/deck_bg
+    m_ReadOnly: 0
+    m_SerializedLabels: []
+    FlaggedDuringContentUpdateRestriction: 0
   - m_GUID: 2735e7315edd99240b6ec7ca6b2fc31a
     m_Address: LightCavalry
     m_ReadOnly: 0
@@ -69,6 +74,11 @@ MonoBehaviour:
     FlaggedDuringContentUpdateRestriction: 0
   - m_GUID: 2d577502ebc6e5943b69d0932d5a5923
     m_Address: attack_melee_aoe
+    m_ReadOnly: 0
+    m_SerializedLabels: []
+    FlaggedDuringContentUpdateRestriction: 0
+  - m_GUID: 318cd8947568e8b468a22eec92b323f3
+    m_Address: Art/Dice/Dice_5
     m_ReadOnly: 0
     m_SerializedLabels: []
     FlaggedDuringContentUpdateRestriction: 0
@@ -102,6 +112,21 @@ MonoBehaviour:
     m_ReadOnly: 0
     m_SerializedLabels: []
     FlaggedDuringContentUpdateRestriction: 0
+  - m_GUID: 4e036fef2f50cd0498a7131fe9211566
+    m_Address: Art/CommonComponents/card_portrait
+    m_ReadOnly: 0
+    m_SerializedLabels: []
+    FlaggedDuringContentUpdateRestriction: 0
+  - m_GUID: 555a163916f2ed14b830fd35d632b9b5
+    m_Address: Art/Dice/Dice_2
+    m_ReadOnly: 0
+    m_SerializedLabels: []
+    FlaggedDuringContentUpdateRestriction: 0
+  - m_GUID: 586e6aa42aafe0f45a010996e2d8545b
+    m_Address: Art/Popups/popup_item_bg
+    m_ReadOnly: 0
+    m_SerializedLabels: []
+    FlaggedDuringContentUpdateRestriction: 0
   - m_GUID: 586fb61f44ff4574e909a1313f3113e5
     m_Address: "Avatar_Xeon_\u574F\u7B11"
     m_ReadOnly: 0
@@ -127,8 +152,18 @@ MonoBehaviour:
     m_ReadOnly: 0
     m_SerializedLabels: []
     FlaggedDuringContentUpdateRestriction: 0
+  - m_GUID: 6b2ac421521d9f34294630eded2f2a77
+    m_Address: Art/DeckBuild/deck_mid
+    m_ReadOnly: 0
+    m_SerializedLabels: []
+    FlaggedDuringContentUpdateRestriction: 0
   - m_GUID: 6ea9e89605e54834187275fd4022a37b
     m_Address: attack_spell
+    m_ReadOnly: 0
+    m_SerializedLabels: []
+    FlaggedDuringContentUpdateRestriction: 0
+  - m_GUID: 72586ee3c0f917c4da4a62e5397a5349
+    m_Address: Art/Dice/Dice_6
     m_ReadOnly: 0
     m_SerializedLabels: []
     FlaggedDuringContentUpdateRestriction: 0
@@ -139,6 +174,11 @@ MonoBehaviour:
     FlaggedDuringContentUpdateRestriction: 0
   - m_GUID: 7b0daee225a8abe45af48da57f8a8aec
     m_Address: Swordsman
+    m_ReadOnly: 0
+    m_SerializedLabels: []
+    FlaggedDuringContentUpdateRestriction: 0
+  - m_GUID: 7b56b857c8937d94e8dc8ecfaffec5d7
+    m_Address: Art/PieceEdit/edit_bg
     m_ReadOnly: 0
     m_SerializedLabels: []
     FlaggedDuringContentUpdateRestriction: 0
@@ -162,6 +202,16 @@ MonoBehaviour:
     m_ReadOnly: 0
     m_SerializedLabels: []
     FlaggedDuringContentUpdateRestriction: 0
+  - m_GUID: 83146b8188acd7947b9dbaf9c883a51a
+    m_Address: Art/PieceEdit/edit_bg_right
+    m_ReadOnly: 0
+    m_SerializedLabels: []
+    FlaggedDuringContentUpdateRestriction: 0
+  - m_GUID: 86d0ceef4230aef48be65e554c7899a3
+    m_Address: Art/PieceEdit/edit_bg_extra
+    m_ReadOnly: 0
+    m_SerializedLabels: []
+    FlaggedDuringContentUpdateRestriction: 0
   - m_GUID: 870b837b66e7dfe49b00e1f00f849c50
     m_Address: "Xeon_\u60CA\u8BB6"
     m_ReadOnly: 0
@@ -172,6 +222,11 @@ MonoBehaviour:
     m_ReadOnly: 0
     m_SerializedLabels: []
     FlaggedDuringContentUpdateRestriction: 0
+  - m_GUID: 890c0c9c9d3927841868687afea7fb11
+    m_Address: Art/CommonComponents/card_square
+    m_ReadOnly: 0
+    m_SerializedLabels: []
+    FlaggedDuringContentUpdateRestriction: 0
   - m_GUID: 8aa535b2f86559841ace8c9bb5f34f01
     m_Address: event_mid
     m_ReadOnly: 0
@@ -179,6 +234,21 @@ MonoBehaviour:
     FlaggedDuringContentUpdateRestriction: 0
   - m_GUID: 8b125c9fdf9881746aa9002b85278614
     m_Address: event_image
+    m_ReadOnly: 0
+    m_SerializedLabels: []
+    FlaggedDuringContentUpdateRestriction: 0
+  - m_GUID: 8cd3fc2df76ef9d4ebf5e921716b74fb
+    m_Address: Art/Dice/Dice_1
+    m_ReadOnly: 0
+    m_SerializedLabels: []
+    FlaggedDuringContentUpdateRestriction: 0
+  - m_GUID: 8dc007fd321954448a31824cc3db7bc8
+    m_Address: Art/PieceEdit/edit_mid_1_plain
+    m_ReadOnly: 0
+    m_SerializedLabels: []
+    FlaggedDuringContentUpdateRestriction: 0
+  - m_GUID: 8e1af9e9b0f5e0944ab931e48d87fd66
+    m_Address: Art/CommonComponents/card_bg
     m_ReadOnly: 0
     m_SerializedLabels: []
     FlaggedDuringContentUpdateRestriction: 0
@@ -204,6 +274,11 @@ MonoBehaviour:
     FlaggedDuringContentUpdateRestriction: 0
   - m_GUID: 97d442d7da8011d489a681234c352d9d
     m_Address: event_option
+    m_ReadOnly: 0
+    m_SerializedLabels: []
+    FlaggedDuringContentUpdateRestriction: 0
+  - m_GUID: 991c2b6b4d4ea2b48804de975931bc5e
+    m_Address: Art/Dice/Dice_4
     m_ReadOnly: 0
     m_SerializedLabels: []
     FlaggedDuringContentUpdateRestriction: 0
@@ -237,6 +312,11 @@ MonoBehaviour:
     m_ReadOnly: 0
     m_SerializedLabels: []
     FlaggedDuringContentUpdateRestriction: 0
+  - m_GUID: a6d7779cf2b358c4b944ade0d699ff34
+    m_Address: Art/Popups/popup_bg_plain
+    m_ReadOnly: 0
+    m_SerializedLabels: []
+    FlaggedDuringContentUpdateRestriction: 0
   - m_GUID: a874f76020531f54abba4ac76e0606ee
     m_Address: attack_arcing
     m_ReadOnly: 0
@@ -262,6 +342,21 @@ MonoBehaviour:
     m_ReadOnly: 0
     m_SerializedLabels: []
     FlaggedDuringContentUpdateRestriction: 0
+  - m_GUID: b62c92d6de086eb48a2f1bc6e5cf6e2a
+    m_Address: Art/CommonComponents/card_four_slots
+    m_ReadOnly: 0
+    m_SerializedLabels: []
+    FlaggedDuringContentUpdateRestriction: 0
+  - m_GUID: b67ae9cf74d9a8e448bb21357655fdcf
+    m_Address: Art/CommonComponents/card_triangle
+    m_ReadOnly: 0
+    m_SerializedLabels: []
+    FlaggedDuringContentUpdateRestriction: 0
+  - m_GUID: b9b8648c595ffe34ab74512c3b700351
+    m_Address: Art/PieceEdit/edit_bg_mid
+    m_ReadOnly: 0
+    m_SerializedLabels: []
+    FlaggedDuringContentUpdateRestriction: 0
   - m_GUID: c0a098e7586f1c5498de2c51dcff7528
     m_Address: event_settings
     m_ReadOnly: 0
@@ -279,6 +374,11 @@ MonoBehaviour:
     FlaggedDuringContentUpdateRestriction: 0
   - m_GUID: c659db84df3251f4896dd57ce5e14fbe
     m_Address: Wizard
+    m_ReadOnly: 0
+    m_SerializedLabels: []
+    FlaggedDuringContentUpdateRestriction: 0
+  - m_GUID: c7bf6cf67d8a9e040ba0eb7cd84ba899
+    m_Address: Art/Popups/popup_confirm_cancel_btn
     m_ReadOnly: 0
     m_SerializedLabels: []
     FlaggedDuringContentUpdateRestriction: 0
@@ -304,6 +404,11 @@ MonoBehaviour:
     FlaggedDuringContentUpdateRestriction: 0
   - m_GUID: db5bc2058c2cda343aee725cb37884cd
     m_Address: event_circle_small_empty
+    m_ReadOnly: 0
+    m_SerializedLabels: []
+    FlaggedDuringContentUpdateRestriction: 0
+  - m_GUID: dbdc5ff061978d74d889c8b9905723f0
+    m_Address: Art/CommonComponents/card_triangle_2
     m_ReadOnly: 0
     m_SerializedLabels: []
     FlaggedDuringContentUpdateRestriction: 0
@@ -334,6 +439,11 @@ MonoBehaviour:
     FlaggedDuringContentUpdateRestriction: 0
   - m_GUID: e85c9c761f9476c45bd6dbbb418a1030
     m_Address: mahjong_type_6
+    m_ReadOnly: 0
+    m_SerializedLabels: []
+    FlaggedDuringContentUpdateRestriction: 0
+  - m_GUID: eaf2c4c4c31215f46bcf3b67bf3275fc
+    m_Address: Art/Dice/Dice_3
     m_ReadOnly: 0
     m_SerializedLabels: []
     FlaggedDuringContentUpdateRestriction: 0
@@ -369,6 +479,11 @@ MonoBehaviour:
     FlaggedDuringContentUpdateRestriction: 0
   - m_GUID: fd94f1c20cad9d249a0090d80a6182d0
     m_Address: event_edit
+    m_ReadOnly: 0
+    m_SerializedLabels: []
+    FlaggedDuringContentUpdateRestriction: 0
+  - m_GUID: fdafe84580ae6984baf29dca682a060b
+    m_Address: Art/MainMenu/main_menu_bg
     m_ReadOnly: 0
     m_SerializedLabels: []
     FlaggedDuringContentUpdateRestriction: 0

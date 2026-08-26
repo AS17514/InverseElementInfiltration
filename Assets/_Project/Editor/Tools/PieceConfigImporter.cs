@@ -322,6 +322,12 @@ namespace TheLaw.EditorTools
                 string damageSuffix = a.attachDamage != 0 ? $"_{a.attachDamage}" : "";
                 return $"Ability_Attach_{a.attachPoint ?? "OnAttack"}_{a.attachShape ?? "Cross"}{damageSuffix}";
             }
+            if (a.type == "Passive")
+            {
+                // ⚠️ 2026-08-20：补 Passive 分支——原一律走 Ability_{effect}_{triggerPoint}_{amount}，
+                // 忽略 passiveTarget/passiveValue → 不同被动错误共享资产；格式与 ConfigImporter 对齐
+                return $"Ability_Passive_{a.passiveTarget ?? "AttackRange"}_{a.passiveValue}";
+            }
             return $"Ability_{a.effect ?? "Effect"}_{a.triggerPoint ?? "Trigger"}_{a.amount}";
         }
 

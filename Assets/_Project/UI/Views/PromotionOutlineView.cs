@@ -15,6 +15,9 @@ namespace TheLaw.UI
         Material _material;
         Tween _pulseTween;
         Tween _flashTween;
+        bool _warningActive;      // 升变预告呼吸中——期间元素静态描边不得覆盖
+        bool _hasElementColor;    // 已记录元素色（预告结束/隐藏后恢复静态描边）
+        Color _elementColor = Color.white;
 
         public void Initialize(SpriteRenderer target)
         {
@@ -44,6 +47,7 @@ namespace TheLaw.UI
         {
             if (_material == null) Initialize(GetComponent<SpriteRenderer>());
             if (_material == null) return;
+            _warningActive = true;
             KillPulse();
             _material.SetFloat(PulseId, 0.25f);
             _pulseTween = _material.DOFloat(1f, PulseId, 0.65f)
@@ -54,18 +58,31 @@ namespace TheLaw.UI
 
         public void HideWarning()
         {
+            _warningActive = false;
             KillPulse();
-            if (_material != null) _material.SetFloat(PulseId, 0f);
+            if (_material == null) return;
+            if (_hasElementColor)
+            {
+                _material.SetColor(OutlineColorId, _elementColor);
+                _material.SetFloat(PulseId, 1f); // 静态描边：常量满幅（Pulse=0 会被 shader 抹除轮廓）
+            }
+            else
+            {
+                _material.SetFloat(PulseId, 0f);
+            }
         }
 
         /// <summary>五行静态描边（2026-08-25）：设置轮廓色 + 停止呼吸（不闪烁）——与升变预告共用组件。</summary>
         public void SetElementColor(Color color)
         {
+            _elementColor = color;
+            _hasElementColor = true;
             if (_material == null) Initialize(GetComponent<SpriteRenderer>());
             if (_material == null) return;
+            if (_warningActive) return; // 升变预告优先——元素刷新不得覆盖红框呼吸（BuffsChanged 紧随 PromoteAnnounced 到达）
             KillPulse();
             _material.SetColor(OutlineColorId, color);
-            _material.SetFloat(PulseId, 0f);
+            _material.SetFloat(PulseId, 1f); // 静态描边：常量满幅（原 0 会被 shader 抹除轮廓）
         }
 
         public void PlayPromotionFlash()

@@ -1096,6 +1096,7 @@ namespace TheLaw.UI
                 PieceViewFactory.UpdatePortrait(pieceView, info.NewDefId);
                 var outline = FindPromotionView(info.PieceId);
                 if (outline != null) outline.PlayPromotionFlash();
+                ApplyElementOutline(info.PieceId); // 升变后元素可能重随机——立即刷新静态描边色（预告已隐藏，不会与红框冲突）
             }
             AudioManager.Instance.PlaySFX(AudioRefs.SfxPromote);
             if (info.PieceId == _selectedPieceId)

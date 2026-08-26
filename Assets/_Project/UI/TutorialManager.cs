@@ -88,6 +88,7 @@ namespace TheLaw.UI
             ec.AddEventListener(GameEvent.RelicObtained, OnRelicObtained);
             ec.AddEventListener(GameEvent.StateChanged, OnStateChanged);
             ec.AddEventListener(GameEvent.PhaseChanged, OnPhaseChanged);
+            ec.AddEventListener(GameEvent.TutorialRequested, OnTutorialRequested);
         }
 
         void UnwireEvents()
@@ -100,11 +101,18 @@ namespace TheLaw.UI
             ec.RemoveEventListener(GameEvent.RelicObtained, OnRelicObtained);
             ec.RemoveEventListener(GameEvent.StateChanged, OnStateChanged);
             ec.RemoveEventListener(GameEvent.PhaseChanged, OnPhaseChanged);
+            ec.RemoveEventListener(GameEvent.TutorialRequested, OnTutorialRequested);
         }
 
         void OnEventOpened(object data)
         {
             TryFirstEvent();
+        }
+
+        /// <summary>教程契约（2026-08-25 后端 TutorialSystem.TryShow 审核通过后发）：携带教程序列 id → 播放。</summary>
+        void OnTutorialRequested(object data)
+        {
+            if (data is string id && !string.IsNullOrEmpty(id)) ShowSequence(id);
         }
 
         void OnAbilityCandidates(object data)

@@ -42,7 +42,12 @@ namespace TheLaw.Core
             _callCount++;
             TraceRandomCall(caller);
             int span = maxExclusive - minInclusive;
-            if (span <= 0) return minInclusive;
+            if (span <= 0)
+            {
+                // span<=0 仍消耗一次 NextDouble——保持 _callCount 与 RNG 消耗一致（读档序列不漂移）
+                _random.NextDouble();
+                return minInclusive;
+            }
             return minInclusive + (int)(_random.NextDouble() * span);
         }
 
@@ -55,7 +60,11 @@ namespace TheLaw.Core
             {
                 total += Math.Max(0f, weightGetter(items[i]));
             }
-            Assert.IsTrue(total > 0f, "NextWeighted: 总权重为 0");
+            if (total <= 0f)
+            {
+                // 总权重<=0 兜底：等权随机取一项（保留 Assert 仅用于候选空——配置权重异常不抛、不卡流程）
+                return items[Range(0, items.Count, caller)];
+            }
             float roll = (float)(_random.NextDouble()) * total;
             float acc = 0f;
             for (int i = 0; i < items.Count; i++)

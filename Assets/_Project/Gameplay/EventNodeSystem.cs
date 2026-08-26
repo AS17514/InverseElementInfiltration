@@ -1,6 +1,7 @@
 using System.Collections.Generic;
 using TheLaw.Core;
 using TheLaw.Data;
+using UnityEngine;
 
 namespace TheLaw.Gameplay
 {
@@ -27,25 +28,25 @@ namespace TheLaw.Gameplay
         /// </summary>
         public void OpenEvent(string nodeId, EventPool pool)
         {
-            var candidates = new List<EventPoolEntry>();
-            if (pool != null)
+            // 空池安全路径（越界/配置缺失兜底）：LogError + 直接完成该节点推进——不抛异常、不卡节点
+            if (pool == null || pool.entries == null || pool.entries.Count == 0)
             {
-                foreach (var entry in pool.entries)
+                Debug.LogError($"[EventNodeSystem] OpenEvent: 事件池为空或缺失（node={nodeId}）——空池安全路径：跳过该事件节点");
+                _state.CurrentEventId = nodeId; // 用节点 id 作临时事件 id，令 TowerFlow 校验通过并推进
+                EventCenter.Instance.EventTrigger(GameEvent.EventCompleted, _state.CurrentEventId);
+                return;
+            }
+            var candidates = new List<EventPoolEntry>();
+            foreach (var entry in pool.entries)
+            {
+                if (!_state.DrawnEventIds.Contains(entry.eventId))
                 {
-                    if (!_state.DrawnEventIds.Contains(entry.eventId))
-                    {
-                        candidates.Add(entry);
-                    }
+                    candidates.Add(entry);
                 }
             }
-            // 候选空 → 必出兜底（该池全部条目；池空则断言——配置缺失当场暴露）
+            // 候选空（本池已全部抽过）→ 必出兜底：复用该池全部条目（池非空已由上方保证）
             if (candidates.Count == 0)
             {
-                if (pool == null || pool.entries.Count == 0)
-                {
-                    Core.Assert.Fail($"OpenEvent: 事件池为空或缺失（node={nodeId}）——检查 FloorConfig.eventPoolIds");
-                    return;
-                }
                 candidates = new List<EventPoolEntry>(pool.entries);
             }
             var picked = RandomManager.Instance.NextWeighted(candidates, e => e.weight);

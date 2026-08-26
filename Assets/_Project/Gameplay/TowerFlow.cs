@@ -45,7 +45,7 @@ namespace TheLaw.Gameplay
         /// 不经 AdvanceNode 推进——战斗从开头重打[SL 重打语义]，构筑/遗物/塔进度保留）。</summary>
         public void StartBattleAtCurrentFloor()
         {
-            var floor = _map.floors[_state.CurrentFloor];
+            if (!TryGetFloor(_state.CurrentFloor, out var floor)) return; // 存档越界防御：非法 CurrentFloor 不崩（LogError + 安全退出）
             _state.CurrentFloorConfig = floor; // 2026-08-24 续玩：SL 槽不含 CurrentFloorConfig（不入档——EnterFloor 路径重设）——补设
             var aiParams = GetDefaultAIParams();
             _battleFlow = _battleFlowFactory();
@@ -81,12 +81,12 @@ namespace TheLaw.Gameplay
         /// </summary>
         public void EnterFloor(int floorIndex)
         {
+            if (!TryGetFloor(floorIndex, out var floor)) return; // 越界防御：非法层索引不崩（LogError + 安全退出）
             _state.CurrentFloor = floorIndex;
-            _state.CurrentFloorConfig = _map.floors[floorIndex]; // 2026-08-20：当前关卡配置引用（Resolver 读 scoreDeductEnabled 等）
+            _state.CurrentFloorConfig = floor; // 2026-08-20：当前关卡配置引用（Resolver 读 scoreDeductEnabled 等）
             _state.CurrentNodeIndex = 0;
             _state.NodeStates.Clear();
             _state.ConsumedModules.Clear(); // 2026-08-23 消耗制：进层复原（候选池=模板库−本层占用增量；跨层上层用过的模块可再抽）
-            var floor = _map.floors[floorIndex];
             foreach (var _ in floor.eventSequence)
             {
                 _state.NodeStates.Add(NodeState.Available);
@@ -150,14 +150,42 @@ namespace TheLaw.Gameplay
             }
         }
 
+        /// <summary>楼层索引越界防御（存档越界 Continue / 非法 EnterFloor）——越界 LogError 并返回 false，调用方安全退出。</summary>
+        private bool TryGetFloor(int floorIndex, out FloorConfig floor)
+        {
+            if (floorIndex < 0 || floorIndex >= _map.floors.Count)
+            {
+                Debug.LogError($"[TowerFlow] 楼层索引越界：{floorIndex}（共 {_map.floors.Count} 层）——阻止进入");
+                floor = null;
+                return false;
+            }
+            floor = _map.floors[floorIndex];
+            return true;
+        }
+
         /// <summary>节点类型对应的事件池（FloorConfig.eventPoolIds[eventIndex]——与 eventSequence 顺序对应）。</summary>
         private EventPool GetEventPool(FloorConfig floor, int eventIndex)
         {
             if (eventIndex >= 0 && eventIndex < floor.eventPoolIds.Count)
             {
-                return ConfigTable.FindByName<EventPool>(floor.eventPoolIds[eventIndex]);
+                var pool = ConfigTable.FindByName<EventPool>(floor.eventPoolIds[eventIndex]);
+                if (pool != null) return pool;
+                Debug.LogError($"[TowerFlow] 事件池缺失：{floor.eventPoolIds[eventIndex]}（eventIndex={eventIndex}）——回退上一可用池");
             }
-            return null;
+            else
+            {
+                Debug.LogError($"[TowerFlow] 事件池索引越界：{eventIndex}（共 {floor.eventPoolIds.Count}）——回退上一可用池");
+            }
+            // 越界/缺失兜底：复用上一可用池（不返回 null → OpenEvent 不抛断言卡节点）
+            for (int i = eventIndex - 1; i >= 0; i--)
+            {
+                if (i < floor.eventPoolIds.Count)
+                {
+                    var fallback = ConfigTable.FindByName<EventPool>(floor.eventPoolIds[i]);
+                    if (fallback != null) return fallback;
+                }
+            }
+            return null; // 无上一可用池——交由 OpenEvent 空池安全路径兜底
         }
 
         private AIParams GetDefaultAIParams()

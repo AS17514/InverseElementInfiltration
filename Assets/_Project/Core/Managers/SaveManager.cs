@@ -66,7 +66,9 @@ namespace TheLaw.Core
                     }
                     catch (System.Exception)
                     {
-                        File.Move(tmpPath, path, true);
+                        // 编译兼容：Unity API 层无 Move(src,dst,overwrite)——降级为删后移动（非原子兜底，仅 Replace 不可用时）
+                        if (File.Exists(path)) File.Delete(path);
+                        File.Move(tmpPath, path);
                     }
                 }
                 else

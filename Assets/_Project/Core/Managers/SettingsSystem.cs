@@ -119,11 +119,11 @@ namespace TheLaw.Core
         {
             var state = JsonConvert.DeserializeObject<SettingsState>(json);
             if (state == null) return;
-            _bgmVolumePercent = state.Bgm;
-            _sfxVolumePercent = state.Sfx;
+            _bgmVolumePercent = Mathf.Clamp(state.Bgm, 0, 100);
+            _sfxVolumePercent = Mathf.Clamp(state.Sfx, 0, 100);
             _fullscreen = state.Fullscreen;
-            _resolutionWidth = state.Width;
-            _resolutionHeight = state.Height;
+            _resolutionWidth = state.Width > 0 ? state.Width : 1920;
+            _resolutionHeight = state.Height > 0 ? state.Height : 1080;
             SettingsChanged?.Invoke();
         }
 

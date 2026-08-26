@@ -168,6 +168,12 @@ namespace TheLaw.UI
                     canvas.gameObject.AddComponent<GraphicRaycaster>();
                 }
             }
+            // ⚠️ 2026-08-26：正式场景路径（UISetup 建的 UICamera）未挂 UICameraViewport → letterbox 不生效——
+            // 复用的 UI 相机缺组件时补挂（16:9 黑边由 UICameraViewport 统一维护）。
+            if (canvas.worldCamera != null && canvas.worldCamera.GetComponent<UICameraViewport>() == null)
+            {
+                canvas.worldCamera.gameObject.AddComponent<UICameraViewport>();
+            }
             return canvas;
         }
 
@@ -210,9 +216,33 @@ namespace TheLaw.UI
         /// Addressables 异步创建面板：加载 Assets/_Project/UI/Prefabs/ 下同名 prefab 实例化；
         /// 加载失败回退纯代码创建。
         /// </summary>
+        static bool _fontPreloaded;
+        static AsyncOperationHandle<TMPro.TMP_FontAsset> _fontHandle;
+
+        /// <summary>确保 TMP 字体资产先于任何 UI prefab 加载（Addressables 跨 bundle 引用需字体 bundle 已加载）。</summary>
+        static void EnsureFontPreloaded()
+        {
+            if (_fontPreloaded) return;
+            try
+            {
+                _fontHandle = Addressables.LoadAssetAsync<TMPro.TMP_FontAsset>("Fonts/TMP/AlibabaFangYuan_SDF_48");
+                _fontHandle.WaitForCompletion();
+                if (_fontHandle.Status == AsyncOperationStatus.Succeeded && _fontHandle.Result != null)
+                {
+                    Debug.Log("[PanelBase] TMP 字体预载完成：" + _fontHandle.Result.name);
+                }
+            }
+            catch (System.Exception e)
+            {
+                Debug.LogWarning("[PanelBase] TMP 字体预载失败：" + e.Message);
+            }
+            _fontPreloaded = true;
+        }
+
         public static void CreateAsync<T>(System.Action<T> onReady, string addressOverride = null) where T : PanelBase
         {
             var address = addressOverride ?? typeof(T).Name;
+            EnsureFontPreloaded();
             // ⚠️ 2026-08-26 根治：Addressables 缺 key 会**内部** LogError（try/catch 接住也刷屏）——
             // 先探测注册态，未注册直接纯代码创建（prefab 缺失由面板内部兜底）。
             if (!IsAddressableRegistered(address))
@@ -224,6 +254,7 @@ namespace TheLaw.UI
             AsyncOperationHandle<GameObject> handle;
             try
             {
+                EnsureFontPreloaded();
                 handle = Addressables.LoadAssetAsync<GameObject>(address);
             }
             catch (System.Exception e)

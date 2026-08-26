@@ -42,7 +42,7 @@ namespace TheLaw.UI
         private string _pendingArtKey;         // CG 未加载完时的待应用类型 key（加载完成后补应用）
         private Sprite _circleSmallEmpty, _circleSmallFilled, _circleBigEmpty, _circleBigFilled; // 进度节点素材（小/大 × 空/满）
         private string _deferredEventId;       // 获得物品弹窗展示中延迟的事件 id（确认后才切下个事件——2026-08-25）
-        private TMP_Text _progressTitle;       // 顶栏 Txt_CurrentProgress——按层显示阶段名（白模-1 / Demo-2 / ALPHA-3 / BETA-4）
+        private TMP_Text _progressTitle;       // 顶栏 Txt_CurrentProgress——阶段按层 + 层内节点序号（白模-1、白模-2…）
         static readonly string[] ProgressPhases = { "白模", "Demo", "ALPHA", "BETA" }; // 四阶段（2026-08-25 用户定名）
         private int _pendingBuilds;            // 未完成的内容构建计数（选项区重建——普通/玩法/能力；内容就绪检查点）
         private bool _artPending;              // 事件 CG 未加载完成（待应用——内容就绪检查点等待其加载）
@@ -250,6 +250,14 @@ namespace TheLaw.UI
             {
                 DestroyImmediate(_optionsRoot.GetChild(0).gameObject);
             }
+            // 2026-08-27 修复：options 为空时无任何按钮入口 → 生成"继续"按钮（复用 ShowContinue 路径），防卡死
+            if (_currentEvent.options == null || _currentEvent.options.Count == 0)
+            {
+                Debug.LogWarning("[EventPanel] 事件选项为空——生成继续入口（防卡死）");
+                EndContent();
+                ShowContinue();
+                return;
+            }
             for (int i = 0; i < _currentEvent.options.Count; i++)
             {
                 var option = _currentEvent.options[i];
@@ -421,11 +429,13 @@ namespace TheLaw.UI
         void RefreshProgress()
         {
             if (_gameState == null) return;
-            // 顶栏阶段名：按当前层 → 白模-1 / Demo-2 / ALPHA-3 / BETA-4（2026-08-25）
+            // 顶栏阶段名（2026-08-26 用户定案）：阶段按层（白模/Demo/ALPHA/BETA），数字 = 层内节点序号——
+            // CurrentNodeIndex 在事件打开时 = 当前事件序号（1 起：白模-1=第 1 个事件、白模-2=第 2 个事件；战斗节点 = 节点总数）
             if (_progressTitle != null)
             {
                 int f = _gameState.CurrentFloor;
-                _progressTitle.text = f >= 0 && f < ProgressPhases.Length ? $"{ProgressPhases[f]}-{f + 1}" : "当前进度";
+                int node = Mathf.Max(1, _gameState.CurrentNodeIndex);
+                _progressTitle.text = f >= 0 && f < ProgressPhases.Length ? $"{ProgressPhases[f]}-{node}" : "当前进度";
             }
             var states = _gameState.NodeStates;
             if (states == null || states.Count == 0) return;
@@ -500,7 +510,11 @@ namespace TheLaw.UI
                 return;
             }
             var candidates = _gameState.RuleCandidates;
-            if (candidates == null || candidates.Count == 0) return; // 后端已清空（选择后）——不重建空区
+            if (candidates == null || candidates.Count == 0)
+            {
+                EndContent(); // 2026-08-27 修复：候选空提前返回补齐配对（否则 _pendingBuilds 不归零 → IsContentReady 永久 false）
+                return; // 后端已清空（选择后）——不重建空区
+            }
             // 2026-08-23 时序修复：同步清空旧候选（DestroyImmediate）——延迟 Destroy 会与新建候选同帧并存
             while (_optionsRoot.childCount > 0)
             {
@@ -629,7 +643,11 @@ namespace TheLaw.UI
             }
             var candidates = _gameState.AbilityCandidates;
             var refreshLeft = _gameState.AbilityRefreshLeft;
-            if (candidates == null || candidates.Count == 0) return; // 后端已清空（选择后）——不重建空区
+            if (candidates == null || candidates.Count == 0)
+            {
+                EndContent(); // 2026-08-27 修复：候选空提前返回补齐配对（否则 _pendingBuilds 不归零 → IsContentReady 永久 false）
+                return; // 后端已清空（选择后）——不重建空区
+            }
             // 2026-08-23 时序修复：同步清空旧候选（DestroyImmediate）——延迟 Destroy 会与新建候选同帧并存，布局计算错乱
             while (_optionsRoot.childCount > 0)
             {

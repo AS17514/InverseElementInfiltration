@@ -38,6 +38,13 @@ namespace TheLaw.UI
         {
             if (ui == null || string.IsNullOrEmpty(key)) return;
 
+            // ⚠️ 压栈弹窗显示中（获得遗物/确认/设置/结算/教程等）：overlay 本身盖住切换过程——不需要 loading（用户定案）
+            if (ui.HasOverlayBesides(LoadingKey))
+            {
+                ui.ShowPanel(key);
+                return;
+            }
+
             // 同面板重复 Show（幂等刷新）不需要过渡；force=true 强制走过渡（事件→事件内容切换——旧面板保持到遮挡就绪）
             if (!force && ui.CurrentKey == key)
             {
@@ -64,6 +71,12 @@ namespace TheLaw.UI
         public static void Begin(UIManager ui, Action onCovered)
         {
             if (ui == null)
+            {
+                onCovered?.Invoke();
+                return;
+            }
+            // ⚠️ 压栈弹窗显示中（获得遗物/确认/设置/结算/教程等）：overlay 本身盖住切换过程——不压 loading（用户定案）
+            if (ui.HasOverlayBesides(LoadingKey))
             {
                 onCovered?.Invoke();
                 return;

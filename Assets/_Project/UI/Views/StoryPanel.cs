@@ -86,6 +86,8 @@ namespace TheLaw.UI
         private readonly HashSet<string> _missingDiffLogged = new HashSet<string>(); // 缺失差分防刷屏
         private bool _missingRightLogged;
         private bool _missingLeftLogged;
+        private int _diffLoadToken;   // Xeon 差分异步加载竞态防护（仅最新请求生效）
+        private int _testerLoadToken; // 测试员立绘异步加载竞态防护
 
         private void Awake()
         {
@@ -546,14 +548,26 @@ namespace TheLaw.UI
             if (ReferenceEquals(img, _charLeft)) _leftAlphaTween = tw; else _rightAlphaTween = tw;
         }
 
-        /// <summary>测试员立绘兜底：prefab 未挂 sprite 时按 Addressables 地址加载（Tester_Default）。</summary>
+        /// <summary>测试员立绘兜底：prefab 未挂 sprite 时按 Addressables 地址异步加载（Tester_Default → Tester 回退）。</summary>
         private void EnsureTesterSprite()
         {
             if (_charRight == null || _charRight.sprite != null) return;
-            var s = LoadSpriteOrNull("Tester_Default");
-            if (s == null) s = LoadSpriteOrNull("Tester");
-            if (s != null) _charRight.sprite = s;
-            else Debug.LogWarning("[StoryPanel] Tester 立绘缺失（Addressables 无 Tester_Default）——右位保留占位");
+            int token = ++_testerLoadToken;
+            StartCoroutine(LoadSpriteInto("Tester_Default", sprite =>
+            {
+                if (token != _testerLoadToken || _charRight == null) return; // 已更新/已销毁——丢弃过期结果
+                if (sprite != null)
+                {
+                    _charRight.sprite = sprite;
+                    return;
+                }
+                StartCoroutine(LoadSpriteInto("Tester", s2 =>
+                {
+                    if (token != _testerLoadToken || _charRight == null) return;
+                    if (s2 != null) _charRight.sprite = s2;
+                    else Debug.LogWarning("[StoryPanel] Tester 立绘缺失（Addressables 无 Tester_Default）——右位保留占位");
+                }));
+            }));
         }
 
         /// <summary>角色侧位解析：显式 character/char/side > showTester/showXeon > speaker 推断 > type（旁白=0）> 缺省左主位。</summary>
@@ -576,48 +590,51 @@ namespace TheLaw.UI
 
         private void ApplyXeonDiff(string diffKey)
         {
-            var sprite = LoadSpriteOrNull(diffKey);
-            if (sprite == null)
+            if (string.IsNullOrEmpty(diffKey) || _charLeft == null) return;
+            int token = ++_diffLoadToken;
+            StartCoroutine(LoadSpriteInto(diffKey, sprite =>
             {
-                if (_missingDiffLogged.Add(diffKey))
+                if (token != _diffLoadToken || _charLeft == null) return; // 已更新/已销毁——丢弃过期结果
+                if (sprite == null)
                 {
-                    Debug.LogWarning($"[StoryPanel] Xeon 差分立绘缺失（Addressables 无 {diffKey}）——保留当前立绘");
+                    if (_missingDiffLogged.Add(diffKey))
+                    {
+                        Debug.LogWarning($"[StoryPanel] Xeon 差分立绘缺失（Addressables 无 {diffKey}）——保留当前立绘");
+                    }
+                    return;
                 }
-                return;
-            }
-            _charLeft.sprite = sprite;
+                _charLeft.sprite = sprite;
+            }));
         }
 
-        /// <summary>Addressables 按地址加载差分立绘；候选 = 原 key + "Xeon_" + key；缺失返回 null（不抛断流程）。</summary>
-        private static Sprite LoadSpriteOrNull(string key)
+        /// <summary>Addressables 按地址异步加载差分/立绘（2026-08-27：同步 WaitForCompletion 改协程——避免阻塞主线程）；候选 = 原 key + "Xeon_" + key；缺失回调 null。</summary>
+        private IEnumerator LoadSpriteInto(string key, System.Action<Sprite> onDone)
         {
-            if (string.IsNullOrEmpty(key)) return null;
-            var candidates = new List<string> { key };
-            if (!key.StartsWith("Xeon", System.StringComparison.OrdinalIgnoreCase))
+            Sprite result = null;
+            if (!string.IsNullOrEmpty(key))
             {
-                candidates.Add("Xeon_" + key);
-            }
-            foreach (var addr in candidates)
-            {
-                try
+                var candidates = new List<string> { key };
+                if (!key.StartsWith("Xeon", System.StringComparison.OrdinalIgnoreCase))
+                {
+                    candidates.Add("Xeon_" + key);
+                }
+                foreach (var addr in candidates)
                 {
                     // 先查地址存在（LoadResourceLocations 无效 key 返回空且不刷 InvalidKeyException）
                     var locHandle = Addressables.LoadResourceLocationsAsync(addr, typeof(Sprite));
-                    locHandle.WaitForCompletion();
-                    int count = locHandle.Result == null ? 0 : locHandle.Result.Count;
+                    yield return locHandle;
+                    int count = locHandle.Status == UnityEngine.ResourceManagement.AsyncOperations.AsyncOperationStatus.Succeeded
+                        ? (locHandle.Result == null ? 0 : locHandle.Result.Count) : 0;
                     Addressables.Release(locHandle);
                     if (count == 0) continue; // 地址不存在——试下一候选
                     var handle = Addressables.LoadAssetAsync<Sprite>(addr);
-                    var sprite = handle.WaitForCompletion();
+                    yield return handle;
+                    result = handle.Status == UnityEngine.ResourceManagement.AsyncOperations.AsyncOperationStatus.Succeeded ? handle.Result : null;
                     Addressables.Release(handle);
-                    if (sprite != null) return sprite;
-                }
-                catch
-                {
-                    // 异常——试下一候选
+                    if (result != null) break;
                 }
             }
-            return null;
+            onDone?.Invoke(result);
         }
 
         /// <summary>立绘上下抖动（DOTween core 实现 punch 语义——anchoredPosition 保持布局；SetUpdate 时间静止也不冻结）。

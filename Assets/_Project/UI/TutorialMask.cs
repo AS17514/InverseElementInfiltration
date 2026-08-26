@@ -83,7 +83,9 @@ namespace TheLaw.UI
             var mask = go.AddComponent<TutorialMask>();
             mask._image = img;
             mask.Block = block;
-            mask._material = new Material(Shader.Find(ShaderName));
+            var maskShader = Resources.Load<Shader>("Shaders/TutorialMask");
+            if (maskShader == null) maskShader = Shader.Find(ShaderName);
+            mask._material = maskShader != null ? new Material(maskShader) : null;
             if (mask._material == null)
             {
                 Debug.LogWarning("[TutorialMask] 找不到 shader " + ShaderName + "（检查是否加入 Always Included / 构建包含）——遮罩降级为无效果。");

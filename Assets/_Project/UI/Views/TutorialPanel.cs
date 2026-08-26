@@ -48,6 +48,7 @@ namespace TheLaw.UI
         bool _skipBackConsumed;
 
         readonly HashSet<string> _loggedMissingPortrait = new HashSet<string>();
+        string _portraitLoadKey; // 立绘异步加载竞态防护：仅最新请求结果生效
 
         public bool IsTyping => _typing;
 
@@ -157,25 +158,13 @@ namespace TheLaw.UI
         void SetPortrait(string portraitKey)
         {
             if (_imgPortrait == null) return;
+            _portraitLoadKey = portraitKey; // 竞态防护：旧协程完成时若 key 已变则丢弃结果
             if (string.IsNullOrEmpty(portraitKey))
             {
                 _imgPortrait.gameObject.SetActive(false); // 旁白步：无立绘
                 return;
             }
-            var sprite = LoadPortrait(portraitKey);
-            if (sprite != null)
-            {
-                _imgPortrait.gameObject.SetActive(true);
-                _imgPortrait.sprite = sprite;
-            }
-            else
-            {
-                _imgPortrait.gameObject.SetActive(false);
-                if (_loggedMissingPortrait.Add(portraitKey))
-                {
-                    Debug.LogWarning("[TutorialPanel] 头像/立绘缺失（Addressables 无 " + portraitKey + " 候选地址）——本次隐藏头像");
-                }
-            }
+            StartCoroutine(LoadPortraitRoutine(portraitKey));
         }
 
         /// <summary>
@@ -200,29 +189,39 @@ namespace TheLaw.UI
             yield return "Avatar_Xeon_" + key;
         }
 
-        /// <summary>Addressables 按候选地址同步加载（同 StoryPanel.LoadSpriteOrNull；地址不存在试下一候选）。</summary>
-        static Sprite LoadPortrait(string key)
+        /// <summary>Addressables 按候选地址异步加载（2026-08-27：同步 WaitForCompletion 改协程——避免阻塞主线程；地址不存在试下一候选）。</summary>
+        IEnumerator LoadPortraitRoutine(string portraitKey)
         {
-            foreach (var addr in PortraitCandidates(key))
+            foreach (var addr in PortraitCandidates(portraitKey))
             {
-                try
+                if (_portraitLoadKey != portraitKey) yield break; // 步骤已切换——丢弃过期结果
+                var locHandle = Addressables.LoadResourceLocationsAsync(addr, typeof(Sprite));
+                yield return locHandle;
+                int count = locHandle.Status == UnityEngine.ResourceManagement.AsyncOperations.AsyncOperationStatus.Succeeded
+                    ? (locHandle.Result == null ? 0 : locHandle.Result.Count) : 0;
+                Addressables.Release(locHandle);
+                if (count == 0) continue; // 地址不存在——试下一候选
+                var handle = Addressables.LoadAssetAsync<Sprite>(addr);
+                yield return handle;
+                Sprite sprite = handle.Status == UnityEngine.ResourceManagement.AsyncOperations.AsyncOperationStatus.Succeeded ? handle.Result : null;
+                Addressables.Release(handle);
+                if (_portraitLoadKey != portraitKey) yield break;
+                if (sprite != null)
                 {
-                    var locHandle = Addressables.LoadResourceLocationsAsync(addr, typeof(Sprite));
-                    locHandle.WaitForCompletion();
-                    int count = locHandle.Result == null ? 0 : locHandle.Result.Count;
-                    Addressables.Release(locHandle);
-                    if (count == 0) continue; // 地址不存在——试下一候选
-                    var handle = Addressables.LoadAssetAsync<Sprite>(addr);
-                    var sprite = handle.WaitForCompletion();
-                    Addressables.Release(handle);
-                    if (sprite != null) return sprite;
-                }
-                catch
-                {
-                    // 试下一候选
+                    if (_imgPortrait != null)
+                    {
+                        _imgPortrait.gameObject.SetActive(true);
+                        _imgPortrait.sprite = sprite;
+                    }
+                    yield break;
                 }
             }
-            return null;
+            if (_portraitLoadKey != portraitKey) yield break;
+            if (_imgPortrait != null) _imgPortrait.gameObject.SetActive(false);
+            if (_loggedMissingPortrait.Add(portraitKey))
+            {
+                Debug.LogWarning("[TutorialPanel] 头像/立绘缺失（Addressables 无 " + portraitKey + " 候选地址）——本次隐藏头像");
+            }
         }
 
         // ====== 布局（DOTween 移动两框 + 屏幕内 clamp） ======

@@ -36,6 +36,13 @@ namespace TheLaw.UI
             var rect = GetLetterboxRect();
             _cam.rect = rect;
             if (Camera.main != null) Camera.main.rect = rect;
+            // 背景相机（全屏实色/背景层）同步收进 16:9——否则会盖掉黑边区
+            var bgCam = GameObject.Find("BackgroundCamera");
+            if (bgCam != null)
+            {
+                var bg = bgCam.GetComponent<Camera>();
+                if (bg != null) bg.rect = rect;
+            }
             EnsureBlackCamera();
             LockWindowAspect();
         }

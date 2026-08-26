@@ -190,7 +190,7 @@ namespace TheLaw.UI
         /// <summary>关闭：overlay 弹栈（恢复主菜单 + 解暂停）；无 UIManager 兜底直接隐藏。</summary>
         void Close()
         {
-            if (_uiManager != null) _uiManager.PopOverlay();
+            if (_uiManager != null) _uiManager.PopOverlay(Key); // 定向弹栈（2026-08-27 修复：无参弹栈顶可能弹错对象）
             else Hide();
         }
 

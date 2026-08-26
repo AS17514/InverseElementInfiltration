@@ -86,7 +86,13 @@ namespace TheLaw.UI
             IsShowing = true; // 弹窗展示中——下个事件显示延迟
             Bind(ToViewData(_pendingRelics.Dequeue()));
             // 覆盖显示（不暂停——通知性质；确认关闭）
-            if (_uiManager != null) _uiManager.PushOverlay(Key);
+            if (_uiManager != null)
+            {
+                // 2026-08-26：获得物品时若仍处于面板切换过渡，先结束 loading 再弹物品——
+                // 否则 loading 会与物品弹窗叠层（视觉上像“获得物品弹出 loading”）。
+                PanelTransition.End(_uiManager);
+                _uiManager.PushOverlay(Key);
+            }
             else gameObject.SetActive(true);
         }
 

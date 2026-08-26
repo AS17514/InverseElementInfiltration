@@ -396,6 +396,24 @@ namespace TheLaw.UI
             panel.ResetCheatCount(); // 2026-08-26 测试自动过关：Ctrl+设置×10 计数每场战斗重置（防跨场累计误触发）
             panel.SetFloorName(Bootstrap.FloorDisplayName(state != null ? state.CurrentFloor : 0)); // 2026-08-26 左上角关卡名称（白模/Demo/ALPHA/BETA）
             _uiManager.RegisterPanel(panel); // 幂等覆盖（重复注册无害）
+            // 2026-08-26：战斗面板 Background 是全屏 UI 图，raycastTarget=true 会吞掉棋盘点击
+            // （EventSystem.IsPointerOverGameObject 恒 true → 棋子无法选中）。战斗中改为不参与射线。
+            var battleBg = FindDeep(panel.transform, "Background");
+            if (battleBg != null)
+            {
+                var bgImg = battleBg.GetComponent<Image>();
+                if (bgImg != null) bgImg.raycastTarget = false;
+            }
+            // 2026-08-26: scene board art raycast blockers
+            foreach (var boardBlockerName in new[] { "Img_Foreground", "Img_Board", "Img_Stand" })
+            {
+                var blockerGo = GameObject.Find(boardBlockerName);
+                if (blockerGo != null)
+                {
+                    var blockerImg = blockerGo.GetComponent<Image>();
+                    if (blockerImg != null) blockerImg.raycastTarget = false;
+                }
+            }
             PanelTransition.ShowWithLoading(_uiManager, "Battle");
             // ⚠️ 面板局内复用（UI 架构重构 §五）：旧 BC 的按钮监听残留在复用面板上——
             // 每场绑定前必须 RemoveAllListeners（否则第 2 场起点按钮触发多次回调）
@@ -613,6 +631,40 @@ namespace TheLaw.UI
             // 2026-08-12：activeInputHandler=2（纯 Input System）——旧 Input.GetMouseButtonDown 失效（恒 false/抛异常）
             // → 迁移 InputSystem API（与 BattleResultPanel/PieceEditPanel 一致）
             if (Mouse.current == null || !Mouse.current.leftButton.wasPressedThisFrame) return;
+            if (Mouse.current.leftButton.wasPressedThisFrame)
+            {
+                bool overUI = EventSystem.current != null && EventSystem.current.IsPointerOverGameObject();
+                string blockers = "";
+                if (overUI && EventSystem.current != null)
+                {
+                    var pe = new PointerEventData(EventSystem.current);
+                    pe.position = Mouse.current.position.ReadValue();
+                    var res = new List<RaycastResult>();
+                    EventSystem.current.RaycastAll(pe, res);
+                    var sb = new System.Text.StringBuilder();
+                    int n = 0;
+                    foreach (var rr in res)
+                    {
+                        if (n++ >= 6) break;
+                        sb.Append(rr.gameObject.name).Append(';');
+                    }
+                    blockers = sb.ToString();
+                }
+                bool rayHit = false;
+                string hitName = "none";
+                Vector2Int dbgCell = new Vector2Int(-1, -1);
+                var dbgRay = Camera.main != null ? Camera.main.ScreenPointToRay(Mouse.current.position.ReadValue()) : default;
+                if (dbgRay.origin != default)
+                {
+                    rayHit = Physics.Raycast(dbgRay, out var dbgHit, 200f);
+                    if (rayHit)
+                    {
+                        hitName = dbgHit.collider != null ? dbgHit.collider.name : "?";
+                        dbgCell = PieceViewFactory.CellFromWorld(dbgHit.point);
+                    }
+                }
+                Debug.Log(string.Format("[BattleClick][Debug] pressed overUI={0} blockers={1} rayHit={2} hit={3} cell={4} phase={5} exec={6} pres={7} sel={8} cam={9}", overUI, blockers, rayHit, hitName, dbgCell, _state.Phase, _executing, _presentationPlaying, _selectedPieceId, Camera.main != null ? Camera.main.name : "null"));
+            }
             if (EventSystem.current != null && EventSystem.current.IsPointerOverGameObject()) return;
 
             // 射线打 Tile（棋子无碰撞，Tile 有 BoxCollider）
@@ -699,6 +751,7 @@ namespace TheLaw.UI
             var program = piece.GetProgram(_state);
             if (program == null || program.Count == 0)
             {
+                Debug.Log(string.Format("[Battle][Debug] PreviewRange id={0} programEmpty", pieceId));
                 ClearHighlights();
                 return;
             }
@@ -715,9 +768,11 @@ namespace TheLaw.UI
             }
             if (index >= program.Count)
             {
+                Debug.Log(string.Format("[Battle][Debug] PreviewRange id={0} noCandidates programCount={1}", pieceId, program.Count));
                 ClearHighlights();
                 return;
             }
+            Debug.Log(string.Format("[Battle][Debug] PreviewRange id={0} index={1} slot={2}", pieceId, index, program[index].GetType().Name));
 
             switch (program[index])
             {
@@ -2183,17 +2238,28 @@ namespace TheLaw.UI
             {
                 if (_highlightMatRed == null)
                 {
-                    _highlightMatRed = new Material(Shader.Find("Unlit/Color"));
-                    _highlightMatRed.color = new Color(r, g, b, 0.4f);
+                    _highlightMatRed = CreateHighlightMaterial(new Color(r, g, b, 0.4f));
                 }
                 return _highlightMatRed;
             }
             if (_highlightMatGreen == null)
             {
-                _highlightMatGreen = new Material(Shader.Find("Unlit/Color"));
-                _highlightMatGreen.color = new Color(r, g, b, 0.4f);
+                _highlightMatGreen = CreateHighlightMaterial(new Color(r, g, b, 0.4f));
             }
             return _highlightMatGreen;
+        }
+
+        static Material CreateHighlightMaterial(Color color)
+        {
+            // 2026-08-26: Player 中 Shader.Find("Unlit/Color") 可能因未引用被剥离 → null → 高亮不可见。
+            // 改用 UI/Sprite 常用 shader（UI 必然打进包），并给白色主纹理，确保透明色块在 Player 可渲染。
+            Shader shader = Shader.Find("Sprites/Default");
+            if (shader == null) shader = Shader.Find("UI/Default");
+            if (shader == null) shader = Shader.Find("Unlit/Color");
+            var mat = new Material(shader);
+            mat.mainTexture = Texture2D.whiteTexture;
+            mat.color = color;
+            return mat;
         }
 
         void ClearHighlights()
@@ -2688,7 +2754,7 @@ namespace TheLaw.UI
 
         void OnPhaseButtonClicked()
         {
-            if (_presentationPlaying) return; // 表现播放中禁点阶段按钮
+            if (_executing || _awaitingCell || _presentationPlaying || _diceMoveSelecting) return; // AA4-01：执行/选格/表现/骰子选方向等待中禁点阶段按钮
             switch (_state.Phase)
             {
                 case BattlePhase.Placement:
@@ -2765,7 +2831,9 @@ namespace TheLaw.UI
             EnsureScoreRefs();
             for (int i = 0; i < 4; i++)
             {
-                var t = FindDeep(ui.transform, $"Txt_BehaviorLogic{i + 1}");
+                // 2026-08-27：李毕已把场景节点改名 Img_BehaviorLogic1~4（图标位）——兼容旧 Txt_ 名查找
+                var t = FindDeep(ui.transform, $"Img_BehaviorLogic{i + 1}")
+                    ?? FindDeep(ui.transform, $"Txt_BehaviorLogic{i + 1}");
                 _infoProgramBlocks[i] = t != null ? t.GetComponent<SpriteRenderer>() : null;
                 if (_infoProgramBlocks[i] != null && t.GetComponent<Collider>() == null)
                 {
@@ -2799,6 +2867,7 @@ namespace TheLaw.UI
 
             FillInfo(def, piece);
             if (_pieceInfoRoot != null) _pieceInfoRoot.gameObject.SetActive(true);
+            Debug.Log(string.Format("[Battle][Debug] ShowPieceInfo id={0} root={1} rootActive={2} name={3}", pieceId, _pieceInfoRoot != null, _pieceInfoRoot != null ? _pieceInfoRoot.gameObject.activeSelf : false, _infoName != null));
             RefreshGrpPlayVisibility(); // 选中棋子 → 隐藏关卡玩法面板（同位置切换显隐）
         }
 
@@ -2827,12 +2896,34 @@ namespace TheLaw.UI
                     _infoProgramBlocks[i].gameObject.SetActive(i < slotCount);
                     if (i < slotCount)
                     {
+                        // 2026-08-27：按程序块顺序换图标（移动4族/攻击5方式；效果无图用 Bg 底）
+                        var tpl = program[i];
+                        var blockSprite = PiecePresentationMapper.ProgramIconSprite(tpl);
+                        if (blockSprite == null) IconLibrary.TryGet("Bg", out blockSprite);
+                        if (blockSprite != null)
+                        {
+                            _infoProgramBlocks[i].sprite = blockSprite;
+                            _infoProgramBlocks[i].color = Color.white;
+                            RefreshBlockCollider(i);
+                        }
                         var hover = _infoProgramBlocks[i].GetComponent<BehaviorSlotHover>();
                         if (hover == null) hover = _infoProgramBlocks[i].gameObject.AddComponent<BehaviorSlotHover>();
                         hover.Init(this, i);
                     }
                 }
             }
+        }
+
+        /// <summary>行为逻辑块换图后重算碰撞盒（对齐 sprite 世界尺寸——构造时按旧图算过一次）。</summary>
+        void RefreshBlockCollider(int index)
+        {
+            var sr = _infoProgramBlocks[index];
+            if (sr == null || sr.sprite == null) return;
+            var col = sr.GetComponent<BoxCollider>();
+            if (col == null) return;
+            float sx = sr.transform.localScale.x != 0 ? sr.transform.localScale.x : 1f;
+            float sy = sr.transform.localScale.y != 0 ? sr.transform.localScale.y : 1f;
+            col.size = new Vector3(sr.bounds.size.x / sx, sr.bounds.size.y / sy, 0.2f);
         }
 
         /// <summary>buff key 内置中文兜底（配置表未命中时——防机器码泄漏）：shield/free_execute/ability_* → 中文。</summary>

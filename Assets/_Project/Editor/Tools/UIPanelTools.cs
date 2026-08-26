@@ -30,12 +30,31 @@ namespace TheLaw.EditorTools
                 return;
             }
 
+            // 地址 → 资产路径（现有条目 + 本批已注册）：裸文件名地址跨目录可能重复——检测后跳过冲突
+            var addressOwners = new System.Collections.Generic.Dictionary<string, string>();
+            foreach (var g in settings.groups)
+            {
+                if (g == null) continue;
+                foreach (var ae in g.entries)
+                {
+                    if (ae == null || string.IsNullOrEmpty(ae.address)) continue;
+                    addressOwners[ae.address] = ae.AssetPath;
+                }
+            }
+
             int added = 0;
             foreach (var guid in AssetDatabase.FindAssets("t:Prefab", new[] { PrefabDir }))
             {
                 var path = AssetDatabase.GUIDToAssetPath(guid);
+                string address = Path.GetFileNameWithoutExtension(path); // address = 类名
+                if (addressOwners.TryGetValue(address, out var ownerPath) && ownerPath != path)
+                {
+                    Debug.LogError($"[UIPanelTools] 地址重复：{address} 已被 {ownerPath} 占用——跳过 {path}");
+                    continue;
+                }
                 var entry = settings.CreateOrMoveEntry(guid, group, readOnly: false);
-                entry.address = Path.GetFileNameWithoutExtension(path); // address = 类名
+                entry.address = address;
+                addressOwners[address] = path;
                 added++;
             }
             settings.SetDirty(AddressableAssetSettings.ModificationEvent.EntryMoved, null, true);

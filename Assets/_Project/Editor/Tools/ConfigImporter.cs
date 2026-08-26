@@ -24,16 +24,32 @@ namespace TheLaw.EditorTools
         [MenuItem("工具/导入关卡配置（JSON）")]
         public static void ImportAll()
         {
-            EnsureFolder(ConfigAssetsDir);
+            int ok = 0;
+            const int total = 5;
+            try
+            {
+                EnsureFolder(ConfigAssetsDir);
 
-            ImportRelics();
-            ImportEvents();
-            ImportFloor();
-            ImportMap();
-            ImportTemplates();
+                try { ImportRelics(); ok++; }
+                catch (System.Exception e) { Debug.LogError($"[配置导入器] 遗物导入失败：{e.Message}"); }
 
-            AssetDatabase.SaveAssets();
-            Debug.Log("[配置导入器] 完成：遗物/事件/关卡/地图/模板库");
+                try { ImportEvents(); ok++; }
+                catch (System.Exception e) { Debug.LogError($"[配置导入器] 事件导入失败：{e.Message}"); }
+
+                try { ImportFloor(); ok++; }
+                catch (System.Exception e) { Debug.LogError($"[配置导入器] 关卡导入失败：{e.Message}"); }
+
+                try { ImportMap(); ok++; }
+                catch (System.Exception e) { Debug.LogError($"[配置导入器] 地图导入失败：{e.Message}"); }
+
+                try { ImportTemplates(); ok++; }
+                catch (System.Exception e) { Debug.LogError($"[配置导入器] 模板库导入失败：{e.Message}"); }
+            }
+            finally
+            {
+                AssetDatabase.SaveAssets();
+            }
+            Debug.Log($"[配置导入器] 完成：{ok}/{total} 步导入成功（遗物/事件/关卡/地图/模板库）");
         }
 
         /// <summary>
@@ -155,13 +171,28 @@ namespace TheLaw.EditorTools
                     continue;
                 }
                 var assets = new List<Object>();
+                var seenIds = new HashSet<int>();
                 foreach (var guid in AssetDatabase.FindAssets($"t:{fieldTypes[i].Name}"))
                 {
-                    var asset = AssetDatabase.LoadAssetAtPath<Object>(AssetDatabase.GUIDToAssetPath(guid));
-                    if (asset != null)
+                    var path = AssetDatabase.GUIDToAssetPath(guid);
+                    var asset = AssetDatabase.LoadAssetAtPath<Object>(path);
+                    if (asset == null)
                     {
-                        assets.Add(asset);
+                        continue;
                     }
+                    // AA6-4：同类型资产跨目录可能生成同 Id（如双导入器的能力资产）——按 Id 去重，保留先注册项
+                    int id = 0;
+                    var config = asset as GameConfigBase;
+                    if (config != null)
+                    {
+                        id = config.Id;
+                    }
+                    if (!seenIds.Add(id))
+                    {
+                        Debug.LogWarning($"[配置导入器] {fieldTypes[i].Name} 重复 Id {id}（{path}）——跳过，保留先注册项");
+                        continue;
+                    }
+                    assets.Add(asset);
                 }
                 prop.ClearArray();
                 prop.arraySize = assets.Count;
@@ -234,8 +265,14 @@ namespace TheLaw.EditorTools
             {
                 return;
             }
+            var seenRelicNames = new HashSet<string>();
             foreach (var r in dto.relics)
             {
+                if (!seenRelicNames.Add(r.relicName))
+                {
+                    Debug.LogError($"[配置导入器] 遗物 relicName 重复：{r.relicName}——跳过重复项（保留先导入）");
+                    continue;
+                }
                 var abilities = new List<SpecialAbilityDef>();
                 if (r.abilities != null)
                 {
@@ -293,10 +330,16 @@ namespace TheLaw.EditorTools
                 return;
             }
             // 事件定义（先建——池条目按 name 引用）
+            var seenEventIds = new HashSet<string>();
             if (dto.events != null)
             {
                 foreach (var e in dto.events)
                 {
+                    if (!seenEventIds.Add(e.eventId))
+                    {
+                        Debug.LogError($"[配置导入器] 事件 eventId 重复：{e.eventId}——跳过重复项（保留先导入）");
+                        continue;
+                    }
                     string assetPath = $"{ConfigAssetsDir}/Event_{e.eventId}.asset";
                     var def = LoadOrCreate<EventDefinition>(assetPath, $"Event_{e.eventId}"); // 增量：已存在更新不删建
                     def.title = e.title;
@@ -776,7 +819,11 @@ namespace TheLaw.EditorTools
             var ids = new List<int>();
             foreach (var name in assetNames ?? new List<string>())
             {
-                ids.Add(ResolvePieceId(name));
+                int id = ResolvePieceId(name);
+                if (id != 0)
+                {
+                    ids.Add(id);
+                }
             }
             return ids;
         }

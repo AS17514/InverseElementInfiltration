@@ -28,6 +28,18 @@ namespace TheLaw.EditorTools
             var settings = EnsureSettings();
             var group = EnsureGroup(settings);
 
+            // 地址 → 资产路径（现有条目 + 本批已注册）：裸文件名地址跨目录可能重复——检测后跳过冲突
+            var addressOwners = new System.Collections.Generic.Dictionary<string, string>();
+            foreach (var g in settings.groups)
+            {
+                if (g == null) continue;
+                foreach (var ae in g.entries)
+                {
+                    if (ae == null || string.IsNullOrEmpty(ae.address)) continue;
+                    addressOwners[ae.address] = ae.AssetPath;
+                }
+            }
+
             int added = 0;
             foreach (var dir in IconDirs)
             {
@@ -38,6 +50,13 @@ namespace TheLaw.EditorTools
                     var path = AssetDatabase.GUIDToAssetPath(guid);
                     if (path == null || !path.EndsWith(".png", System.StringComparison.OrdinalIgnoreCase)) continue;
 
+                    string address = Path.GetFileNameWithoutExtension(path); // 地址 = 文件名（move_step / GoPiece / mahjong_1 ...）
+                    if (addressOwners.TryGetValue(address, out var ownerPath) && ownerPath != path)
+                    {
+                        Debug.LogError($"[IconArtTools] 地址重复：{address} 已被 {ownerPath} 占用——跳过 {path}");
+                        continue;
+                    }
+
                     // 统一 Sprite 导入（地址按 Sprite 加载——LoadAssetAsync<Sprite> 需要 Sprite 类型）
                     var importer = AssetImporter.GetAtPath(path) as TextureImporter;
                     if (importer != null && importer.textureType != TextureImporterType.Sprite)
@@ -47,7 +66,8 @@ namespace TheLaw.EditorTools
                     }
 
                     var entry = settings.CreateOrMoveEntry(guid, group, readOnly: false);
-                    entry.address = Path.GetFileNameWithoutExtension(path); // 地址 = 文件名（move_step / GoPiece / mahjong_1 ...）
+                    entry.address = address;
+                    addressOwners[address] = path;
                     added++;
                 }
             }

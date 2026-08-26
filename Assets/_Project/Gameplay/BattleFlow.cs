@@ -1106,6 +1106,15 @@ namespace TheLaw.Gameplay
             EventCenter.Instance.EventTrigger(GameEvent.StateChanged, "dice-move-select"); // 前端进入方向选择（上下左右）
         }
 
+        /// <summary>AA4-09：玩家取消骰子移动（无可达方向/主动放弃）——清等待态 + 清全场 buff（前端提示后调用；幂等）。</summary>
+        public void OnPlayerCancelDiceMove()
+        {
+            if (_waitingDiceMovePieceId < 0 || _state.Phase != BattlePhase.PlayerTurn) return;
+            _waitingDiceMovePieceId = -1;
+            _resolver.FinishDiceMove();
+            EventCenter.Instance.EventTrigger(GameEvent.StateChanged, "dice-move-cancelled"); // 前端提示通道（可选消费）
+        }
+
         /// <summary>骰子移动方向选择（UI 调用——上下左右单方向；路径逐格界内非障碍、终点非占用；成功落账 + 清全场 buff；不扣 AP）。</summary>
         public void OnDiceDirectionSelected(Direction direction)
         {

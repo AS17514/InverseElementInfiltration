@@ -206,7 +206,7 @@ namespace TheLaw.UI
                         portraitKey = "常态",
                         layout = "rightMid", // 文字放右侧：避免盖住左侧栏目（Grp_L）高亮
                         text = "棋盘左侧是这次棋局的规则和状态，测试员可以随时查看在这个棋盘上的基础规则和附加规则、双方得分以及测试员已经获得的能力。",
-                        highlightTargets = new List<string> { "@leftInfo" },
+                        highlightTargets = new List<string> { "@leftInfoExAbilities" }, // Grp_L 全部（排除能力栏）
                     },
                     new TutorialStep
                     {

@@ -186,7 +186,10 @@ namespace TheLaw.UI
             }
             if (reachable.Count == 0)
             {
-                CancelDiceMoveSelect(); // 无可达方向——取消（后端亦会校验失败重选）
+                // AA4-09：无可达方向——直接取消（后端清等待态+buff，避免后续执行全部被重定向卡死）+ 回合状态按钮处提示
+                if (_flow != null) _flow.OnPlayerCancelDiceMove();
+                CancelDiceMoveSelect();
+                ShowDiceCancelTip("当前棋子无可达方向，点数直线移动已取消");
                 return;
             }
             ShowHighlights(reachable, null); // 绿块——与移动选格同视觉（原操作习惯）
@@ -297,6 +300,8 @@ namespace TheLaw.UI
         List<Template> _infoProgram; // 当前信息面板显示的程序（浮窗内容源）
         DG.Tweening.Tween _phaseFlashTween; // 准备完成按钮文字闪动 tween（显式管理，防销毁后访问）
         bool _phaseTipShowing;             // 阶段按钮 hover 提示是否正在显示（2026-08-23 准备引导）
+        bool _diceCancelTipShowing;        // AA4-09：骰子移动取消提示（同提示通道互斥防刷屏）
+        const float DiceCancelTipDuration = 2.5f; // AA4-09：取消提示显示时长
         bool _apEmptyTipShowing;           // AP 耗尽悬浮提示正在显示（2026-08-24 可选挂点——防连发刷屏）
         const float ApEmptyTipDuration = 1.6f; // AP 耗尽提示显示时长（秒）
 
@@ -1156,16 +1161,20 @@ namespace TheLaw.UI
             if (outline != null) outline.SetElementColor(ElementColors.ColorOf(piece.element));
         }
 
-        /// <summary>震击墙渲染（2026-08-26）：按 GameState.ShockWalls 生成深灰半透明方块（不可破坏墙；无美术前占位视觉——区别麻将墙暂无视觉）。</summary>
+        /// <summary>震击墙渲染（2026-08-26 起；2026-08-27 视觉：低矮 3D 墙块 + 随机 popup_bg_1~6 贴图铺满 6 面——方案 A）。</summary>
         void RebuildShockWalls()
         {
-            foreach (var go in _shockWallViews) if (go != null) Destroy(go);
+            foreach (var go in _shockWallViews)
+            {
+                if (go == null) continue;
+                DestroyShockWallMaterial(go);
+                Destroy(go);
+            }
             _shockWallViews.Clear();
             if (_state == null || _state.ShockWalls == null) return;
+            var textures = ShockWallTextures();
             foreach (var cell in _state.ShockWalls)
             {
-                // 2026-08-27：占位视觉改为低矮 3D 墙块（贴合棋盘 tile 的 3D 风格），
-                // 取代原“竖立深色 Sprite 薄片”——后者在俯视角下像不属于场景的杂色板。
                 var pos = PieceViewFactory.CellToWorld(cell);
                 pos.y = 0.08f; // 底面贴棋盘顶（tile 顶 ≈ -0.05），墙块高出约 0.2
                 var go = GameObject.CreatePrimitive(PrimitiveType.Cube);
@@ -1177,7 +1186,13 @@ namespace TheLaw.UI
                 var mr = go.GetComponent<MeshRenderer>();
                 if (mr != null)
                 {
-                    mr.sharedMaterial = ShockWallMaterial();
+                    var mat = new Material(ShockWallShader()) { name = $"ShockWallMat_{cell.x}_{cell.y}" };
+                    if (textures != null && textures.Length > 0)
+                    {
+                        mat.mainTexture = textures[UnityEngine.Random.Range(0, textures.Length)]; // 随机 1~6（视觉随机——不占用游戏种子 RNG）
+                    }
+                    mat.color = Color.white; // 贴图原色显示
+                    mr.sharedMaterial = mat;
                     mr.shadowCastingMode = UnityEngine.Rendering.ShadowCastingMode.Off;
                     mr.receiveShadows = false;
                 }
@@ -1185,15 +1200,36 @@ namespace TheLaw.UI
             }
         }
 
-        static Material _shockWallMaterial;
-        static Material ShockWallMaterial()
+        static void DestroyShockWallMaterial(GameObject go)
         {
-            if (_shockWallMaterial != null) return _shockWallMaterial;
-            var shader = Shader.Find("Standard"); // Built-in 必含 Standard——墙块占位用
-            var mat = new Material(shader);
-            mat.color = new Color(0.23f, 0.23f, 0.29f, 1f);
-            _shockWallMaterial = mat;
-            return mat;
+            var mr = go != null ? go.GetComponent<MeshRenderer>() : null;
+            if (mr == null || mr.sharedMaterial == null) return;
+            // 只销毁本组件创建的实例材质（名字前缀区分），避免误删共享/资源材质
+            if (!mr.sharedMaterial.name.StartsWith("ShockWallMat_")) return;
+            if (Application.isPlaying) Destroy(mr.sharedMaterial);
+            else DestroyImmediate(mr.sharedMaterial);
+        }
+
+        static Shader _shockWallShader;
+        static Shader ShockWallShader()
+        {
+            if (_shockWallShader != null) return _shockWallShader;
+            _shockWallShader = Shader.Find("Standard"); // Built-in 必含 Standard
+            return _shockWallShader;
+        }
+
+        static Texture2D[] _shockWallTextures;
+        /// <summary>预载震击墙贴图（popup_bg_1~6，Addressables 同步加载——小图，同 PieceViewFactory 立绘预载模式）。</summary>
+        static Texture2D[] ShockWallTextures()
+        {
+            if (_shockWallTextures != null) return _shockWallTextures;
+            _shockWallTextures = new Texture2D[6];
+            for (int i = 0; i < 6; i++)
+            {
+                var handle = UnityEngine.AddressableAssets.Addressables.LoadAssetAsync<Texture2D>("Art/Popups/popup_bg_" + (i + 1));
+                _shockWallTextures[i] = handle.WaitForCompletion();
+            }
+            return _shockWallTextures;
         }
 
         /// <summary>buff 变化（护盾/免费行动/临时能力）：目标是当前选中棋子 → 刷新信息面板（Txt_Other buff 区实时更新）。</summary>
@@ -2708,6 +2744,28 @@ namespace TheLaw.UI
         {
             yield return new WaitForSeconds(ApEmptyTipDuration);
             _apEmptyTipShowing = false;
+            TooltipManager.Instance.Hide();
+        }
+
+        /// <summary>AA4-09：骰子移动取消提示（复用阶段按钮提示通道——同 AP 提示互斥防刷屏）。</summary>
+        void ShowDiceCancelTip(string text)
+        {
+            if (_diceCancelTipShowing) return;
+            if (_panel == null || _panel.PhaseButton == null || _state == null) return;
+            var canvas = _panel.PhaseButton.GetComponentInParent<Canvas>();
+            if (canvas == null) return;
+            Vector2 screen = RectTransformUtility.WorldToScreenPoint(canvas.worldCamera, _panel.PhaseButton.transform.position);
+            if (_phaseTipShowing) { _phaseTipShowing = false; TooltipManager.Instance.Hide(); }
+            if (_apEmptyTipShowing) { _apEmptyTipShowing = false; TooltipManager.Instance.Hide(); }
+            TooltipManager.Instance.ShowAtScreen(text, screen);
+            _diceCancelTipShowing = true;
+            StartCoroutine(HideDiceCancelTipLater());
+        }
+
+        IEnumerator HideDiceCancelTipLater()
+        {
+            yield return new WaitForSeconds(DiceCancelTipDuration);
+            _diceCancelTipShowing = false;
             TooltipManager.Instance.Hide();
         }
 

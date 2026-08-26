@@ -10,7 +10,8 @@ namespace TheLaw.UI
     /// 新手教程管理器（Bootstrap 创建）：观察既有事件（只读）→ 按策划顺序展示教程序列。
     /// - 序列/步骤：TutorialContent（代码配置，文案源策划 docx）
     /// - 展示：TutorialPanel（角色说话，任意键下一步）+ TutorialMask（shader 挖孔高亮）
-    /// - 去重：会话内 HashSet；持久化待后端 TutorialSystem 契约（TryShow 发 TutorialRequested 事件——见 docs/后端待办.md）
+    /// - 去重：会话内 HashSet；持久化由后端 TutorialSystem.TryShow 发 TutorialRequested 事件承担（跨局去重）
+    /// - 收口（2026-08-26）：deck_intro 已单源到后端（deck_standard→TryShow）；event_intro/floor_rule_intro/battle_intro 为过渡观察路径，待后端补 TryShow 后移除
     /// - 等待步：waitEvent 未触发时忽略推进；8s 超时跳过该步
     /// </summary>
     public class TutorialManager : MonoBehaviour
@@ -27,6 +28,7 @@ namespace TheLaw.UI
         readonly HashSet<string> _waitEventsFired = new HashSet<string>();
 
         TutorialSequence _current;
+        System.Func<bool> _contextValid; // 场景上下文校验：教程所教状态失效 → 自动取消本阶段（用户定案：思路2）
         int _stepIndex;
         bool _active;
         bool _runStarted;
@@ -86,7 +88,6 @@ namespace TheLaw.UI
             ec.AddEventListener(GameEvent.AbilityCandidatesDrawn, OnAbilityCandidates);
             ec.AddEventListener(GameEvent.RuleCandidatesDrawn, OnRuleCandidates);
             ec.AddEventListener(GameEvent.RelicObtained, OnRelicObtained);
-            ec.AddEventListener(GameEvent.StateChanged, OnStateChanged);
             ec.AddEventListener(GameEvent.PhaseChanged, OnPhaseChanged);
             ec.AddEventListener(GameEvent.TutorialRequested, OnTutorialRequested);
         }
@@ -99,14 +100,13 @@ namespace TheLaw.UI
             ec.RemoveEventListener(GameEvent.AbilityCandidatesDrawn, OnAbilityCandidates);
             ec.RemoveEventListener(GameEvent.RuleCandidatesDrawn, OnRuleCandidates);
             ec.RemoveEventListener(GameEvent.RelicObtained, OnRelicObtained);
-            ec.RemoveEventListener(GameEvent.StateChanged, OnStateChanged);
             ec.RemoveEventListener(GameEvent.PhaseChanged, OnPhaseChanged);
             ec.RemoveEventListener(GameEvent.TutorialRequested, OnTutorialRequested);
         }
 
         void OnEventOpened(object data)
         {
-            TryFirstEvent();
+            TryFirstEvent(); // 过渡保留：后端暂未对普通事件发 TutorialRequested（事件打开仅覆盖 edit/deck 两序列）——后端补 TryShow 后移除
         }
 
         /// <summary>教程契约（2026-08-25 后端 TutorialSystem.TryShow 审核通过后发）：携带教程序列 id → 播放。</summary>
@@ -120,6 +120,7 @@ namespace TheLaw.UI
             TryFirstEvent(); // 首事件 = 能力事件（选遗物）→ 事件界面教程
         }
 
+        // ⚠️ 过渡保留：floor_rule_intro / battle_intro / event_intro 后端暂未发 TutorialRequested——观察路径为唯一来源；deck_intro 已收口到后端（见 OnStateChanged 移除记录）
         void OnRuleCandidates(object data)
         {
             if (_shown.Contains("event_intro"))
@@ -156,16 +157,7 @@ namespace TheLaw.UI
             }
         }
 
-        void OnStateChanged(object data)
-        {
-            if (!(data is string key)) return;
-            if (key == "deck" && _runStarted && !_shown.Contains("deck_intro"))
-            {
-                ShowSequence("deck_intro");
-            }
-        }
-
-        void OnPhaseChanged(object data)
+        void OnPhaseChanged(object data) // ⚠️ 过渡保留：battle_intro 后端未覆盖（见上方注释）
         {
             if (!(data is BattlePhase phase)) return;
             if (phase == BattlePhase.Placement && _runStarted && !_shown.Contains("battle_intro"))
@@ -197,11 +189,12 @@ namespace TheLaw.UI
             }
             _shown.Add(id);
             _current = seq;
+            _contextValid = ContextFor(id); // 绑定上下文校验（所教状态退出 → 取消）
             _stepIndex = 0;
             _active = true;
             EnsurePanelPushed();
             EnsureMask();
-            if (_mask != null) _mask.SetBlocking(true); // 教程期间阻挡下层面板交互（挖孔内放行）
+            if (_mask != null) _mask.SetBlocking(true); // 教程期间阻挡下层面板交互
             ShowCurrent();
         }
 
@@ -267,6 +260,7 @@ namespace TheLaw.UI
             CancelWaitTimeout();
             _active = false;
             _current = null;
+            _contextValid = null;
             _pendingHighlights.Clear();
             if (_panel != null) _panel.HideAll();
             if (_panelPushed && _ui != null)
@@ -285,6 +279,52 @@ namespace TheLaw.UI
                 _pendingId = null;
                 ShowSequence(id);
             }
+        }
+
+        /// <summary>
+        /// 场景上下文失效 → 取消当前阶段教程（用户定案：思路2）：
+        /// 教程所教的面板/状态已退出（如教程没播完就选了能力、事件面板已关闭）→ 立即收尾，
+        /// 不启动排队序列（避免在错误上下文续播造成"图层压栈上诡异显示"）。
+        /// </summary>
+        void CancelSequence()
+        {
+            CancelWaitTimeout();
+            _active = false;
+            _current = null;
+            _contextValid = null;
+            _pendingHighlights.Clear();
+            if (_panel != null) _panel.HideAll();
+            if (_panelPushed && _ui != null)
+            {
+                _ui.PopOverlay();
+                _panelPushed = false;
+            }
+            if (_mask != null)
+            {
+                _mask.SetVisible(false);
+                _mask.SetBlocking(false);
+            }
+            _pendingId = null; // 取消不续播排队序列
+        }
+
+        /// <summary>序列 → 上下文校验函数（null = 不校验）。</summary>
+        System.Func<bool> ContextFor(string id)
+        {
+            switch (id)
+            {
+                case "event_intro":      return () => IsPanelVisible("EventPanel");
+                case "edit_intro":       return () => IsPanelVisible("PieceEdit");
+                case "deck_intro":       return () => IsPanelVisible("DeckBuild");
+                case "battle_intro":     return () => IsPanelVisible("Battle");
+                case "floor_rule_intro": return () => IsPanelVisible("EventPanel");
+                default:                 return null;
+            }
+        }
+
+        bool IsPanelVisible(string key)
+        {
+            var mb = _ui != null ? _ui.GetPanel(key) as MonoBehaviour : null;
+            return mb != null && mb.gameObject.activeInHierarchy;
         }
 
         void StartWaitTimeout()
@@ -352,6 +392,12 @@ namespace TheLaw.UI
         {
             TryTriggerEditIntro(); // 编辑教程触发点 = 进入棋子编辑面板后（轮询可见，非候选事件）
             if (!_active) return;
+            // 场景上下文检查：所教状态已退出（如教程未播完就选定能力）→ 立即取消本阶段，防"图层压栈上诡异显示"
+            if (_contextValid != null && !_contextValid())
+            {
+                CancelSequence();
+                return;
+            }
             if (_pendingHighlights.Count > 0)
             {
                 _retryTimer -= Time.unscaledDeltaTime;
@@ -387,8 +433,8 @@ namespace TheLaw.UI
             var unresolved = new List<string>();
             foreach (var s in _pendingHighlights)
             {
-                var t = ResolveHighlight(s);
-                if (t != null) resolved.Add(t);
+                var ts = ResolveHighlightMulti(s);
+                if (ts != null && ts.Count > 0) resolved.AddRange(ts);
                 else unresolved.Add(s);
             }
             _pendingHighlights.Clear();
@@ -410,6 +456,31 @@ namespace TheLaw.UI
                     _mask.SetVisible(false);
                 }
             }
+        }
+
+        /// <summary>解析高亮目标（支持一个 spec → 多个目标联合挖孔）。</summary>
+        List<Transform> ResolveHighlightMulti(string spec)
+        {
+            var list = new List<Transform>();
+            if (spec == "@leftInfoExAbilities")
+            {
+                // 左栏分数区：Grp_L 全部内容，排除 Txt_Abilities_K / Txt_Abilities（用户定案）
+                var grpL = FindAnyScene("Grp_L");
+                if (grpL != null)
+                {
+                    foreach (Transform ch in grpL)
+                    {
+                        if (!ch.gameObject.activeInHierarchy) continue;
+                        if (ch.GetComponent<RectTransform>() == null) continue;
+                        if (ch.name == "Txt_Abilities_K" || ch.name == "Txt_Abilities") continue;
+                        list.Add(ch);
+                    }
+                }
+                return list;
+            }
+            var single = ResolveHighlight(spec);
+            if (single != null) list.Add(single);
+            return list;
         }
 
         /// <summary>解析高亮目标：普通名/路径在面板内 FindDeep、场景内 GameObject.Find；"@xxx" 走动态解析。</summary>

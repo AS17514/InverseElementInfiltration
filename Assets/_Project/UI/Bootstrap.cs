@@ -48,7 +48,6 @@ namespace TheLaw.UI
         private static Bootstrap _instance; // 静态实例标记：防重（双实例并存时先到者存活，后到者自毁）
         private UIManager _uiManager;
         private TutorialSystem _tutorialSystem;
-        private ProgressSystem _progressSystem;
         private GameState _gameState;
         private BoardRules _boardRules;
         private IntentResolver _intentResolver;
@@ -161,7 +160,6 @@ namespace TheLaw.UI
             _uiManager = new UIManager();
             _tutorialSystem = new TutorialSystem();
             _tutorialSystem.LoadTutorials(); // 2026-08-25：教程记录独立教程加载（tutorial.json——仿 settings.json，不随存档）
-            _progressSystem = new ProgressSystem();
         }
 
         // ========== ② 加载配置（方案 A：Inspector 拖拽引用 → 注册进 ConfigTable）==========
@@ -271,7 +269,7 @@ namespace TheLaw.UI
             saveManager.RegisterSnapshot(_gameState);
             saveManager.RegisterSnapshot(RandomManager.Instance);
             // ⚠️ 2026-08-25：教程记录不再注册主档快照——独立 tutorial.json（仿 settings.json：设备级状态、变更立即保存、启动单独加载）
-            saveManager.RegisterSnapshot(_progressSystem);
+            // 2026-08-26：ProgressSystem 已移除（AA5-13：全程无调用方的剧情骨架——存档旧段由 SaveManager 忽略）
         }
 
         // ========== ⑤ 事件接线 ==========

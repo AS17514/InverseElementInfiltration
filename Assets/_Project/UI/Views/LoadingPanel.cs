@@ -25,7 +25,6 @@ namespace TheLaw.UI
         private TMP_Text _text;
         private Coroutine _dots;
         private Tween _fade;
-        private bool _fadingOut;
 
         /// <summary>渐入动画完成事件——PanelTransition 等待此事件后才延时切换面板（非同步关系）。</summary>
         public event Action OnFadeInComplete;
@@ -43,7 +42,6 @@ namespace TheLaw.UI
 
         public override void Show()
         {
-            _fadingOut = false;
             _cg.alpha = 0f; // 激活前置 0——避免激活瞬间闪出
             base.Show();    // SetActive(true) + RefreshLayout + OnShow + 面板打开碰撞音
             if (_fade != null) _fade.Kill();
@@ -56,14 +54,12 @@ namespace TheLaw.UI
         public override void Hide()
         {
             if (!gameObject.activeSelf) return;
-            // ⚠️ 不用 _fadingOut 早退：上次淡出若被中断（tween 被清）残留 true 会让后续 Hide 静默跳过 → 面板被瞬时隐藏；改为重启淡出
+            // 不早退：上次淡出若被中断（tween 被清）会让后续 Hide 静默跳过 → 面板被瞬时隐藏；改为重启淡出
             StopDots();
             if (_fade != null) _fade.Kill();
-            _fadingOut = true;
             _fade = DOTween.To(() => _cg.alpha, v => _cg.alpha = v, 0f, fadeOutSeconds).SetUpdate(true) // realtime
                 .OnComplete(() =>
             {
-                _fadingOut = false;
                 gameObject.SetActive(false);
             });
         }

@@ -221,7 +221,7 @@ namespace TheLaw.UI
         {
             _editorSession = new EditorSession(_gameState, _resolver);
             _eventNodeSystem = new EventNodeSystem(_gameState, _resolver, _tutorialSystem); // 2026-08-25 教程契约：事件打开触发点（TryShow 跨局去重）
-            _towerFlow = new TowerFlow(_gameState, _eventNodeSystem, _battleFlowFactory, GetMapConfig());
+            _towerFlow = new TowerFlow(_gameState, _eventNodeSystem, _battleFlowFactory, GetMapConfig(), _tutorialSystem);
             RefreshSessionPanelRefs();
         }
 

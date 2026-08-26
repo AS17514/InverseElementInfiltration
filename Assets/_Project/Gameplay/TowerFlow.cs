@@ -17,13 +17,15 @@ namespace TheLaw.Gameplay
         private readonly Func<BattleFlow> _battleFlowFactory; // 战斗级"进入创建"（2026-08-13：每场战斗创建新 BattleFlow）
         private BattleFlow _battleFlow;                       // 当前战斗实例（可空——非战斗中为 null）
         private readonly MapConfig _map;
+        private readonly TutorialSystem _tutorialSystem;      // 2026-08-26 教程契约：战斗进入触发点（battle_intro）
 
-        public TowerFlow(GameState state, EventNodeSystem eventNodeSystem, Func<BattleFlow> battleFlowFactory, MapConfig map)
+        public TowerFlow(GameState state, EventNodeSystem eventNodeSystem, Func<BattleFlow> battleFlowFactory, MapConfig map, TutorialSystem tutorialSystem)
         {
             _state = state;
             _eventNodeSystem = eventNodeSystem;
             _battleFlowFactory = battleFlowFactory;
             _map = map;
+            _tutorialSystem = tutorialSystem;
             // 事件完成推进（与 PlacementFinished 同模式：UI 报告完成，规则层决定推进）
             EventCenter.Instance.AddEventListener(GameEvent.EventCompleted, OnEventCompleted);
         }
@@ -50,6 +52,7 @@ namespace TheLaw.Gameplay
             var aiParams = GetDefaultAIParams();
             _battleFlow = _battleFlowFactory();
             _battleFlow.StartBattle(floor, aiParams);
+            if (_tutorialSystem != null) _tutorialSystem.TryShow("battle_intro"); // 2026-08-26 教程契约：进入战斗摆放 → 战斗介绍
         }
 
         /// <summary>
@@ -123,6 +126,7 @@ namespace TheLaw.Gameplay
                 // 战斗级"进入创建"（2026-08-13）：每场战斗创建新 BattleFlow——瞬态字段随实例归零
                 _battleFlow = _battleFlowFactory();
                 _battleFlow.StartBattle(floor, aiParams);
+                if (_tutorialSystem != null) _tutorialSystem.TryShow("battle_intro"); // 2026-08-26 教程契约：进入战斗摆放 → 战斗介绍
             }
             else
             {

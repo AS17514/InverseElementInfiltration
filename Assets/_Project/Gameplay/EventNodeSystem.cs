@@ -65,6 +65,7 @@ namespace TheLaw.Gameplay
             if (ev != null && ev.isRulePick)
             {
                 _resolver.DrawRuleCandidates();
+                if (_tutorialSystem != null) _tutorialSystem.TryShow("floor_rule_intro"); // 2026-08-26 教程契约：玩法选择 → 玩法规则教程
                 return; // 玩法事件不走普通 EventOpened/选项流（前端按 RuleCandidatesDrawn 显示二选一）
             }
             // 通知 UI：事件关打开（携带当前事件 id——UI 据此打开事件界面）
@@ -81,6 +82,7 @@ namespace TheLaw.Gameplay
                 case "edit_standard": _tutorialSystem.TryShow("edit_intro"); break;  // 编辑事件
                 case "deck_standard": _tutorialSystem.TryShow("deck_intro"); break;  // 构筑事件
                 // 能力事件（ability_pick）走 isAbilityPick 分支独立触发（上方）——此处不重复
+                default: _tutorialSystem.TryShow("event_intro"); break;  // 2026-08-26 教程契约：普通事件打开 → 通用事件介绍（能力/玩法事件在各自分支触发）
             }
         }
 

@@ -41,6 +41,7 @@ namespace TheLaw.UI
 
         private readonly List<Vector2Int> _resolutions = new List<Vector2Int>(); // 下拉选项（索引映射）
         private Coroutine _layoutRefreshRoutine;
+        private Coroutine _volumeSaveRoutine; // 音量滑条拖动写盘节流（≥300ms 合并——避免每 tick 全量写 settings.json）
         private bool _wired;
 
         public void Init(UIManager uiManager)
@@ -95,8 +96,9 @@ namespace TheLaw.UI
                 _sldBgm.maxValue = 1f;
                 _sldBgm.onValueChanged.AddListener(v =>
                 {
-                    SettingsSystem.Instance.SetBGMVolumePercent(Mathf.RoundToInt(v * 100f));
+                    SettingsSystem.Instance.ApplyBGMVolumePercent(Mathf.RoundToInt(v * 100f));
                     if (_txtBgmV != null) _txtBgmV.text = $"{Mathf.RoundToInt(v * 100f)}";
+                    ScheduleVolumeSave();
                 });
             }
             if (_sldSfx != null)
@@ -105,8 +107,9 @@ namespace TheLaw.UI
                 _sldSfx.maxValue = 1f;
                 _sldSfx.onValueChanged.AddListener(v =>
                 {
-                    SettingsSystem.Instance.SetSFXVolumePercent(Mathf.RoundToInt(v * 100f));
+                    SettingsSystem.Instance.ApplySFXVolumePercent(Mathf.RoundToInt(v * 100f));
                     if (_txtSfxV != null) _txtSfxV.text = $"{Mathf.RoundToInt(v * 100f)}";
+                    ScheduleVolumeSave();
                 });
             }
             if (_togFullscreen != null)
@@ -192,6 +195,31 @@ namespace TheLaw.UI
         {
             if (_uiManager != null) _uiManager.PopOverlay(Key); // 定向弹栈（2026-08-27 修复：无参弹栈顶可能弹错对象）
             else Hide();
+        }
+
+        /// <summary>音量写盘节流：拖动期间 ≥300ms 合并一次落盘（实时生效由 Apply* 发 SettingsChanged 保证，不因节流受影响）。</summary>
+        void ScheduleVolumeSave()
+        {
+            if (_volumeSaveRoutine != null) StopCoroutine(_volumeSaveRoutine);
+            _volumeSaveRoutine = StartCoroutine(SaveSettingsDelayed());
+        }
+
+        System.Collections.IEnumerator SaveSettingsDelayed()
+        {
+            yield return new WaitForSecondsRealtime(0.3f);
+            _volumeSaveRoutine = null;
+            SettingsSystem.Instance.SaveSettings();
+        }
+
+        /// <summary>面板隐藏/关闭时若还有待写音量，立即落盘（防节流窗口内关面板丢最终值）。</summary>
+        protected override void OnHide()
+        {
+            if (_volumeSaveRoutine != null)
+            {
+                StopCoroutine(_volumeSaveRoutine);
+                _volumeSaveRoutine = null;
+                SettingsSystem.Instance.SaveSettings();
+            }
         }
 
         protected override void OnBgClicked()

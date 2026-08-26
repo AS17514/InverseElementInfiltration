@@ -27,6 +27,7 @@ namespace TheLaw.UI
         private TMP_Text _infoText;     // Txt_Info
         private Transform _numbersRoot; // Grp_Numbers
         private GameObject _numberTemplate; // Btn_Number（Addressables 缓存）
+        private AsyncOperationHandle<GameObject> _numberTemplateHandle;
 
         public void Init(UIManager uiManager, Resolver resolver, Func<BattleFlow> flowProvider)
         {
@@ -52,6 +53,11 @@ namespace TheLaw.UI
         {
             if (_uiManager != null) _uiManager.PopOverlay(Key);
             else gameObject.SetActive(false);
+        }
+
+        void OnDestroy()
+        {
+            if (_numberTemplateHandle.IsValid()) Addressables.Release(_numberTemplateHandle);
         }
 
         /// <summary>宝牌选数（1-9）：获得「宝牌」能力后调用 → 选择落账 SetBaopaiNumber（后端校验持有+1-9）。</summary>
@@ -94,6 +100,11 @@ namespace TheLaw.UI
                 if (handle.Status == AsyncOperationStatus.Succeeded && handle.Result != null)
                 {
                     _numberTemplate = handle.Result;
+                    _numberTemplateHandle = handle;
+                }
+                else
+                {
+                    if (handle.IsValid()) Addressables.Release(handle);
                 }
             }
             if (_numberTemplate == null || _numbersRoot == null)

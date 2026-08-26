@@ -12,9 +12,12 @@ namespace TheLaw.UI
     {
         const float TargetAspect = 16f / 9f;
         const float Tolerance = 0.001f;
+        const float ResolutionRetryInterval = 0.5f; // SetResolution 节流（窗口管理器强制回非 16:9 时不再每帧重建窗口）
 
         Camera _cam;
         Camera _blackCam;
+        int _lastScreenW, _lastScreenH; // 上次已应用的屏幕尺寸（未变则跳过 rect 写入）
+        float _lastResolutionAttempt = -999f; // 上次 SetResolution 尝试时间（realtimeSinceStartup）
 
         void OnEnable()
         {
@@ -33,6 +36,17 @@ namespace TheLaw.UI
             if (_cam == null) return;
             if (Screen.width <= 0 || Screen.height <= 0) return;
 
+            EnsureBlackCamera();
+
+            // 屏幕尺寸未变 → rect/aspect 未变：跳过相机 rect 写入（AA2-02）
+            if (Screen.width == _lastScreenW && Screen.height == _lastScreenH)
+            {
+                LockWindowAspect(); // 节流后仅窗口比例不符时重试
+                return;
+            }
+            _lastScreenW = Screen.width;
+            _lastScreenH = Screen.height;
+
             var rect = GetLetterboxRect();
             _cam.rect = rect;
             if (Camera.main != null) Camera.main.rect = rect;
@@ -43,7 +57,6 @@ namespace TheLaw.UI
                 var bg = bgCam.GetComponent<Camera>();
                 if (bg != null) bg.rect = rect;
             }
-            EnsureBlackCamera();
             LockWindowAspect();
         }
 
@@ -83,6 +96,10 @@ namespace TheLaw.UI
             if (Screen.fullScreen) return;
             float screenAspect = (float)Screen.width / Screen.height;
             if (Mathf.Abs(screenAspect - TargetAspect) < Tolerance) return;
+
+            // 节流：窗口管理器强制回非 16:9 时不再每帧 SetResolution（可能反复触发窗口重建）
+            if (Time.realtimeSinceStartup - _lastResolutionAttempt < ResolutionRetryInterval) return;
+            _lastResolutionAttempt = Time.realtimeSinceStartup;
 
             int w, h;
             if (screenAspect > TargetAspect)

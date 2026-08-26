@@ -390,9 +390,7 @@ namespace TheLaw.UI
             EventCenter.Instance.AddEventListener(GameEvent.RelicObtained, OnRelicObtained); // 道中获得遗物/能力 → 刷新全局能力栏
 
             // UI 架构重构 §五：面板局内缓存（Bootstrap 管理生命周期）——每场绑定不创建
-            // 防御：面板未就绪（Bootstrap 保证——不应发生）——先检查再订阅（验收 B：防防御路径订阅残留）
             _panel = panel;
-            if (_panel == null) return;
             panel.ResetCheatCount(); // 2026-08-26 测试自动过关：Ctrl+设置×10 计数每场战斗重置（防跨场累计误触发）
             panel.SetFloorName(Bootstrap.FloorDisplayName(state != null ? state.CurrentFloor : 0)); // 2026-08-26 左上角关卡名称（白模/Demo/ALPHA/BETA）
             _uiManager.RegisterPanel(panel); // 幂等覆盖（重复注册无害）
@@ -1166,27 +1164,36 @@ namespace TheLaw.UI
             if (_state == null || _state.ShockWalls == null) return;
             foreach (var cell in _state.ShockWalls)
             {
-                var go = new GameObject($"ShockWall_{cell.x}_{cell.y}");
-                go.transform.position = PieceViewFactory.CellToWorld(cell);
-                var sr = go.AddComponent<SpriteRenderer>();
-                sr.sprite = ShockWallSprite();
-                sr.color = new Color(0.25f, 0.25f, 0.3f, 0.9f);
-                sr.sortingOrder = 300; // 棋子（400+）之下
+                // 2026-08-27：占位视觉改为低矮 3D 墙块（贴合棋盘 tile 的 3D 风格），
+                // 取代原“竖立深色 Sprite 薄片”——后者在俯视角下像不属于场景的杂色板。
+                var pos = PieceViewFactory.CellToWorld(cell);
+                pos.y = 0.08f; // 底面贴棋盘顶（tile 顶 ≈ -0.05），墙块高出约 0.2
+                var go = GameObject.CreatePrimitive(PrimitiveType.Cube);
+                go.name = $"ShockWall_{cell.x}_{cell.y}";
+                go.transform.position = pos;
+                go.transform.localScale = new Vector3(0.8f, 0.25f, 0.8f);
+                var col = go.GetComponent<Collider>();
+                if (col != null) Destroy(col); // 移除默认碰撞体——避免拦截棋盘 cell 射线（墙格本身即阻挡格）
+                var mr = go.GetComponent<MeshRenderer>();
+                if (mr != null)
+                {
+                    mr.sharedMaterial = ShockWallMaterial();
+                    mr.shadowCastingMode = UnityEngine.Rendering.ShadowCastingMode.Off;
+                    mr.receiveShadows = false;
+                }
                 _shockWallViews.Add(go);
             }
         }
 
-        static Sprite _shockWallSprite;
-        static Sprite ShockWallSprite()
+        static Material _shockWallMaterial;
+        static Material ShockWallMaterial()
         {
-            if (_shockWallSprite != null) return _shockWallSprite;
-            var tex = new Texture2D(100, 100, TextureFormat.RGBA32, false);
-            var px = new Color[100 * 100];
-            for (int i = 0; i < px.Length; i++) px[i] = Color.white;
-            tex.SetPixels(px);
-            tex.Apply();
-            _shockWallSprite = Sprite.Create(tex, new Rect(0, 0, 100, 100), new Vector2(0.5f, 0.5f), 100f); // 1×1 单位
-            return _shockWallSprite;
+            if (_shockWallMaterial != null) return _shockWallMaterial;
+            var shader = Shader.Find("Standard"); // Built-in 必含 Standard——墙块占位用
+            var mat = new Material(shader);
+            mat.color = new Color(0.23f, 0.23f, 0.29f, 1f);
+            _shockWallMaterial = mat;
+            return mat;
         }
 
         /// <summary>buff 变化（护盾/免费行动/临时能力）：目标是当前选中棋子 → 刷新信息面板（Txt_Other buff 区实时更新）。</summary>
@@ -2838,12 +2845,9 @@ namespace TheLaw.UI
                 _infoProgramBlocks[i] = t != null ? t.GetComponent<SpriteRenderer>() : null;
                 if (_infoProgramBlocks[i] != null && t.GetComponent<Collider>() == null)
                 {
-                    // collider 尺寸对齐 sprite 世界尺寸（除以 localScale 得局部尺寸）——默认 (1,1,1) 在 0.16 缩放下只有 0.16 世界尺寸，hover 命中率极低
-                    var sr = _infoProgramBlocks[i];
+                    // 2026-08-27：固定命中盒（覆盖整个块位，不随图标 sprite 缩放缩水——图标缩小后 tip 仍可命中）
                     var bc = t.gameObject.AddComponent<BoxCollider>();
-                    float sx = t.localScale.x != 0 ? t.localScale.x : 1f;
-                    float sy = t.localScale.y != 0 ? t.localScale.y : 1f;
-                    bc.size = new Vector3(sr.bounds.size.x / sx, sr.bounds.size.y / sy, 0.2f);
+                    bc.size = new Vector3(BehaviorBlockHitSize, BehaviorBlockHitSize, 0.2f);
                 }
             }
             // 注：Txt_Other_K 是标题（“其他”），Txt_Other 是多行 buff 区——由 FillInfo 填充（2026-08-11）
@@ -2915,16 +2919,17 @@ namespace TheLaw.UI
             }
         }
 
-        /// <summary>行为逻辑块换图后重算碰撞盒（对齐 sprite 世界尺寸——构造时按旧图算过一次）。</summary>
+        /// <summary>行为逻辑块命中盒固定尺寸（世界单位，局部 1:1 下覆盖块位；调大调小改这里）。</summary>
+        const float BehaviorBlockHitSize = 1.5f;
+
+        /// <summary>换图后无需重算——命中盒固定（与 sprite 尺寸解耦，2026-08-27）。</summary>
         void RefreshBlockCollider(int index)
         {
             var sr = _infoProgramBlocks[index];
-            if (sr == null || sr.sprite == null) return;
+            if (sr == null) return;
             var col = sr.GetComponent<BoxCollider>();
             if (col == null) return;
-            float sx = sr.transform.localScale.x != 0 ? sr.transform.localScale.x : 1f;
-            float sy = sr.transform.localScale.y != 0 ? sr.transform.localScale.y : 1f;
-            col.size = new Vector3(sr.bounds.size.x / sx, sr.bounds.size.y / sy, 0.2f);
+            col.size = new Vector3(BehaviorBlockHitSize, BehaviorBlockHitSize, 0.2f);
         }
 
         /// <summary>buff key 内置中文兜底（配置表未命中时——防机器码泄漏）：shield/free_execute/ability_* → 中文。</summary>
@@ -3342,17 +3347,6 @@ namespace TheLaw.UI
             RefreshQualifyHighlight(); // 2026-08-23：手牌重建后回填 E5 资格高亮（真值在 GameState.EditedCardQualifyId）
         }
 
-        /// <summary>新卡淡入（alpha 0→1，按索引错峰）——重建后重排有过渡而非瞬间出现。</summary>
-        void FadeInCard(GameObject card, int index)
-        {
-            var cg = card.GetComponent<CanvasGroup>();
-            if (cg == null) cg = card.AddComponent<CanvasGroup>();
-            cg.alpha = 0f;
-            DG.Tweening.DOTween.To(() => cg.alpha, a => cg.alpha = a, 1f, 0.2f)
-                .SetDelay(index * 0.04f)
-                .SetTarget(cg);
-        }
-
         void AddCardDrag(GameObject card, Card handCard, int index)
         {
             var drag = card.AddComponent<HandCardDrag>();
@@ -3623,7 +3617,7 @@ namespace TheLaw.UI
                 _fadeTween.Kill();
                 _fadeTween = null;
             }
-            // ⚠️ 2026-08-16：CanvasGroup 上的 tween（FadeInCard/RestoreDragCard 等 SetTarget(cg)）
+            // ⚠️ 2026-08-16：CanvasGroup 上的 tween（RestoreDragCard 等 SetTarget(cg)）
             // 也要杀——只 Kill(transform) 杀不到组件 target，卡销毁后 DOTween 会报 missing target/field
             if (_cg != null) DG.Tweening.DOTween.Kill(_cg);
             DG.Tweening.DOTween.Kill(transform); // 拖出缩小 tween（有 target，也要杀）

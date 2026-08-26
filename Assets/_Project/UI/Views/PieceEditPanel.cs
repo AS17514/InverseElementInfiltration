@@ -4,6 +4,8 @@ using TheLaw.Data;
 using TheLaw.Gameplay;
 using TMPro;
 using UnityEngine;
+using UnityEngine.AddressableAssets;
+using UnityEngine.ResourceManagement.AsyncOperations;
 using UnityEngine.EventSystems;
 using UnityEngine.InputSystem;
 using UnityEngine.UI;
@@ -48,8 +50,10 @@ namespace TheLaw.UI
         private List<Template> _programLibrary = new List<Template>();
         private int _programListGeneration; // 候选切换时丢弃旧的异步列表构建结果
         private GameObject _programCardTemplate; // Program_Card 缓存，避免每次候选刷新重复加载 Addressable
+        private AsyncOperationHandle<GameObject> _programCardTemplateHandle;
         private bool _loadingProgramCardTemplate;
         private GameObject _progTemplate; // Piece_ProgramInfo prefab（卡面缩略图模板——Addressables）
+        private AsyncOperationHandle<GameObject> _progTemplateHandle;
         private Button _nextBtn;             // Btn_Next（仅选中本次指定棋子时可完成）
         private Button _undoBtn;             // Btn_Undo（单击撤一步 / 长按全部撤回）
         private UndoButtonHandler _undoHandler;
@@ -166,6 +170,8 @@ namespace TheLaw.UI
         {
             CleanupDragGhosts();
             EventCenter.Instance.RemoveEventListener(GameEvent.ProgramEdited, OnProgramEdited);
+            if (_progTemplateHandle.IsValid()) Addressables.Release(_progTemplateHandle);
+            if (_programCardTemplateHandle.IsValid()) Addressables.Release(_programCardTemplateHandle);
             if (_undoHandler != null)
             {
                 _undoHandler.OnClick -= OnUndoClicked;
@@ -454,22 +460,30 @@ namespace TheLaw.UI
         System.Collections.IEnumerator BuildPieceListInner()
         {
             // 加载 Piece_Card / Piece_ProgramInfo 模板（Addressables）。预制体负责布局，运行时只添加实例。
-            var cardHandle = UnityEngine.AddressableAssets.Addressables.LoadAssetAsync<GameObject>("Piece_Card");
-            var progHandle = UnityEngine.AddressableAssets.Addressables.LoadAssetAsync<GameObject>("Piece_ProgramInfo");
+            var cardHandle = Addressables.LoadAssetAsync<GameObject>("Piece_Card");
+            var progHandle = Addressables.LoadAssetAsync<GameObject>("Piece_ProgramInfo");
             yield return cardHandle;
             yield return progHandle;
-            if (cardHandle.Status != UnityEngine.ResourceManagement.AsyncOperations.AsyncOperationStatus.Succeeded || cardHandle.Result == null)
+            if (cardHandle.Status != AsyncOperationStatus.Succeeded || cardHandle.Result == null)
             {
                 Debug.LogWarning("[PieceEdit] Piece_Card 加载失败——棋子列表为空");
+                if (cardHandle.IsValid()) Addressables.Release(cardHandle);
+                if (progHandle.IsValid()) Addressables.Release(progHandle);
                 yield break;
             }
             // ToggleGroup：单选管理（挂 Content 上）
             var group = _pieceContent.GetComponent<ToggleGroup>();
             if (group == null) group = _pieceContent.gameObject.AddComponent<ToggleGroup>();
             group.allowSwitchOff = false;
-            if (progHandle.Status == UnityEngine.ResourceManagement.AsyncOperations.AsyncOperationStatus.Succeeded && progHandle.Result != null)
+            if (progHandle.Status == AsyncOperationStatus.Succeeded && progHandle.Result != null)
             {
+                if (_progTemplateHandle.IsValid()) Addressables.Release(_progTemplateHandle);
                 _progTemplate = progHandle.Result; // 缓存模板（RefreshPieceCardProgram 动态增删用）
+                _progTemplateHandle = progHandle;
+            }
+            else
+            {
+                if (progHandle.IsValid()) Addressables.Release(progHandle);
             }
             foreach (Transform child in _pieceContent) Destroy(child.gameObject);
             // 类型优先（初始→部署→升变）+ 同类型有效价值升序（程序编辑可能改变类型/价值）
@@ -512,6 +526,8 @@ namespace TheLaw.UI
             // 滚动位置归零（跨局打开不残留旧滚动）
             var scroll = _pieceContent.GetComponentInParent<ScrollRect>();
             if (scroll != null) scroll.normalizedPosition = Vector2.zero;
+            // 卡面已实例化——释放本次 Piece_Card 加载引用（实例持有 prefab 引用，同 DeckLibraryPanel/BattleController）。
+            if (cardHandle.IsValid()) Addressables.Release(cardHandle);
         }
 
         void BindPieceCardSelection(GameObject go, PieceDef def, ToggleGroup group)
@@ -695,12 +711,18 @@ namespace TheLaw.UI
                 else
                 {
                     _loadingProgramCardTemplate = true;
-                    var handle = UnityEngine.AddressableAssets.Addressables.LoadAssetAsync<GameObject>("Program_Card");
+                    var handle = Addressables.LoadAssetAsync<GameObject>("Program_Card");
                     yield return handle;
                     _loadingProgramCardTemplate = false;
-                    if (handle.Status == UnityEngine.ResourceManagement.AsyncOperations.AsyncOperationStatus.Succeeded)
+                    if (handle.Status == AsyncOperationStatus.Succeeded)
                     {
+                        if (_programCardTemplateHandle.IsValid()) Addressables.Release(_programCardTemplateHandle);
                         _programCardTemplate = handle.Result;
+                        _programCardTemplateHandle = handle;
+                    }
+                    else
+                    {
+                        if (handle.IsValid()) Addressables.Release(handle);
                     }
                 }
             }
@@ -1084,16 +1106,9 @@ namespace TheLaw.UI
                 ghostSource = transform; // 槽位块（Img_InfoProgram 含类型字）
             }
             if (ghostSource == null) return;
-            // 防孤儿：新拖拽开始先清面板登记的残留幽灵 + 按名清理本 canvas 下未托管幽灵（既有脏数据也清）
+            // 防孤儿：新拖拽开始先清面板登记的残留幽灵（_dragGhosts 登记 + OnDisable/OnDestroy/OnEndDrag 已覆盖生命周期）
+            // 2026-08-26 PERF（AA2-08）：删除 FindObjectsOfType 全场景扫描兜底——每次拖拽全量遍历场景属纯开销。
             if (_panel != null) _panel.CleanupDragGhosts();
-            foreach (var orphan in UnityEngine.Object.FindObjectsOfType<GameObject>(true))
-            {
-                if ((orphan.name == "ProgDragGhost" || orphan.name == "SlotDragGhost")
-                    && orphan.transform.IsChildOf(canvas.transform))
-                {
-                    Destroy(orphan);
-                }
-            }
             _ghost = Instantiate(ghostSource.gameObject, canvas.transform);
             _ghost.name = _source == DragSource.Library ? "ProgDragGhost" : "SlotDragGhost";
             if (_panel != null) _panel.RegisterDragGhost(_ghost);

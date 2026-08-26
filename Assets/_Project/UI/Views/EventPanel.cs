@@ -5,6 +5,8 @@ using TheLaw.Data;
 using TheLaw.Gameplay;
 using TMPro;
 using UnityEngine;
+using UnityEngine.AddressableAssets;
+using UnityEngine.ResourceManagement.AsyncOperations;
 using UnityEngine.UI;
 
 namespace TheLaw.UI
@@ -27,6 +29,7 @@ namespace TheLaw.UI
         private EventDefinition _currentEvent;
         private string _currentEventId;
         private GameObject _optionTemplate; // Btn_EventOption prefab（Addressables 缓存）
+        private AsyncOperationHandle<GameObject> _optionTemplateHandle;
 
         private GameState _gameState;          // 能力模式：读取候选/刷新次数（UI 只读——状态修改必须走 Resolver）
         private Resolver _resolver;            // 能力模式：SelectAbility / RefreshAbilityCandidate
@@ -39,8 +42,10 @@ namespace TheLaw.UI
         private Sprite _defaultArt;            // prefab 默认 CG（无专属 CG 事件回退）
         private Vector2 _defaultArtPos, _defaultArtSize; // prefab 默认 CG 的 anchoredPosition/sizeDelta（恢复用）
         private Sprite _artAbility, _artEdit, _artMode; // 事件 CG（Addressables 懒加载缓存）
+        private AsyncOperationHandle<Sprite> _artAbilityHandle, _artEditHandle, _artModeHandle;
         private string _pendingArtKey;         // CG 未加载完时的待应用类型 key（加载完成后补应用）
         private Sprite _circleSmallEmpty, _circleSmallFilled, _circleBigEmpty, _circleBigFilled; // 进度节点素材（小/大 × 空/满）
+        private AsyncOperationHandle<Sprite> _circleSmallEmptyHandle, _circleSmallFilledHandle, _circleBigEmptyHandle, _circleBigFilledHandle;
         private string _deferredEventId;       // 获得物品弹窗展示中延迟的事件 id（确认后才切下个事件——2026-08-25）
         private TMP_Text _progressTitle;       // 顶栏 Txt_CurrentProgress——阶段按层 + 层内节点序号（白模-1、白模-2…）
         static readonly string[] ProgressPhases = { "白模", "Demo", "ALPHA", "BETA" }; // 四阶段（2026-08-25 用户定名）
@@ -165,9 +170,10 @@ namespace TheLaw.UI
 
         System.Collections.IEnumerator LoadOptionTemplate()
         {
-            var handle = UnityEngine.AddressableAssets.Addressables.LoadAssetAsync<GameObject>("Btn_EventOption");
+            var handle = Addressables.LoadAssetAsync<GameObject>("Btn_EventOption");
+            _optionTemplateHandle = handle;
             yield return handle;
-            if (handle.Status == UnityEngine.ResourceManagement.AsyncOperations.AsyncOperationStatus.Succeeded)
+            if (handle.Status == AsyncOperationStatus.Succeeded)
             {
                 _optionTemplate = handle.Result;
             }
@@ -178,6 +184,14 @@ namespace TheLaw.UI
             EventCenter.Instance.RemoveEventListener(GameEvent.EventOpened, OnEventOpened);
             EventCenter.Instance.RemoveEventListener(GameEvent.AbilityCandidatesDrawn, OnAbilityCandidatesDrawn);
             EventCenter.Instance.RemoveEventListener(GameEvent.RuleCandidatesDrawn, OnRuleCandidatesDrawn);
+            if (_optionTemplateHandle.IsValid()) Addressables.Release(_optionTemplateHandle);
+            if (_artAbilityHandle.IsValid()) Addressables.Release(_artAbilityHandle);
+            if (_artEditHandle.IsValid()) Addressables.Release(_artEditHandle);
+            if (_artModeHandle.IsValid()) Addressables.Release(_artModeHandle);
+            if (_circleSmallEmptyHandle.IsValid()) Addressables.Release(_circleSmallEmptyHandle);
+            if (_circleSmallFilledHandle.IsValid()) Addressables.Release(_circleSmallFilledHandle);
+            if (_circleBigEmptyHandle.IsValid()) Addressables.Release(_circleBigEmptyHandle);
+            if (_circleBigFilledHandle.IsValid()) Addressables.Release(_circleBigFilledHandle);
         }
 
         void OnEventOpened(object data)
@@ -381,19 +395,22 @@ namespace TheLaw.UI
         /// <summary>预加载 3 张事件 CG；完成后补应用 pending 地址（首发事件早于加载完成时）。</summary>
         System.Collections.IEnumerator LoadEventArtSprites()
         {
-            var a = UnityEngine.AddressableAssets.Addressables.LoadAssetAsync<Sprite>("event_ability");
+            var a = Addressables.LoadAssetAsync<Sprite>("event_ability");
+            _artAbilityHandle = a;
             yield return a;
-            if (a.Status == UnityEngine.ResourceManagement.AsyncOperations.AsyncOperationStatus.Succeeded) _artAbility = a.Result;
+            if (a.Status == AsyncOperationStatus.Succeeded) _artAbility = a.Result;
             else Debug.LogWarning("[EventPanel] 事件 CG 加载失败：event_ability");
 
-            var e = UnityEngine.AddressableAssets.Addressables.LoadAssetAsync<Sprite>("event_edit");
+            var e = Addressables.LoadAssetAsync<Sprite>("event_edit");
+            _artEditHandle = e;
             yield return e;
-            if (e.Status == UnityEngine.ResourceManagement.AsyncOperations.AsyncOperationStatus.Succeeded) _artEdit = e.Result;
+            if (e.Status == AsyncOperationStatus.Succeeded) _artEdit = e.Result;
             else Debug.LogWarning("[EventPanel] 事件 CG 加载失败：event_edit");
 
-            var m = UnityEngine.AddressableAssets.Addressables.LoadAssetAsync<Sprite>("event_mode");
+            var m = Addressables.LoadAssetAsync<Sprite>("event_mode");
+            _artModeHandle = m;
             yield return m;
-            if (m.Status == UnityEngine.ResourceManagement.AsyncOperations.AsyncOperationStatus.Succeeded) _artMode = m.Result;
+            if (m.Status == AsyncOperationStatus.Succeeded) _artMode = m.Result;
             else Debug.LogWarning("[EventPanel] 事件 CG 加载失败：event_mode");
 
             if (!string.IsNullOrEmpty(_pendingArtKey)) ApplyEventArt(_pendingArtKey);
@@ -402,21 +419,25 @@ namespace TheLaw.UI
         /// <summary>预加载进度节点素材（event_circle_{small,big}_{empty,filled}）；就绪后按当前状态补刷。</summary>
         System.Collections.IEnumerator LoadProgressSprites()
         {
-            var se = UnityEngine.AddressableAssets.Addressables.LoadAssetAsync<Sprite>("event_circle_small_empty");
+            var se = Addressables.LoadAssetAsync<Sprite>("event_circle_small_empty");
+            _circleSmallEmptyHandle = se;
             yield return se;
-            if (se.Status == UnityEngine.ResourceManagement.AsyncOperations.AsyncOperationStatus.Succeeded) _circleSmallEmpty = se.Result;
+            if (se.Status == AsyncOperationStatus.Succeeded) _circleSmallEmpty = se.Result;
 
-            var sf = UnityEngine.AddressableAssets.Addressables.LoadAssetAsync<Sprite>("event_circle_small_filled");
+            var sf = Addressables.LoadAssetAsync<Sprite>("event_circle_small_filled");
+            _circleSmallFilledHandle = sf;
             yield return sf;
-            if (sf.Status == UnityEngine.ResourceManagement.AsyncOperations.AsyncOperationStatus.Succeeded) _circleSmallFilled = sf.Result;
+            if (sf.Status == AsyncOperationStatus.Succeeded) _circleSmallFilled = sf.Result;
 
-            var be = UnityEngine.AddressableAssets.Addressables.LoadAssetAsync<Sprite>("event_circle_big_empty");
+            var be = Addressables.LoadAssetAsync<Sprite>("event_circle_big_empty");
+            _circleBigEmptyHandle = be;
             yield return be;
-            if (be.Status == UnityEngine.ResourceManagement.AsyncOperations.AsyncOperationStatus.Succeeded) _circleBigEmpty = be.Result;
+            if (be.Status == AsyncOperationStatus.Succeeded) _circleBigEmpty = be.Result;
 
-            var bf = UnityEngine.AddressableAssets.Addressables.LoadAssetAsync<Sprite>("event_circle_big_filled");
+            var bf = Addressables.LoadAssetAsync<Sprite>("event_circle_big_filled");
+            _circleBigFilledHandle = bf;
             yield return bf;
-            if (bf.Status == UnityEngine.ResourceManagement.AsyncOperations.AsyncOperationStatus.Succeeded) _circleBigFilled = bf.Result;
+            if (bf.Status == AsyncOperationStatus.Succeeded) _circleBigFilled = bf.Result;
 
             RefreshProgress();
         }

@@ -534,11 +534,19 @@ namespace TheLaw.UI
                 }
                 return;
             }
-            // 战斗结算：GameOver 携带胜方 → TowerFlow 收尾（胜利推进/失败结束——RunEnded 驱动回主菜单）
+            // 战斗结算：GameOver 携带胜方 → TowerFlow 收尾（胜利挂起推进/失败结束——RunEnded 驱动回主菜单）
             if (_gameState.Phase != BattlePhase.GameOver) return;
             if (!(data is Side winner)) return;
-            Debug.Log($"[Bootstrap] 战斗结束（{(winner == Side.Player ? "胜利" : "失败")}）→ TowerFlow 收尾");
-            _towerFlow?.OnBattleEnded(winner); // null 防御（整局级销毁后异常路径——正常局内必非空）
+            Debug.Log($"[Bootstrap] 战斗结束（{(winner == Side.Player ? "胜利" : "失败")}）→ 结算确认后推进");
+            if (winner == Side.Player && _battleResultPanel != null)
+            {
+                _pendingVictoryAdvance = true; // 胜利：确认后经 loading 推进下一节点（2026-08-27）
+            }
+            _towerFlow?.OnBattleEnded(winner); // 胜利：仅销毁战斗；失败：OnRunEnded(false) → OnRunEnded 挂起收尾
+            if (winner == Side.Player && _battleResultPanel == null)
+            {
+                AdvanceAfterVictoryWithLoading(); // 防御：结算面板缺失 → 直接经 loading 推进（防胜利后卡死）
+            }
         }
 
         /// <summary>
@@ -565,20 +573,44 @@ namespace TheLaw.UI
             // 全程覆盖：先压 loading（淡入盖住当前画面）→ 遮挡就绪后清理+回主菜单（任何时刻不露出面板切换/裸场景）
             PanelTransition.Begin(_uiManager, () =>
             {
-                DestroyBattleController();
-                DisposeSessionFlow(); // 整局级"离开销毁"（2026-08-13：注销监听 + 置空——含战斗实例销毁）
-                SaveManager.Instance.ArchiveHistory(); // 局终归档（2026-08-13：Reset 前——存局终完整状态含回放，排查可回溯；保留 N 份超量清理）
-                _gameState.ResetForNewRun();
-                SaveManager.Instance.SaveAll();
-                // 2026-08-13：局结束销毁会话面板（P4 断链补全——替代隐藏；新局懒加载重建，防跨局残留）
-                DestroySessionPanels();
-                // 结算面板不在 UIManager 栈（BattlePanel/EventPanel 直接 Show）——ShowPanel 不影响它；
-                // 失败路径：MainMenu 显示在结算面板下层，玩家确认后结算关闭露出 MainMenu
-                _uiManager.ShowPanel("MainMenu");
-                PanelTransition.End(_uiManager); // 主菜单已显示——弹栈淡出
-                AudioManager.Instance.PlayBGM(TheLaw.Core.AudioRefs.BgmMenu);
+                PerformFinalizeCovered();
                 _finalizing = false; // 复位——下一局收尾可用
                 Debug.Log("[Bootstrap] 返回主菜单（收尾链完成）");
+            });
+        }
+
+        /// <summary>回主菜单收尾链（loading 完全遮挡后执行）：销毁战斗/会话 → 归档 → 清档 → 显示主菜单 → 弹 loading。</summary>
+        private void PerformFinalizeCovered()
+        {
+            DestroyBattleController();
+            DisposeSessionFlow(); // 整局级"离开销毁"（2026-08-13：注销监听 + 置空——含战斗实例销毁）
+            SaveManager.Instance.ArchiveHistory(); // 局终归档（2026-08-13：Reset 前——存局终完整状态含回放，排查可回溯；保留 N 份超量清理）
+            _gameState.ResetForNewRun();
+            SaveManager.Instance.SaveAll();
+            // 2026-08-13：局结束销毁会话面板（P4 断链补全——替代隐藏；新局懒加载重建，防跨局残留）
+            DestroySessionPanels();
+            // 结算面板不在 UIManager 栈（BattlePanel/EventPanel 直接 Show）——ShowPanel 不影响它；
+            // 失败路径：MainMenu 显示在结算面板下层，玩家确认后结算关闭露出 MainMenu
+            _uiManager.ShowPanel("MainMenu");
+            PanelTransition.End(_uiManager); // 主菜单已显示——弹栈淡出
+            AudioManager.Instance.PlayBGM(TheLaw.Core.AudioRefs.BgmMenu);
+        }
+
+        /// <summary>胜利推进（2026-08-27）：结算确认后经 loading 切换下一节点；末层通关 → OnRunEnded 触发收尾回主菜单。</summary>
+        private void AdvanceAfterVictoryWithLoading()
+        {
+            PanelTransition.Begin(_uiManager, () =>
+            {
+                _towerFlow?.AdvanceNode(); // 推进下一节点（下一战斗/事件）；末层 → OnRunEnded(true) → _pendingFinalize=true
+                if (_pendingFinalize)
+                {
+                    _pendingFinalize = false;
+                    PerformFinalizeCovered(); // 末层通关：直接收尾（不再等第二次确认——结算面板已关闭）
+                }
+                else
+                {
+                    PanelTransition.End(_uiManager); // 下一节点已显示——弹 loading 淡出
+                }
             });
         }
 
@@ -668,6 +700,7 @@ namespace TheLaw.UI
         }
 
         private bool _pendingFinalize; // 结算确认后待执行的收尾（失败/通关——确认前保持战斗场景）
+        private bool _pendingVictoryAdvance; // 2026-08-27：结算确认后待推进下一节点（胜利——确认前保持战斗场景，确认后经 loading 切换）
 
         // ========== ⑥ 主菜单 / 测试直进战斗 ==========
 
@@ -1311,6 +1344,12 @@ namespace TheLaw.UI
                 {
                     _pendingFinalize = false;
                     BackToMainMenu();
+                    return;
+                }
+                if (_pendingVictoryAdvance)
+                {
+                    _pendingVictoryAdvance = false;
+                    AdvanceAfterVictoryWithLoading(); // 胜利：结算确认后经 loading 推进下一节点
                 }
             };
             panel.gameObject.SetActive(false); // prefab 根 active——必须显式隐藏（常驻但不可见；首次 StateChanged 才 PushOverlay）

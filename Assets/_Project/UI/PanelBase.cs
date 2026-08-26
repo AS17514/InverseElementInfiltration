@@ -40,7 +40,9 @@ namespace TheLaw.UI
             bool wasActive = gameObject.activeSelf;
             gameObject.SetActive(true);
             EnsureBgClick(); // 点击背景（Img_Bg 压暗层）关闭——非全屏面板通用协议
-            RefreshLayout(); // 2026-08-23：进入面板全量刷新布局（动态内容重建后防错乱——一劳永逸）
+            // 2026-08-26 PERF（AA1-02/AA8-04）：仅"隐藏→显示"时全量刷新布局；已显示面板重复 Show（同 key 幂等/PopOverlay 恢复）跳过——
+            // 动态内容重建由 LayoutGroup 自动重排，重复全量 ForceRebuild 属纯开销。
+            if (!wasActive) RefreshLayout();
             OnShow();
             // 面板打开碰撞音（2026-08-24 音频挂点方案）：仅"隐藏→显示"播——PopOverlay 恢复已显示下层时幂等不重复
             if (!wasActive) UiSfx.Play();

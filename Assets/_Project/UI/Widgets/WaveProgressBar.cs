@@ -1,5 +1,6 @@
 using System.Collections;
 using System.Collections.Generic;
+using TheLaw.Core;
 using TheLaw.Data;
 using TheLaw.Gameplay;
 using UnityEngine;
@@ -45,6 +46,26 @@ namespace TheLaw.UI
         int _lastTurn = -1;
         bool _building;
         bool _warnedNoRoot;
+        bool _dirty = true;               // 事件触发/首次 → 重新检查 GameState（AA2-06）
+        float _nextFallbackCheck;         // 轮询兜底时间戳（事件未覆盖的 TurnCount/楼层变化）
+
+        void OnEnable()
+        {
+            var ec = EventCenter.Instance;
+            ec.AddEventListener(GameEvent.StateChanged, OnStateChanged);
+            ec.AddEventListener(GameEvent.PhaseChanged, OnPhaseChanged);
+            _dirty = true;
+        }
+
+        void OnDisable()
+        {
+            var ec = EventCenter.Instance;
+            ec.RemoveEventListener(GameEvent.StateChanged, OnStateChanged);
+            ec.RemoveEventListener(GameEvent.PhaseChanged, OnPhaseChanged);
+        }
+
+        void OnStateChanged(object _) => _dirty = true;
+        void OnPhaseChanged(object _) => _dirty = true;
 
         void Start()
         {
@@ -73,6 +94,15 @@ namespace TheLaw.UI
                 }
                 return;
             }
+            // 兜底轮询：每 1s 强制检查一次（StateChanged/PhaseChanged 未覆盖的 TurnCount/楼层变化）；正常由事件驱动
+            if (Time.realtimeSinceStartup >= _nextFallbackCheck)
+            {
+                _dirty = true;
+                _nextFallbackCheck = Time.realtimeSinceStartup + 1f;
+            }
+            if (!_dirty) return;
+            _dirty = false;
+
             var state = GameState.Instance;
             if (state == null) return;
             var cfg = state.CurrentFloorConfig;

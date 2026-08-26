@@ -33,6 +33,12 @@ namespace TheLaw.UI
         Rect _holeRect = Rect.zero; // 当前挖孔（屏幕像素，含 padding）——输入阻挡用
         bool _blocking; // 教程激活期间阻挡下层交互（挖孔内放行）
 
+        // ====== 缓存 + 脏标记（2026-08-26 PERF：AA1-06/AA2-01）======
+        TutorialPanel _panelCache;  // 教程面板引用缓存（失效即重查，不再每帧 FindObjectOfType）
+        Camera _uiCamCache;         // UI 相机引用缓存（失效即重查）
+        bool _holeDirty = true;     // 目标/尺寸/padding/暗度变化时置 true——LateUpdate 仅脏时重算+写材质
+        int _lastScreenW, _lastScreenH; // 屏幕尺寸缓存（窗口缩放触发重算）
+
         public float Padding => _padding;
         public float DarkAlpha => _darkAlpha;
 
@@ -135,24 +141,32 @@ namespace TheLaw.UI
         public void SetHoleEnabled(bool on)
         {
             _holeEnabled = on;
+            MarkHoleDirty();
             if (_material != null) _material.SetFloat(PropHoleEnabled, on ? 1f : 0f);
         }
 
         public void SetDarkAlpha(float alpha)
         {
             _darkAlpha = alpha;
+            MarkHoleDirty();
             if (_material != null) _material.SetColor(PropDarkColor, new Color(0f, 0f, 0f, alpha));
         }
 
         /// <summary>外扩边距缓动（入场放大/出场收缩）。</summary>
         public Tween TweenPadding(float to, float duration)
         {
-            return DOTween.To(() => _padding, v => _padding = v, to, duration).SetEase(Ease.OutCubic);
+            return DOTween.To(() => _padding, v => { _padding = v; MarkHoleDirty(); }, to, duration).SetEase(Ease.OutCubic);
         }
 
         public void SetPaddingImmediate(float padding)
         {
             _padding = padding;
+            MarkHoleDirty();
+        }
+
+        void MarkHoleDirty()
+        {
+            _holeDirty = true;
         }
 
         /// <summary>挖孔是否覆盖 ≥97% 屏幕（全屏级目标 = 无高亮意义）。</summary>
@@ -168,7 +182,18 @@ namespace TheLaw.UI
         {
             EnsureLayered(); // 层级自愈：挂教程面板下作首子节点 + 铺满（同一 Canvas，杜绝跨层变量）
             if (_material == null) return;
-            _material.SetColor(PropDarkColor, new Color(0f, 0f, 0f, _darkAlpha));
+
+            // 窗口缩放 → 屏幕像素矩形随之变化，需要重算
+            if (Screen.width != _lastScreenW || Screen.height != _lastScreenH)
+            {
+                _lastScreenW = Screen.width;
+                _lastScreenH = Screen.height;
+                MarkHoleDirty();
+            }
+
+            if (!_holeDirty) return; // 目标集合/padding/暗度/尺寸均未变：跳过挖孔重算与材质写入
+            _holeDirty = false;
+
             if (!_holeEnabled || _targets.Count == 0)
             {
                 _material.SetFloat(PropHoleEnabled, 0f);
@@ -206,15 +231,17 @@ namespace TheLaw.UI
             return any ? Rect.MinMaxRect(minX, minY, maxX, maxY) : Rect.zero;
         }
 
-        static Camera FindUICamera()
+        Camera FindUICamera()
         {
+            if (_uiCamCache != null) return _uiCamCache;
             var vp = Object.FindObjectOfType<UICameraViewport>();
             if (vp != null)
             {
                 var cam = vp.GetComponent<Camera>();
-                if (cam != null) return cam;
+                if (cam != null) { _uiCamCache = cam; return cam; }
             }
-            return Camera.main;
+            _uiCamCache = Camera.main;
+            return _uiCamCache;
         }
 
         /// <summary>单个目标 → 屏幕像素矩形（世界→屏幕，兼容 UI 与场景对象）。</summary>
@@ -274,8 +301,9 @@ namespace TheLaw.UI
         /// </summary>
         void EnsureLayered()
         {
-            var panel = Object.FindObjectOfType<TutorialPanel>();
-            Transform host = panel != null ? panel.transform : null;
+            // 教程面板引用缓存（Unity 伪 null：面板销毁后 _panelCache == null 自动重查，不每帧全场景扫描）
+            if (_panelCache == null) _panelCache = Object.FindObjectOfType<TutorialPanel>();
+            Transform host = _panelCache != null ? _panelCache.transform : null;
             if (host == null)
             {
                 var root = FindRootCanvas();
@@ -283,7 +311,7 @@ namespace TheLaw.UI
             }
             if (host == null) return;
             if (transform.parent != host) transform.SetParent(host, false);
-            transform.SetAsFirstSibling(); // 遮罩最下、教程内容最上
+            if (transform.GetSiblingIndex() != 0) transform.SetAsFirstSibling(); // 遮罩最下、教程内容最上（仅顺序变化时写入）
             var rt = transform as RectTransform;
             if (rt != null && (rt.anchorMin != Vector2.zero || rt.anchorMax != Vector2.one))
             {

@@ -88,6 +88,7 @@ namespace TheLaw.UI
         private bool _missingLeftLogged;
         private int _diffLoadToken;   // Xeon 差分异步加载竞态防护（仅最新请求生效）
         private int _testerLoadToken; // 测试员立绘异步加载竞态防护
+        private char[] _typeBuffer;   // 打字机逐字缓冲（复用，避免每字符 Substring 分配——AA2-04）
 
         private void Awake()
         {
@@ -279,10 +280,13 @@ namespace TheLaw.UI
             _typing = true;
             _stopTyping = false;
             _contentText.text = string.Empty;
+            // 复用 char[] 增量写入（TMP SetCharArray），避免每字符 Substring 分配
+            if (_typeBuffer == null || _typeBuffer.Length < full.Length) _typeBuffer = new char[full.Length];
+            full.CopyTo(0, _typeBuffer, 0, full.Length);
             for (int i = 1; i <= full.Length; i++)
             {
                 if (_stopTyping || _skipAll) break; // 按下打断 → 立即整句；长按跳过 → 同样整句后收尾
-                _contentText.text = full.Substring(0, i);
+                _contentText.SetCharArray(_typeBuffer, 0, i);
                 yield return new WaitForSecondsRealtime(Mathf.Max(0.001f, _charInterval)); // Realtime：暂停型面板也不冻结打字
             }
             _contentText.text = full; // 打断/正常结束都落完整句

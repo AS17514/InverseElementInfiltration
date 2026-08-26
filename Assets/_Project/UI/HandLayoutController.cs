@@ -19,6 +19,8 @@ namespace TheLaw.UI
         const float HoverPush = 160f;          // 让位幅度（保序约束：< 4×最小间距=192）
         const float HoverLift = 650f;          // hover 整体上浮（卡顶高出 手牌区顶 650px）
         const float CollapseLiftBonus = 100f;   // 收起状态额外高度修正
+        const float PosEpsilon = 0.01f;          // 位置收敛阈值（差值小于此值跳过写入——AA2-07）
+        const float ScaleEpsilon = 0.001f;        // 缩放收敛阈值（差值小于此值跳过写入）
 
         RectTransform _root;
         Canvas _canvas;
@@ -211,9 +213,15 @@ namespace TheLaw.UI
                 }
                 else
                 {
-                    rt.anchoredPosition = Vector2.Lerp(rt.anchoredPosition, target, Time.deltaTime * 12f);
-                    float s = Mathf.Lerp(curScale, targetScale, Time.deltaTime * 12f);
-                    rt.localScale = Vector3.one * s;
+                    // 静止（目标与当前差值 < 阈值）跳过写入——避免每帧对全部手牌卡写 Transform（AA2-07）
+                    bool atTarget = (target - rt.anchoredPosition).sqrMagnitude <= PosEpsilon * PosEpsilon
+                                 && Mathf.Abs(targetScale - curScale) <= ScaleEpsilon;
+                    if (!atTarget)
+                    {
+                        rt.anchoredPosition = Vector2.Lerp(rt.anchoredPosition, target, Time.deltaTime * 12f);
+                        float s = Mathf.Lerp(curScale, targetScale, Time.deltaTime * 12f);
+                        rt.localScale = Vector3.one * s;
+                    }
                 }
             }
         }

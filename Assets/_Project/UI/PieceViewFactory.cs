@@ -30,6 +30,7 @@ namespace TheLaw.UI
 
         static readonly Dictionary<string, Sprite> _portraits = new Dictionary<string, Sprite>(); // 美术立绘（key=PieceDef 资产名）
         static Sprite _shadowSprite;
+        static Sprite _placeholderPortrait; // 占位立绘（缺美术回退——静态缓存一张，避免每棋 new 300×480 纹理）
         static bool _preloading;
 
         /// <summary>预载全部棋子美术立绘（Addressables 地址 = PieceDef 资产名，如 Soldier）。
@@ -146,7 +147,8 @@ namespace TheLaw.UI
             {
                 return goSprite; // 围棋立绘（代码内建 def——IconLibrary 预载，2026-08-26）
             }
-            return CreatePortraitSprite(); // 占位兜底（美术缺失/未预载完）
+            if (_placeholderPortrait == null) _placeholderPortrait = CreatePortraitSprite();
+            return _placeholderPortrait; // 占位兜底（美术缺失/未预载完——静态缓存复用）
         }
 
         public static Vector3 CellToWorld(Vector2Int cell)
@@ -161,7 +163,10 @@ namespace TheLaw.UI
 
         public static Color TintFor(int defId)
         {
-            return Palette[defId % Palette.Length];
+            // ⚠️ 2026-08-26 修复：围棋 DefId=-1（GoPiece 代码内建）——负数取模会越界（蓝方部署必炸，视图不创建）；改正模
+            int idx = defId % Palette.Length;
+            if (idx < 0) idx += Palette.Length;
+            return Palette[idx];
         }
 
         /// <summary>占位立绘贴图（300×480 比例 5:8——scale 1/6 → 0.5×0.8 格，与场景 TestPiece 同规格）。</summary>

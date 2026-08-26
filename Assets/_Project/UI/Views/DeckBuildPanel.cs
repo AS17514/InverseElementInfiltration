@@ -6,6 +6,7 @@ using TheLaw.Gameplay;
 using TMPro;
 using UnityEngine;
 using UnityEngine.AddressableAssets;
+using UnityEngine.ResourceManagement.AsyncOperations;
 using UnityEngine.EventSystems;
 using UnityEngine.UI;
 
@@ -58,10 +59,12 @@ namespace TheLaw.UI
         private List<PieceDef> _sortedDefs = new List<PieceDef>(); // 牌池数据（按 Id 排序——牌池卡顺序确定）
         private readonly List<int> _deck = new List<int>();        // 当前出战（defId 列表，顺序 = 入队顺序）
         private readonly List<GameObject> _deckCards = new List<GameObject>(); // 出战卡实例（按 _deck 同步）
+        private readonly List<int> _deckCardIds = new List<int>(); // 与 _deckCards 一一对应（增量增删定位用）
         private readonly List<GameObject> _poolCards = new List<GameObject>(); // 牌池卡实例（索引 = _sortedDefs 索引）
         private GameObject _cardTemplate; // Piece_Card prefab（Addressables——牌池/出战共用）
         private GameObject _progTemplate; // Piece_ProgramInfo prefab（卡面程序槽图标——Addressables）
         private GameObject _tagTemplate;  // Tag_DeckLimit prefab（Addressables——限制 Tag 外观唯一来源）
+        private AsyncOperationHandle<GameObject> _cardTemplateHandle, _progTemplateHandle, _tagTemplateHandle;
 
         // 当前事件限制（0 = 无限制）
         private int _deckSizeLimit;
@@ -196,9 +199,9 @@ namespace TheLaw.UI
         /// <summary>重建牌池：清空 → 按数据动态生成 Piece_Card（Toggle=入队标记）。</summary>
         void RebuildPool()
         {
-            if (_poolContent == null || _cardTemplate == null)
+            if (_poolContent == null)
             {
-                StartCoroutine(RebuildPoolWhenReady());
+                Debug.LogWarning("[DeckBuild] 牌池容器缺失（prefab 结构漂移）——跳过本次牌池构建");
                 return;
             }
             foreach (Transform child in _poolContent) Destroy(child.gameObject);
@@ -250,11 +253,6 @@ namespace TheLaw.UI
             RefreshPoolAvailability();
         }
 
-        System.Collections.IEnumerator RebuildPoolWhenReady()
-        {
-            yield return RebuildCardsWhenReady();
-        }
-
         /// <summary>牌池卡点击：左键加 / 右键减。信息显示由悬停（CardHover）负责——点击不显示。</summary>
         void OnPoolClicked(int defId, PointerEventData eventData)
         {
@@ -278,7 +276,10 @@ namespace TheLaw.UI
             }
             _deck.Add(defId);
             UiSfx.Play(); // 构筑加牌碰撞音（2026-08-24 音频挂点方案）
-            RefreshAfterDeckChange();
+            // 2026-08-26 PERF（AA1-01）：增量插入单卡，不再全量销毁重建（O(n^2) → O(n)）
+            InsertDeckCard(defId);
+            RefreshLimits();
+            RefreshPoolAvailability(); // 限制变化 → 刷新剩余棋子的可选中性/数量角标
         }
 
         /// <summary>右键：移出一张（可复数时逐张减）。</summary>
@@ -286,12 +287,7 @@ namespace TheLaw.UI
         {
             if (!_deck.Remove(defId)) return; // 不在队：忽略
             UiSfx.Play(); // 构筑减牌碰撞音（2026-08-24 音频挂点方案）
-            RefreshAfterDeckChange();
-        }
-
-        void RefreshAfterDeckChange()
-        {
-            RebuildDeck();
+            RemoveDeckCard(defId);
             RefreshLimits();
             RefreshPoolAvailability(); // 限制变化 → 刷新剩余棋子的可选中性/数量角标
         }
@@ -389,48 +385,123 @@ namespace TheLaw.UI
 
         // ====== 出战 ======
 
-        /// <summary>重建出战列表：清空 → 按 _deck 生成（点击 = 出队）。</summary>
+        /// <summary>重建出战列表：清空 → 按 _deck 生成（点击 = 出队）。仅初始构建/模板就绪后的全量路径使用。</summary>
         void RebuildDeck()
         {
             if (_deckContent == null) return;
-            foreach (var card in _deckCards)
+            for (int i = 0; i < _deckCards.Count; i++)
             {
-                if (card != null) Destroy(card);
+                var card = _deckCards[i];
+                if (card != null) DestroyImmediate(card); // 同步清空（防同帧新旧并存——AA1-01）
             }
             _deckCards.Clear();
+            _deckCardIds.Clear();
             var displayOrder = GetDeckDisplayOrder();
             foreach (var deckId in displayOrder)
             {
                 var def = ConfigTable.Find<PieceDef>(deckId);
                 if (def == null || _cardTemplate == null) continue;
-                var data = PiecePresentationMapper.ToPieceCard(
-                    def,
-                    GetEffectiveType(def.Id),
-                    GetEffectiveValue(def.Id),
-                    GetDisplayProgram(def));
-                var go = UIComponentFactory.CreatePieceCard(_cardTemplate, _deckContent, data, _progTemplate).gameObject;
-                go.name = $"DeckCard_{def.Id}_{def.displayName}";
-                // 悬停显示信息（CardHover——PointerEnter/PointerExit）
-                var hover = go.GetComponent<CardHover>();
-                if (hover == null) hover = go.AddComponent<CardHover>();
-                hover.Init(this, def);
-                // 出战卡点击 = 出队。⚠️ 根节点已有 Toggle（Selectable 子类）——AddComponent<Button> 返回 null（实测），
-                // 复用 Toggle 的 onValueChanged：isOn 置 true → 出队 + 回弹 false（玩家点击切换）
-                var toggle = go.GetComponent<Toggle>();
-                if (toggle != null)
-                {
-                    var defId = def.Id;
-                    toggle.onValueChanged.RemoveAllListeners();
-                    toggle.onValueChanged.AddListener(on =>
-                    {
-                        if (on)
-                        {
-                            OnDeckCardClick(defId, go);
-                            toggle.isOn = false; // 回弹（点击 = 瞬时出队，不留选中态）
-                        }
-                    });
-                }
+                var go = CreateDeckCard(def);
                 _deckCards.Add(go);
+                _deckCardIds.Add(def.Id);
+            }
+        }
+
+        /// <summary>创建单张出战卡（绑定出队点击；悬停显示信息）。</summary>
+        GameObject CreateDeckCard(PieceDef def)
+        {
+            var data = PiecePresentationMapper.ToPieceCard(
+                def,
+                GetEffectiveType(def.Id),
+                GetEffectiveValue(def.Id),
+                GetDisplayProgram(def));
+            var go = UIComponentFactory.CreatePieceCard(_cardTemplate, _deckContent, data, _progTemplate).gameObject;
+            go.name = $"DeckCard_{def.Id}_{def.displayName}";
+            // 悬停显示信息（CardHover——PointerEnter/PointerExit）
+            var hover = go.GetComponent<CardHover>();
+            if (hover == null) hover = go.AddComponent<CardHover>();
+            hover.Init(this, def);
+            // 出战卡点击 = 出队。⚠️ 根节点已有 Toggle（Selectable 子类）——AddComponent<Button> 返回 null（实测），
+            // 复用 Toggle 的 onValueChanged：isOn 置 true → 出队 + 回弹 false（玩家点击切换）
+            var toggle = go.GetComponent<Toggle>();
+            if (toggle != null)
+            {
+                var defId = def.Id;
+                toggle.onValueChanged.RemoveAllListeners();
+                toggle.onValueChanged.AddListener(on =>
+                {
+                    if (on)
+                    {
+                        OnDeckCardClick(defId, go);
+                        toggle.isOn = false; // 回弹（点击 = 瞬时出队，不留选中态）
+                    }
+                });
+            }
+            return go;
+        }
+
+        /// <summary>增量插入一张出战卡（保持与 GetDeckDisplayOrder 相同的同种相邻顺序）。</summary>
+        void InsertDeckCard(int defId)
+        {
+            if (_deckContent == null) return;
+            var def = ConfigTable.Find<PieceDef>(defId);
+            if (def == null || _cardTemplate == null) return;
+            int insertIndex = _deckCards.Count; // 新种类默认追加到末位（首次入队顺序 = 末位）
+            for (int i = _deckCards.Count - 1; i >= 0; i--)
+            {
+                if (_deckCardIds[i] == defId) { insertIndex = i + 1; break; } // 同种插到该种最后一张之后
+            }
+            var go = CreateDeckCard(def);
+            _deckCards.Insert(insertIndex, go);
+            _deckCardIds.Insert(insertIndex, defId);
+            if (go.transform.GetSiblingIndex() != insertIndex) go.transform.SetSiblingIndex(insertIndex);
+        }
+
+        /// <summary>增量移除一张出战卡（与 _deck.Remove 首个匹配保持一致）。</summary>
+        void RemoveDeckCard(int defId)
+        {
+            for (int i = 0; i < _deckCardIds.Count; i++)
+            {
+                if (_deckCardIds[i] != defId) continue;
+                var card = _deckCards[i];
+                _deckCards.RemoveAt(i);
+                _deckCardIds.RemoveAt(i);
+                if (card != null)
+                {
+                    card.SetActive(false); // 立即隐藏防同帧残留；Destroy 延迟帧末（避免在自身 Toggle 回调中 DestroyImmediate）
+                    Destroy(card);
+                }
+                ReorderDeckCards(); // 复数同种时首现分组顺序可能因移除而翻转——重排剩余卡保持 GetDeckDisplayOrder 一致
+                return;
+            }
+            // 登记列表与 _deck 失步（极端防御）：回退全量重建，保证 UI 与数据一致
+            RebuildDeck();
+        }
+
+        /// <summary>按 _deck 首现分组顺序重排现有出战卡（仅移动列表元素与 sibling，不重建卡）。</summary>
+        void ReorderDeckCards()
+        {
+            if (_deckCards.Count == 0) return;
+            var order = new List<int>(_deckCards.Count);
+            var used = new bool[_deckCards.Count];
+            foreach (var groupId in GetDeckDisplayOrder())
+            {
+                for (int i = 0; i < _deckCardIds.Count; i++)
+                {
+                    if (!used[i] && _deckCardIds[i] == groupId) { order.Add(i); used[i] = true; }
+                }
+            }
+            for (int i = 0; i < _deckCardIds.Count; i++) if (!used[i]) order.Add(i); // 防御：未匹配项补末尾
+
+            var newCards = new List<GameObject>(_deckCards.Count);
+            var newIds = new List<int>(_deckCardIds.Count);
+            foreach (var idx in order) { newCards.Add(_deckCards[idx]); newIds.Add(_deckCardIds[idx]); }
+            _deckCards.Clear(); _deckCards.AddRange(newCards);
+            _deckCardIds.Clear(); _deckCardIds.AddRange(newIds);
+            for (int i = 0; i < _deckCards.Count; i++)
+            {
+                var card = _deckCards[i];
+                if (card != null && card.transform.GetSiblingIndex() != i) card.transform.SetSiblingIndex(i);
             }
         }
 
@@ -610,6 +681,9 @@ namespace TheLaw.UI
             var handle = Addressables.LoadAssetAsync<GameObject>("Piece_Card");
             var progHandle = Addressables.LoadAssetAsync<GameObject>("Piece_ProgramInfo"); // 卡面程序槽图标模板
             var tagHandle = Addressables.LoadAssetAsync<GameObject>("Tag_DeckLimit");
+            _cardTemplateHandle = handle;
+            _progTemplateHandle = progHandle;
+            _tagTemplateHandle = tagHandle;
             yield return handle;
             yield return progHandle;
             yield return tagHandle;
@@ -635,6 +709,13 @@ namespace TheLaw.UI
                 Debug.LogError("[DeckBuild] Tag_DeckLimit 加载失败——无法显示构筑限制");
             }
             // 重建统一由 OnShow 的 RebuildCardsWhenReady 驱动；模板完成后在同一流程中生成牌池与出战卡。
+        }
+
+        void OnDestroy()
+        {
+            if (_cardTemplateHandle.IsValid()) Addressables.Release(_cardTemplateHandle);
+            if (_progTemplateHandle.IsValid()) Addressables.Release(_progTemplateHandle);
+            if (_tagTemplateHandle.IsValid()) Addressables.Release(_tagTemplateHandle);
         }
 
         /// <summary>确认按钮置灰时仍接收点击，用于提示牌数必须达到精确限制。</summary>
